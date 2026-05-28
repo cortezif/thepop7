@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getPrisma } from "@thepop/db";
 import { transitionOrder } from "../services/order-service.js";
 import { runPostSaleStage } from "../services/post-sale-service.js";
+import { recordNps } from "../services/nps.js";
 
 async function tenantId(slug: string) {
   const t = await getPrisma().tenant.findUnique({ where: { slug } });
@@ -37,6 +38,22 @@ export const postSaleRoutes: FastifyPluginAsync = async (app) => {
       }
     }
     return { ok: true, transitions: results };
+  });
+
+  // POST /post-sale/nps — registra uma resposta de NPS (ADR-017)
+  app.post("/nps", async (req, reply) => {
+    const body = z.object({
+      tenantSlug: z.string(),
+      score: z.number().int().min(0).max(10),
+      kind: z.enum(["produto", "atendimento"]).default("produto"),
+      contactId: z.string().optional(),
+      orderId: z.string().optional(),
+      comment: z.string().optional(),
+    }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+    const tid = await tenantId(body.data.tenantSlug);
+    if (!tid) return reply.code(404).send({ error: "tenant not found" });
+    return recordNps(tid, body.data);
   });
 
   // POST /post-sale/trigger — dispara um marco (d1/d7/d14/d30) manualmente

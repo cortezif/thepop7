@@ -222,7 +222,10 @@ export type DailyMetrics = {
   financials: Financials;
   funnel: Funnel;
   budget: Budget;
+  nps: { geral: NpsStat; produto: NpsStat; atendimento: NpsStat };
 };
+
+export type NpsStat = { score: number; responses: number; promotores: number; neutros: number; detratores: number };
 
 export type Budget = {
   monthlyBudgetBRL: number;

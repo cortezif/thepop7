@@ -67,8 +67,26 @@ model Tenant {
   purchaseRequests PurchaseRequest[]
   quotes           Quote[]
   auditLogs        AuditLog[]
+  npsResponses     NpsResponse[]
 
   @@map("tenants")
+}
+
+// NPS rastreado (ADR-017): produto e atendimento separados.
+model NpsResponse {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contactId String?
+  orderId   String?
+  kind      String   @default("produto") // produto | atendimento
+  score     Int      // 0..10
+  comment   String?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, kind])
+  @@index([tenantId])
+  @@map("nps_responses")
 }
 
 enum TenantStatus {

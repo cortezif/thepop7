@@ -88,6 +88,29 @@ export function Dashboard() {
         </div>
       )}
 
+      {/* NPS (ADR-017) */}
+      {m && (
+        <div className="mt-6 rounded-lg border border-border bg-background p-6">
+          <h2 className="font-serif text-lg font-bold">NPS</h2>
+          <p className="mb-4 text-xs text-muted-foreground">
+            Promotores (9-10) − detratores (0-6). Produto e atendimento separados.
+          </p>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            {([["Geral", m.nps.geral], ["Produto", m.nps.produto], ["Atendimento", m.nps.atendimento]] as const).map(([label, s]) => (
+              <div key={label} className="rounded-md border border-border p-4">
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">{label}</p>
+                <p className={`mt-1 font-serif text-2xl font-bold ${s.score >= 50 ? "text-green-600" : s.score < 0 ? "text-primary" : ""}`}>
+                  {s.responses ? s.score : "—"}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {s.responses} resposta(s){s.responses ? ` · ${s.promotores}P / ${s.neutros}N / ${s.detratores}D` : ""}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Funil de conversão (ADR-017) */}
       {m && (
         <div className="mt-6 rounded-lg border border-border bg-background p-6">

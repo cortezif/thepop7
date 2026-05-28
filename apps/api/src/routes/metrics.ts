@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { getPrisma, withTenant } from "@thepop/db";
 import { computeFinancials, computeFunnel } from "../services/order-service.js";
+import { npsSummary } from "../services/nps.js";
 
 export const metricsRoutes: FastifyPluginAsync = async (app) => {
   // GET /metrics/daily?tenantSlug=...
@@ -19,6 +20,7 @@ export const metricsRoutes: FastifyPluginAsync = async (app) => {
     const gatewayFees = ((tenant.policies as any)?.gatewayFees) as Record<string, number> | undefined;
     const financials = await computeFinancials(tenant.id, gatewayFees);
     const funnel = await computeFunnel(tenant.id);
+    const nps = await npsSummary(tenant.id);
 
     // Orçamento de IA do mês corrente (ADR-014/025)
     const monthBudget = await withTenant(tenant.id, async (tx) => {
@@ -108,6 +110,7 @@ export const metricsRoutes: FastifyPluginAsync = async (app) => {
         financials,
         funnel,
         budget: monthBudget,
+        nps,
       };
     });
   });

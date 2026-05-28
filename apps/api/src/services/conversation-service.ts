@@ -6,6 +6,7 @@ import type { FastifyBaseLogger } from "fastify";
 import { searchProducts, type CustomerProfile } from "./product-search.js";
 import { createOrder, cancelOrder, startReturn, getOrderStatus } from "./order-service.js";
 import { resolveContact } from "./identity-service.js";
+import { parseNpsScore, recordNps } from "./nps.js";
 
 type IncomingDTO = {
   tenantSlug: string;
@@ -76,6 +77,36 @@ export async function handleIncomingMessage(dto: IncomingDTO, log: FastifyBaseLo
   });
 
   const { contact, conversation, recent, priorSummaries, monthSpendBRL } = setup;
+
+  // Captura de NPS (ADR-017): nota 0-10 após marco D+14/D+30 recente (≤7d) → registra
+  // e agradece, sem acionar o agente (não gasta IA).
+  const npsScore = parseNpsScore(dto.text);
+  if (npsScore != null) {
+    const npsOrderId = await withTenant(tenant.id, async (tx) => {
+      const orders = await tx.order.findMany({ where: { contactId: contact.id }, select: { id: true } });
+      const orderIds = orders.map((o) => o.id);
+      if (!orderIds.length) return null;
+      const prompt = await tx.domainEvent.findFirst({
+        where: {
+          tenantId: tenant.id, aggregateType: "order", aggregateId: { in: orderIds },
+          type: { in: ["postsale.d14", "postsale.d30"] },
+          createdAt: { gte: new Date(Date.now() - 7 * 864e5) },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+      return prompt?.aggregateId ?? null;
+    });
+    if (npsOrderId) {
+      await recordNps(tenant.id, { contactId: contact.id, orderId: npsOrderId, kind: "produto", score: npsScore });
+      const thanks = `Obrigada pela nota ${npsScore}! 💛 Seu feedback ajuda muito a gente a melhorar.`;
+      await withTenant(tenant.id, async (tx) => {
+        await tx.message.create({ data: { conversationId: conversation.id, direction: "out", type: "text", content: thanks } });
+        await tx.conversation.update({ where: { id: conversation.id }, data: { lastMessageAt: new Date() } });
+      });
+      log.info({ score: npsScore, orderId: npsOrderId }, "NPS capturado (ADR-017)");
+      return { conversationId: conversation.id, reply: thanks, toolCalls: [], cost: null, npsCaptured: npsScore };
+    }
+  }
 
   // Orçamento estourado → degrada o modelo (pula o Sonnet, começa no Haiku). ADR-014/025.
   const overBudget = monthSpendBRL >= Number(tenant.monthlyAIBudgetBRL);
