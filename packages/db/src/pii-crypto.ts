@@ -36,7 +36,7 @@ function normalizeForHash(value: string): string {
 
 /** Cifra um valor de PII. null/"" passam direto. Idempotente (não re-cifra). */
 export function encryptPII(plain: string | null | undefined): string | null {
-  if (plain == null || plain === "") return plain ?? null;
+  if (plain == null || plain === "") return null;
   if (plain.startsWith(PREFIX)) return plain; // já cifrado
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv("aes-256-gcm", aesKey(), iv);
