@@ -2,9 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { getPrisma, withTenant } from "@thepop/db";
 import { withTestTenant } from "./helpers.js";
-import { transitionOrder } from "../services/order-service.js";
+import { transitionOrder, createOrder, cancelOrder, getOrderStatus } from "../services/order-service.js";
 import { resolveContact } from "../services/identity-service.js";
 import { runRetention } from "../services/lgpd-service.js";
+import { runPostSaleStage } from "../services/post-sale-service.js";
 
 const prisma = getPrisma();
 
@@ -78,6 +79,59 @@ test("retenção anonimiza conversa inativa além do prazo (ADR-013)", async () 
     assert.match(oldMsg!.content ?? "", /removido por pol/, "msg antiga anonimizada");
     const recentMsg = await prisma.message.findFirst({ where: { conversationId: recentConv.id } });
     assert.equal(recentMsg!.content, "mensagem recente", "msg recente intacta");
+  });
+});
+
+test("createOrder gera PIX e persiste pedido + itens (ADR-023)", async () => {
+  await withTestTenant(async (tenantId) => {
+    const product = await prisma.product.create({
+      data: { tenantId, externalId: "IT-002", name: "Vestido Teste", priceBRL: 289, costBRL: 102,
+        variants: [{ sku: "IT-002-M", stock: 4 }], media: {}, styles: [], occasions: [], enrichmentStatus: "approved", active: true },
+    });
+    const contact = await prisma.contact.create({ data: { tenantId, name: "Compradora" } });
+
+    const r = await createOrder({
+      tenantId, contactId: contact.id,
+      items: [{ productId: product.id, variantSku: "IT-002-M", quantity: 1, unitPriceBRL: 289 }],
+      shippingZip: "01310-100", shippingBRL: 19.9, carrier: "Correios PAC",
+    });
+
+    assert.equal(r.totalBRL, 308.9, "289 + 19.90");
+    assert.ok("pix" in r && r.pix.qrCode, "gera PIX copia-e-cola (mock)");
+
+    const status = await getOrderStatus(tenantId, r.orderId);
+    assert.equal(status!.status, "created");
+    assert.equal(status!.cancelable, true, "recém-criado é cancelável");
+    const items = await prisma.orderItem.count({ where: { orderId: r.orderId } });
+    assert.equal(items, 1);
+  });
+});
+
+test("cancelamento respeita CDC: created cancela, shipped não (ADR-011)", async () => {
+  await withTestTenant(async (tenantId) => {
+    const contact = await prisma.contact.create({ data: { tenantId, name: "X" } });
+    const mk = (status: any) => prisma.order.create({ data: { tenantId, contactId: contact.id, status, subtotalBRL: 10, shippingBRL: 0, totalBRL: 10 } });
+
+    const created = await mk("created");
+    assert.equal((await cancelOrder(tenantId, created.id, "desisti")).ok, true, "created cancela");
+
+    const shipped = await mk("shipped");
+    const r = await cancelOrder(tenantId, shipped.id, "tarde demais");
+    assert.equal(r.ok, false, "shipped NÃO cancela (já postado)");
+  });
+});
+
+test("pós-venda Lia respeita opt-out de recompra no D+30 (ADR-013/010)", async () => {
+  await withTestTenant(async (tenantId) => {
+    const contact = await prisma.contact.create({ data: { tenantId, name: "Opt", optOuts: ["recompra"] } });
+    const order = await prisma.order.create({
+      data: { tenantId, contactId: contact.id, status: "delivered", deliveredAt: new Date(), subtotalBRL: 100, shippingBRL: 0, totalBRL: 100 },
+    });
+    // D+30 = recompra → cliente optou por NÃO receber → pula ANTES de chamar o LLM.
+    const r = await runPostSaleStage(tenantId, order.id, "d30");
+    assert.equal((r as any).skipped, true, "D+30 pulado por opt-out");
+    const msgs = await prisma.message.count({ where: { conversation: { tenantId } } });
+    assert.equal(msgs, 0, "nenhuma mensagem enviada");
   });
 });
 
