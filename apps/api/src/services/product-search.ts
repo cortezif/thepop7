@@ -28,6 +28,7 @@ export type ProductSearchHit = {
   variants: Array<{ sku: string; color?: string; size?: string; stock: number }>;
   styles: string[];
   occasions: string[];
+  measurements?: Record<string, { bust?: number; waist?: number; hips?: number; length?: number }>;
   matchScore: number;
   matchReason: "semantic" | "filters";
   // ADR-008: composição do score de negócio (transparência/debug)
@@ -105,7 +106,7 @@ async function semanticCandidates(
   if (filters.semTransparencia) wheres.push(`sheer = false`);
 
   const sql = `
-    SELECT id, "externalId", name, "priceBRL", "costBRL", variants, media, styles, occasions,
+    SELECT id, "externalId", name, "priceBRL", "costBRL", variants, media, styles, occasions, measurements,
            (embedding <=> $${params.length + 1}::vector) AS distance
     FROM products WHERE ${wheres.join(" AND ")}
     ORDER BY embedding <=> $${params.length + 1}::vector LIMIT $${params.length + 2}`;
@@ -142,6 +143,7 @@ function toCandidate(p: any, relevance: number, reason: "semantic" | "filters"):
   return {
     id: p.id, externalId: p.externalId, name: p.name, priceBRL: Number(p.priceBRL),
     mainPhoto: p.media?.mainPhoto, variants, styles: p.styles ?? [], occasions: p.occasions ?? [],
+    measurements: p.measurements ?? undefined,
     matchScore: relevance, matchReason: reason,
     costBRL: p.costBRL != null ? Number(p.costBRL) : undefined,
     totalStock,

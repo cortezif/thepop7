@@ -14,6 +14,11 @@ const CATALOG: ErpProduct[] = [
       { sku: "BL-001-M-ROSA", color: "Rosa", size: "M", stock: 2 },
     ],
     photos: [],
+    measurements: {
+      P: { bust: 86, waist: 68, hips: 92, length: 98 },
+      M: { bust: 92, waist: 74, hips: 98, length: 100 },
+      G: { bust: 98, waist: 80, hips: 104, length: 102 },
+    },
   },
   {
     externalId: "BL-002",
@@ -26,6 +31,10 @@ const CATALOG: ErpProduct[] = [
       { sku: "BL-002-G-PRETO", color: "Preto", size: "G", stock: 8 },
     ],
     photos: [],
+    measurements: {
+      M: { bust: 90, waist: 72, hips: 96, length: 110 },
+      G: { bust: 96, waist: 78, hips: 102, length: 112 },
+    },
   },
 ];
 

@@ -343,6 +343,7 @@ function buildAgentTools(tenantId: string, contactId: string, conversationId: st
         mainPhoto: h.mainPhoto,
         styles: h.styles,
         occasions: h.occasions,
+        measurements: h.measurements,
       }));
       log.info({ query, count: results.length, reason: hits[0]?.matchReason }, "tool:buscar_produto");
       return results;

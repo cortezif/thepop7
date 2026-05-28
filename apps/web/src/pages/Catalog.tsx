@@ -8,6 +8,7 @@ type Product = {
   priceBRL: number;
   costBRL?: number;
   variants: Array<{ sku: string; color?: string; size?: string; stock: number }>;
+  measurements?: Record<string, { bust?: number; waist?: number; hips?: number; length?: number }>;
 };
 
 function marginInfo(price: number, cost?: number) {
@@ -62,6 +63,26 @@ export function Catalog() {
               <p className="mt-3 text-xs text-muted-foreground">
                 {p.variants.length} variantes · {totalStock} em estoque
               </p>
+              {p.measurements && Object.keys(p.measurements).length > 0 && (
+                <div className="mt-3 border-t border-border pt-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Medidas por tamanho (cm)</p>
+                  <table className="mt-1 w-full text-[11px]">
+                    <thead className="text-muted-foreground">
+                      <tr><th className="text-left font-normal">Tam</th><th className="text-right font-normal">Busto</th><th className="text-right font-normal">Cintura</th><th className="text-right font-normal">Quadril</th></tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(p.measurements).map(([size, m]) => (
+                        <tr key={size}>
+                          <td className="font-medium">{size}</td>
+                          <td className="text-right">{m.bust ?? "—"}</td>
+                          <td className="text-right">{m.waist ?? "—"}</td>
+                          <td className="text-right">{m.hips ?? "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           );
         })}

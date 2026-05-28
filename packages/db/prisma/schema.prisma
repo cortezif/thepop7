@@ -206,6 +206,9 @@ model Product {
   variants     Json     // [{ sku, color, size, stock, photo }]
   media        Json     // { mainPhoto, photos[], videos[] }
 
+  // Medidas reais por tamanho (ADR-006) — { "M": { busto, cintura, quadril, comprimento } }
+  measurements Json?
+
   // Métricas
   marginPct    Float?   // calculado
   turnoverDays Int?     // dias médios pra girar

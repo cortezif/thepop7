@@ -27,6 +27,8 @@ export type ErpProduct = {
     stock: number;
   }>;
   photos: string[];
+  // Medidas reais por tamanho (ADR-006): { "M": { bust, waist, hips, length } } em cm
+  measurements?: Record<string, { bust?: number; waist?: number; hips?: number; length?: number }>;
 };
 
 export type ErpOrderInput = {
