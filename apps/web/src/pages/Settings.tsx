@@ -155,41 +155,45 @@ function KillSwitch() {
 }
 
 function Retention() {
-  const [days, setDays] = useState<string>("");
-  const [saved, setSaved] = useState<number | null>(null);
-  const [preview, setPreview] = useState<{ conversasAfetadas?: number; mensagensAfetadas?: number } | null>(null);
+  const [conv, setConv] = useState<string>("");
+  const [order, setOrder] = useState<string>("");
+  const [preview, setPreview] = useState<{ mensagensAfetadas?: number; pedidosAfetados?: number } | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function load() {
     const c = await api.getConfig();
-    setSaved(c.retentionDays);
-    setDays(c.retentionDays == null ? "" : String(c.retentionDays));
-    if (c.retentionDays != null) setPreview(await api.retentionPreview());
+    setConv(c.retentionDays == null ? "" : String(c.retentionDays));
+    setOrder(c.orderRetentionDays == null ? "" : String(c.orderRetentionDays));
+    if (c.retentionDays != null || c.orderRetentionDays != null) setPreview(await api.retentionPreview());
   }
   useEffect(() => { load().catch((e) => setMsg(String(e))); }, []);
 
-  async function save(disable = false) {
+  async function save() {
     setBusy(true); setMsg(null);
     try {
-      const v = disable ? null : Number(days);
-      if (!disable && (!Number.isInteger(v) || (v as number) < 1)) { setMsg("Informe um número de dias ≥ 1"); setBusy(false); return; }
-      const r = await api.setRetention(disable ? null : (v as number));
-      setSaved(r.retentionDays);
-      if (disable) { setDays(""); setPreview(null); } else { setPreview(await api.retentionPreview()); }
+      const parse = (s: string) => (s.trim() === "" ? null : Number(s));
+      const rd = parse(conv), od = parse(order);
+      if ((rd != null && (!Number.isInteger(rd) || rd < 1)) || (od != null && (!Number.isInteger(od) || od < 1))) {
+        setMsg("Use dias inteiros ≥ 1 (ou vazio = desativado)"); setBusy(false); return;
+      }
+      await api.setRetention({ retentionDays: rd, orderRetentionDays: od });
+      setPreview(await api.retentionPreview());
+      setMsg("Política salva.");
     } catch (e) { setMsg(String(e)); } finally { setBusy(false); }
   }
 
   async function run() {
-    if (!confirm("Anonimizar o conteúdo das conversas inativas além do prazo? Ação registrada em auditoria.")) return;
+    if (!confirm("Anonimizar conversas/pedidos além do prazo? Ação registrada em auditoria, irreversível.")) return;
     setBusy(true); setMsg(null);
     try {
       const r = await api.retentionRun();
-      setMsg(r.ok ? `Anonimizadas ${r.mensagensAnonimizadas} mensagens.` : `Não executado: ${r.reason}`);
+      setMsg(r.ok ? `Anonimizadas ${r.mensagensAnonimizadas ?? 0} mensagem(ns) e ${r.pedidosAnonimizados ?? 0} pedido(s).` : `Não executado: ${r.reason}`);
       setPreview(await api.retentionPreview());
     } catch (e) { setMsg(String(e)); } finally { setBusy(false); }
   }
 
+  const fld = "w-24 rounded-md border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary";
   return (
     <div className="mt-6 rounded-lg border border-border bg-background p-6">
       <div className="flex items-center gap-2">
@@ -197,26 +201,23 @@ function Retention() {
         <h2 className="font-serif text-lg font-bold">Retenção de dados (LGPD)</h2>
       </div>
       <p className="mb-4 text-xs text-muted-foreground">
-        Após este prazo de inatividade, o conteúdo das conversas é anonimizado (as linhas e métricas são preservadas). Desativado por padrão — nada é apagado automaticamente.
+        Após o prazo, o conteúdo é anonimizado (linhas e métricas preservadas). Vazio = desativado. Sugerido: conversas 540 dias (~18 meses), pedidos 1825 dias (~5 anos). Nada roda automático.
       </p>
-      <div className="flex flex-wrap items-center gap-2">
-        <input type="number" value={days} onChange={(e) => setDays(e.target.value)} placeholder="dias"
-          className="w-24 rounded-md border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary" />
-        <span className="text-sm text-muted-foreground">dias</span>
-        <button onClick={() => save(false)} disabled={busy || Number(days) === saved}
-          className="rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted disabled:opacity-50">Salvar</button>
-        {saved != null && (
-          <button onClick={() => save(true)} disabled={busy}
-            className="rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted disabled:opacity-50">Desativar</button>
-        )}
-        <span className="text-xs text-muted-foreground">{saved == null ? "desativado" : `ativo: ${saved} dias`}</span>
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="flex items-center gap-1.5 text-sm">
+          Conversas <input type="number" value={conv} onChange={(e) => setConv(e.target.value)} placeholder="dias" className={fld} />
+        </label>
+        <label className="flex items-center gap-1.5 text-sm">
+          Pedidos <input type="number" value={order} onChange={(e) => setOrder(e.target.value)} placeholder="dias" className={fld} />
+        </label>
+        <button onClick={save} disabled={busy} className="rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted disabled:opacity-50">Salvar</button>
       </div>
       {preview && (
         <div className="mt-3 flex items-center justify-between rounded-md border border-border bg-muted/40 px-3 py-2">
           <span className="text-xs text-muted-foreground">
-            {preview.conversasAfetadas ?? 0} conversa(s) · {preview.mensagensAfetadas ?? 0} mensagem(ns) elegíveis para anonimização.
+            {preview.mensagensAfetadas ?? 0} mensagem(ns) · {preview.pedidosAfetados ?? 0} pedido(s) elegíveis para anonimização.
           </span>
-          <button onClick={run} disabled={busy || !preview.mensagensAfetadas}
+          <button onClick={run} disabled={busy || (!preview.mensagensAfetadas && !preview.pedidosAfetados)}
             className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50">Executar agora</button>
         </div>
       )}

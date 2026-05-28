@@ -1,4 +1,4 @@
-import { getPrisma, withTenant, decryptPII } from "@thepop/db";
+import { getPrisma, withTenant, decryptPII, Prisma } from "@thepop/db";
 import { appendAudit } from "./audit-service.js";
 
 /**
@@ -93,42 +93,58 @@ function retentionCutoff(retentionDays: number): Date {
   return d;
 }
 
-/** Conta conversas/mensagens que SERIAM anonimizadas (sem alterar nada). */
+/** Preview do que SERIA anonimizado (conversas + pedidos), sem alterar nada. */
 export async function previewRetention(tenantId: string) {
   const tenant = await getPrisma().tenant.findUnique({ where: { id: tenantId } });
-  const retentionDays = tenant?.retentionDays ?? null;
-  if (retentionDays == null) return { enabled: false as const, retentionDays: null };
+  const convDays = tenant?.retentionDays ?? null;
+  const orderDays = tenant?.orderRetentionDays ?? null;
+  if (convDays == null && orderDays == null) return { enabled: false as const, retentionDays: null, orderRetentionDays: null };
 
-  const cutoff = retentionCutoff(retentionDays);
   return withTenant(tenantId, async (tx) => {
-    const conversas = await tx.conversation.count({ where: { lastMessageAt: { lt: cutoff } } });
-    const mensagens = await tx.message.count({
-      where: { conversation: { lastMessageAt: { lt: cutoff } }, content: { not: null } },
-    });
-    return { enabled: true as const, retentionDays, cutoff: cutoff.toISOString(), conversasAfetadas: conversas, mensagensAfetadas: mensagens };
+    let mensagensAfetadas = 0, pedidosAfetados = 0;
+    if (convDays != null) {
+      const cutoff = retentionCutoff(convDays);
+      mensagensAfetadas = await tx.message.count({ where: { conversation: { lastMessageAt: { lt: cutoff } }, content: { not: null } } });
+    }
+    if (orderDays != null) {
+      const cutoff = retentionCutoff(orderDays);
+      pedidosAfetados = await tx.order.count({ where: { createdAt: { lt: cutoff }, OR: [{ shippingAddress: { not: Prisma.DbNull } }, { deliveredTo: { not: null } }] } });
+    }
+    return { enabled: true as const, retentionDays: convDays, orderRetentionDays: orderDays, mensagensAfetadas, pedidosAfetados };
   });
 }
 
-/** Executa a anonimização de retenção. Idempotente (re-rodar não muda nada novo). */
+/** Executa a anonimização de retenção (conversas + pedidos). Idempotente. */
 export async function runRetention(tenantId: string) {
   const tenant = await getPrisma().tenant.findUnique({ where: { id: tenantId } });
-  const retentionDays = tenant?.retentionDays ?? null;
-  if (retentionDays == null) return { ok: false as const, reason: "retenção desativada (retentionDays = null)" };
+  const convDays = tenant?.retentionDays ?? null;
+  const orderDays = tenant?.orderRetentionDays ?? null;
+  if (convDays == null && orderDays == null) return { ok: false as const, reason: "retenção desativada" };
 
-  const cutoff = retentionCutoff(retentionDays);
   const result = await withTenant(tenantId, async (tx) => {
-    const r = await tx.message.updateMany({
-      where: { conversation: { lastMessageAt: { lt: cutoff } }, content: { not: "[removido por política de retenção]" } },
-      data: { content: "[removido por política de retenção]" },
-    });
-    return { mensagensAnonimizadas: r.count };
+    let mensagensAnonimizadas = 0, pedidosAnonimizados = 0;
+    if (convDays != null) {
+      const r = await tx.message.updateMany({
+        where: { conversation: { lastMessageAt: { lt: retentionCutoff(convDays) } }, content: { not: "[removido por política de retenção]" } },
+        data: { content: "[removido por política de retenção]" },
+      });
+      mensagensAnonimizadas = r.count;
+    }
+    if (orderDays != null) {
+      const r = await tx.order.updateMany({
+        where: { createdAt: { lt: retentionCutoff(orderDays) }, OR: [{ shippingAddress: { not: Prisma.DbNull } }, { deliveredTo: { not: null } }] },
+        data: { shippingAddress: Prisma.DbNull, deliveredTo: null },
+      });
+      pedidosAnonimizados = r.count;
+    }
+    return { mensagensAnonimizadas, pedidosAnonimizados };
   });
 
   await appendAudit(tenantId, {
     action: "lgpd.retention", entityType: "tenant", entityId: tenantId, actor: "system",
-    payload: { retentionDays, cutoff: cutoff.toISOString(), ...result },
+    payload: { retentionDays: convDays, orderRetentionDays: orderDays, ...result },
   });
-  return { ok: true as const, retentionDays, ...result };
+  return { ok: true as const, retentionDays: convDays, orderRetentionDays: orderDays, ...result };
 }
 
 /** Verifica se um contato optou por NÃO receber uma categoria de mensagem. */

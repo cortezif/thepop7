@@ -29,22 +29,30 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       monthlyAIBudgetBRL: Number(tenant.monthlyAIBudgetBRL),
       autoApproveMaxBRL: Number(tenant.autoApproveMaxBRL),
       retentionDays: tenant.retentionDays,
+      orderRetentionDays: tenant.orderRetentionDays,
     };
   });
 
-  // POST /admin/retention-config — define a política de retenção (ADR-013). null = desativa.
+  // POST /admin/retention-config — política de retenção diferenciada (ADR-013). null = desativa.
   app.post("/retention-config", async (req, reply) => {
-    const body = z.object({ tenantSlug: z.string(), retentionDays: z.number().int().min(1).nullable() }).safeParse(req.body);
+    const body = z.object({
+      tenantSlug: z.string(),
+      retentionDays: z.number().int().min(1).nullable().optional(),
+      orderRetentionDays: z.number().int().min(1).nullable().optional(),
+    }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
     const tenant = await resolveTenant(body.data.tenantSlug);
     if (!tenant) return reply.code(404).send({ error: "tenant not found" });
+    const data: Record<string, number | null> = {};
+    if ("retentionDays" in body.data) data.retentionDays = body.data.retentionDays ?? null;
+    if ("orderRetentionDays" in body.data) data.orderRetentionDays = body.data.orderRetentionDays ?? null;
     await withTenant(tenant.id, async (tx) => {
-      await tx.tenant.update({ where: { id: tenant.id }, data: { retentionDays: body.data.retentionDays } });
+      await tx.tenant.update({ where: { id: tenant.id }, data });
       await tx.domainEvent.create({
-        data: { tenantId: tenant.id, type: "retention.configured", aggregateType: "tenant", aggregateId: tenant.id, payload: { retentionDays: body.data.retentionDays } as any, actor: "operator" },
+        data: { tenantId: tenant.id, type: "retention.configured", aggregateType: "tenant", aggregateId: tenant.id, payload: data as any, actor: "operator" },
       });
     });
-    return { ok: true, retentionDays: body.data.retentionDays };
+    return { ok: true, ...data };
   });
 
   // POST /admin/auto-approve — ajusta o teto de auto-aprovação (ADR-025)

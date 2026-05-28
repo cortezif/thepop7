@@ -46,9 +46,10 @@ model Tenant {
   // sozinha. Acima disso, parqueia pra confirmação humana antes de gerar PIX.
   autoApproveMaxBRL Decimal @default(1000.00) @db.Decimal(10, 2)
 
-  // Retenção LGPD (ADR-013): nº de dias após o qual o conteúdo de conversas
-  // inativas é anonimizado. null = desativado (default — nada é apagado sozinho).
-  retentionDays Int?
+  // Retenção LGPD (ADR-013), diferenciada. null = desativado (nada roda sozinho).
+  // Sugerido: conversas 18 meses (~540d), pedidos 5 anos (~1825d).
+  retentionDays      Int?  // conversas: anonimiza conteúdo das mensagens
+  orderRetentionDays Int?  // pedidos: anonimiza PII (endereço, destinatário)
 
   // Limites
   monthlyAIBudgetBRL Decimal @default(500.00) @db.Decimal(10, 2)
