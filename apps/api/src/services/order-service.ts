@@ -4,6 +4,7 @@ import {
   canCancelOrder, canRequestReturn, canTransitionOrder,
   returnDeadline, EVENTS, type OrderStatus,
 } from "@thepop/shared";
+import { summarizeFinancials, buildFunnel, DEFAULT_GATEWAY_FEES } from "./financials.js";
 
 /**
  * Cria pedido a partir de itens + endereço, gera cobrança PIX e devolve
@@ -311,14 +312,9 @@ export async function createSampleOrder(tenantId: string) {
 // Pedidos que já viraram receita (pagos e adiante; exclui não-pagos e cancelados).
 const REALIZED_STATUSES: OrderStatus[] = ["paid", "picking", "shipped", "in_transit", "out_for_delivery", "delivered", "finalized"];
 
-// Taxas de gateway por método (fração de 0..1). Sobrescrevíveis em tenant.policies.gatewayFees.
-const DEFAULT_GATEWAY_FEES: Record<string, number> = { pix: 0.0099, card: 0.0399, boleto: 0.0199 };
-
 /**
- * Margem real dos pedidos realizados (ADR-017): receita − COGS − frete − taxa de gateway.
- * Frete é tratado como pass-through (cobrado da cliente ≈ pago à transportadora),
- * então a margem líquida é, na prática, subtotal − COGS − gateway. Honestidade > otimismo:
- * pedidos sem custo de produto cadastrado entram com COGS 0 e são sinalizados.
+ * Margem real dos pedidos realizados (ADR-017). Busca as linhas e delega o
+ * cálculo puro a `summarizeFinancials` (testável sem DB).
  */
 export async function computeFinancials(tenantId: string, gatewayFeesOverride?: Record<string, number>) {
   const fees = { ...DEFAULT_GATEWAY_FEES, ...(gatewayFeesOverride ?? {}) };
@@ -327,39 +323,7 @@ export async function computeFinancials(tenantId: string, gatewayFeesOverride?: 
       where: { status: { in: REALIZED_STATUSES } },
       include: { items: { include: { product: { select: { costBRL: true } } } } },
     });
-
-    let grossRevenue = 0, subtotal = 0, shipping = 0, cogs = 0, gateway = 0;
-    let ordersMissingCost = 0;
-
-    for (const o of orders) {
-      grossRevenue += Number(o.totalBRL);
-      subtotal += Number(o.subtotalBRL);
-      shipping += Number(o.shippingBRL);
-      const rate = fees[o.paymentMethod ?? "pix"] ?? fees.pix!;
-      gateway += Number(o.totalBRL) * rate;
-      let orderHasMissing = false;
-      for (const it of o.items) {
-        if (it.product.costBRL == null) { orderHasMissing = true; continue; }
-        cogs += Number(it.product.costBRL) * it.quantity;
-      }
-      if (orderHasMissing) ordersMissingCost++;
-    }
-
-    // Margem líquida: frete entra como receita e sai como custo (pass-through) → cancela.
-    const netMargin = subtotal - cogs - gateway;
-    const netMarginPct = subtotal > 0 ? (netMargin / subtotal) * 100 : 0;
-
-    return {
-      realizedOrders: orders.length,
-      grossRevenueBRL: Number(grossRevenue.toFixed(2)),
-      subtotalBRL: Number(subtotal.toFixed(2)),
-      shippingBRL: Number(shipping.toFixed(2)),
-      cogsBRL: Number(cogs.toFixed(2)),
-      gatewayFeesBRL: Number(gateway.toFixed(2)),
-      netMarginBRL: Number(netMargin.toFixed(2)),
-      netMarginPct: Number(netMarginPct.toFixed(1)),
-      ordersMissingCost,
-    };
+    return summarizeFinancials(orders, fees);
   });
 }
 
@@ -424,24 +388,14 @@ export async function exportOrdersCSV(tenantId: string, gatewayFeesOverride?: Re
  */
 export async function computeFunnel(tenantId: string) {
   return withTenant(tenantId, async (tx) => {
-    const conversations = await tx.conversation.count();
-    const ordersCreated = await tx.order.count();
-    const ordersPaid = await tx.order.count({ where: { status: { in: REALIZED_STATUSES } } });
-    const ordersDelivered = await tx.order.count({ where: { status: { in: DELIVERED_STATUSES } } });
-    const ordersCanceled = await tx.order.count({ where: { status: "canceled" } });
-
-    const pct = (num: number, den: number) => (den > 0 ? Number(((num / den) * 100).toFixed(1)) : 0);
-
-    return {
-      stages: [
-        { key: "conversas",  label: "Conversas",       count: conversations },
-        { key: "pedido",     label: "Viraram pedido",  count: ordersCreated,   rateFromPrev: pct(ordersCreated, conversations) },
-        { key: "pago",       label: "Pagaram",         count: ordersPaid,      rateFromPrev: pct(ordersPaid, ordersCreated) },
-        { key: "entregue",   label: "Entregues",       count: ordersDelivered, rateFromPrev: pct(ordersDelivered, ordersPaid) },
-      ],
-      ordersCanceled,
-      overallConversionPct: pct(ordersCreated, conversations),
-    };
+    const [conversations, ordersCreated, ordersPaid, ordersDelivered, ordersCanceled] = await Promise.all([
+      tx.conversation.count(),
+      tx.order.count(),
+      tx.order.count({ where: { status: { in: REALIZED_STATUSES } } }),
+      tx.order.count({ where: { status: { in: DELIVERED_STATUSES } } }),
+      tx.order.count({ where: { status: "canceled" } }),
+    ]);
+    return buildFunnel({ conversations, ordersCreated, ordersPaid, ordersDelivered, ordersCanceled });
   });
 }
 
