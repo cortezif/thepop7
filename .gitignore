@@ -1,0 +1,15 @@
+node_modules
+dist
+.next
+.turbo
+*.log
+.env
+.env.local
+.DS_Store
+coverage
+.idea
+.vscode
+/tmp
+/prisma/migrations/.migrate
+slide-*.jpg
+*.tsbuildinfo

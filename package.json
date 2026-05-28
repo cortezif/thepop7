@@ -1,0 +1,38 @@
+{
+  "name": "thepop7",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Plataforma de Comércio Autônomo com IA — monorepo",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "packageManager": "npm@10.9.0",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "db:generate": "npm --workspace @thepop/db run generate",
+    "db:migrate":  "npm --workspace @thepop/db run migrate",
+    "db:studio":   "npm --workspace @thepop/db run studio",
+    "dev:api":     "npm --workspace @thepop/api run dev",
+    "dev:worker":  "npm --workspace @thepop/worker run dev",
+    "dev:web":     "npm --workspace @thepop/web run dev",
+    "bootstrap":   "node scripts/bootstrap.mjs",
+    "dev:all":     "node scripts/dev-all.mjs"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0",
+    "typescript": "^5.5.0",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.16.0"
+  },
+  "overrides": {
+    "ioredis": "5.10.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

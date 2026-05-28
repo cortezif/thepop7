@@ -1,0 +1,593 @@
+// Plataforma de Comércio Autônomo — schema multi-tenant
+//
+// Convenções:
+// - Todas as tabelas de negócio têm `tenantId` indexado.
+// - Row-Level Security é ativado por migration SQL (ver migrations/rls.sql).
+// - IDs são CUIDs.
+// - Timestamps em UTC. createdAt/updatedAt automáticos.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  // pgvector opcional: quando a extensão estiver disponível (Linux/Docker/cloud),
+  // adicionar `vector` aqui e descomentar a coluna `embedding` em Product.
+  extensions = [pgcrypto]
+}
+
+// ==========================================================
+// TENANT (lojista)
+// ==========================================================
+model Tenant {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  status      TenantStatus @default(active)
+
+  // Configuração do agente
+  agentPersona String  @default("Maya")
+  agentTone    String? // Tom de voz, brand voice — texto livre, vai pro system prompt
+  policies     Json?   // FAQ, prazos, regras de troca por tenant
+
+  // Pesos do recomendador (ADR-008)
+  recoMarginWeight   Float @default(0.2)
+  recoStockWeight    Float @default(0.2)
+  recoProfileWeight  Float @default(0.5)
+
+  // Kill-switch (ADR-025): quando false, a IA não responde — toda mensagem
+  // que entra é parqueada pra atendimento humano (handoff). Reversível.
+  aiEnabled   Boolean @default(true)
+
+  // Auto-aprovação (ADR-025): valor máximo de pedido que a IA pode fechar
+  // sozinha. Acima disso, parqueia pra confirmação humana antes de gerar PIX.
+  autoApproveMaxBRL Decimal @default(1000.00) @db.Decimal(10, 2)
+
+  // Retenção LGPD (ADR-013): nº de dias após o qual o conteúdo de conversas
+  // inativas é anonimizado. null = desativado (default — nada é apagado sozinho).
+  retentionDays Int?
+
+  // Limites
+  monthlyAIBudgetBRL Decimal @default(500.00) @db.Decimal(10, 2)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users         User[]
+  contacts      Contact[]
+  products      Product[]
+  orders        Order[]
+  conversations Conversation[]
+  reservations  StockReservation[]
+  events        DomainEvent[]
+  suppliers     Supplier[]
+  purchaseRequests PurchaseRequest[]
+  quotes           Quote[]
+  auditLogs        AuditLog[]
+
+  @@map("tenants")
+}
+
+enum TenantStatus {
+  active
+  suspended
+  trial
+}
+
+// ==========================================================
+// USER (operador humano do tenant)
+// ==========================================================
+model User {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  email     String
+  name      String
+  role      UserRole @default(operator)
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@map("users")
+}
+
+enum UserRole {
+  owner
+  admin
+  operator
+}
+
+// ==========================================================
+// CONTACT (cliente final)
+// ==========================================================
+model Contact {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Identificadores. phone/email/cpf ficam CIFRADOS at-rest (AES-256-GCM,
+  // prefixo "enc:v1:") — ADR-013. A busca/dedup usa as colunas *Hash (HMAC).
+  // igHandle fica em texto puro (handle público, baixa sensibilidade).
+  phone     String?  // E.164 (cifrado)
+  igHandle  String?
+  email     String?  // (cifrado)
+  cpf       String?  // (cifrado)
+
+  // Hashes determinísticos (HMAC-SHA256) p/ lookup exato sem decifrar.
+  phoneHash String?
+  emailHash String?
+  cpfHash   String?
+
+  name      String?
+
+  // Perfil enriquecido (ADR-007)
+  height       Int?    // cm
+  bust         Int?    // cm
+  waist        Int?    // cm
+  hips         Int?    // cm
+  usualSize    String? // PP, P, M, G, GG, etc.
+
+  // Estilo e preferências
+  styles       String[] // [moderno, evangelico, festa, fitness, ...]
+  occasions    String[] // [trabalho, casamento, igreja, ...]
+  avoid        String[] // [decote, transparencia, ...]
+  favoriteColors String[]
+
+  // Comportamento
+  avgTicket    Decimal? @db.Decimal(10, 2)
+  preferredChannel String? // whatsapp | instagram
+  preferredShipping String? // fast | cheap
+
+  // Privacidade
+  consentLGPD  Boolean @default(false)
+  optOuts      String[] // [marketing, nps, recompra]
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  orders        Order[]
+  conversations Conversation[]
+  reservations  StockReservation[]
+
+  @@index([tenantId, phoneHash])
+  @@index([tenantId, emailHash])
+  @@index([tenantId, cpfHash])
+  @@index([tenantId, igHandle])
+  @@index([tenantId])
+  @@map("contacts")
+}
+
+// ==========================================================
+// PRODUCT (catálogo enriquecido — ADR-006)
+// ==========================================================
+model Product {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  externalId   String  // SKU no ERP (Bling, Tray, etc.)
+  name         String
+  description  String?
+  priceBRL     Decimal @db.Decimal(10, 2)
+  costBRL      Decimal? @db.Decimal(10, 2)
+
+  // Atributos enriquecidos (sugeridos por IA, revisados por lojista)
+  styles       String[] // [moderno, evangelico, festa, fitness]
+  occasions    String[] // [trabalho, casamento, igreja]
+  neckline     String?  // alto | medio | baixo
+  sheer        Boolean  @default(false)
+  length       String?  // curto | medio | longo
+  sleeveType   String?  // sem | curta | longa | 3-4
+
+  // Variantes (cores, tamanhos) — JSON pra flexibilidade no MVP
+  variants     Json     // [{ sku, color, size, stock, photo }]
+  media        Json     // { mainPhoto, photos[], videos[] }
+
+  // Métricas
+  marginPct    Float?   // calculado
+  turnoverDays Int?     // dias médios pra girar
+  returnRate   Float?   // 0..1
+  enrichmentStatus EnrichmentStatus @default(pending)
+
+  // Busca semântica via pgvector (1024-dim, Voyage voyage-3 — adviser).
+  // Coluna criada via migration manual quando a extensão `vector` estiver
+  // habilitada (Linux/Docker/cloud). Em dev Windows nativo, busca degrada
+  // pra ranking por atributos (ver apps/api/src/services/product-search.ts).
+  // embedding    Unsupported("vector(1024)")?
+  embeddedAt   DateTime?
+
+  active       Boolean @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  reservations StockReservation[]
+  orderItems   OrderItem[]
+
+  @@unique([tenantId, externalId])
+  @@index([tenantId, active])
+  @@index([tenantId])
+  @@map("products")
+}
+
+enum EnrichmentStatus {
+  pending      // ainda não enriquecido
+  ai_suggested // IA sugeriu, aguarda revisão
+  approved     // lojista aprovou
+}
+
+// ==========================================================
+// CONVERSATION + MESSAGE
+// ==========================================================
+model Conversation {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  channel   Channel
+  externalConversationId String? // ID do WhatsApp/IG
+  status    ConversationStatus @default(active)
+
+  // Resumo gerado por IA pra próxima conversa começar com contexto
+  summary   String?
+  handoffReason String?
+
+  startedAt DateTime @default(now())
+  lastMessageAt DateTime @default(now())
+
+  messages  Message[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, contactId])
+  @@index([tenantId])
+  @@map("conversations")
+}
+
+enum Channel {
+  whatsapp
+  instagram
+  manual
+}
+
+enum ConversationStatus {
+  active
+  handed_off // humano assumiu
+  closed
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  direction      MessageDirection
+  type           MessageType @default(text)
+  content        String?
+  mediaUrl       String?
+
+  // Para mensagens do agente: log da chamada à LLM
+  llmModel       String?
+  llmInputTokens  Int?
+  llmOutputTokens Int?
+  llmCachedTokens Int?
+  llmCostBRL     Decimal? @db.Decimal(10, 4)
+  toolCalls      Json?
+
+  // Identificador da mensagem original no canal
+  externalId     String?
+
+  createdAt      DateTime @default(now())
+
+  @@index([conversationId, createdAt])
+  @@map("messages")
+}
+
+enum MessageDirection {
+  in
+  out
+}
+
+enum MessageType {
+  text
+  image
+  video
+  audio
+  document
+  system
+}
+
+// ==========================================================
+// ORDER + ORDER ITEM
+// ==========================================================
+model Order {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  contactId String
+  contact   Contact  @relation(fields: [contactId], references: [id])
+
+  status    OrderStatus @default(created)
+
+  // Endereço de entrega
+  shippingZip       String?
+  shippingAddress   Json?
+
+  // Valores
+  subtotalBRL Decimal  @db.Decimal(10, 2) @default(0)
+  shippingBRL Decimal  @db.Decimal(10, 2) @default(0)
+  totalBRL    Decimal  @db.Decimal(10, 2) @default(0)
+
+  // Pagamento
+  paymentMethod  PaymentMethod?
+  paymentExternalId String?       // ID no gateway
+  paidAt         DateTime?
+
+  // Logística
+  carrier        String?
+  trackingCode   String?
+  shippedAt      DateTime?
+  deliveredAt    DateTime?
+  deliveredTo    String? // nome de quem recebeu
+
+  // Fiscal
+  nfeNumber      String?
+  nfeXmlUrl      String?
+  nfePdfUrl      String?
+
+  // Cancelamento / devolução
+  canceledAt     DateTime?
+  cancelReason   String?
+
+  externalId     String? // ID no ERP
+  metadata       Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items     OrderItem[]
+  returns   Return[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, contactId])
+  @@index([tenantId])
+  @@map("orders")
+}
+
+enum OrderStatus {
+  created       // criado, aguardando pagamento
+  paid          // pagamento confirmado
+  picking       // separação
+  shipped       // postado
+  in_transit
+  out_for_delivery
+  delivered
+  finalized
+  canceled
+}
+
+enum PaymentMethod {
+  pix
+  card
+  boleto
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  variantSku String
+  quantity   Int
+  unitPriceBRL Decimal @db.Decimal(10, 2)
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+// ==========================================================
+// STOCK RESERVATION (ADR-009)
+// ==========================================================
+model StockReservation {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id])
+
+  variantSku String
+  quantity   Int
+  status     ReservationStatus @default(active)
+  expiresAt  DateTime
+
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, productId, status])
+  @@index([tenantId, expiresAt, status])
+  @@map("stock_reservations")
+}
+
+enum ReservationStatus {
+  active
+  converted // virou pedido pago
+  released  // expirou ou cancelada
+}
+
+// ==========================================================
+// RETURN (devolução)
+// ==========================================================
+model Return {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id])
+
+  status    ReturnStatus @default(requested)
+  reason    String?
+  reverseTrackingCode String?
+
+  requestedAt DateTime @default(now())
+  approvedAt  DateTime?
+  receivedAt  DateTime?
+  refundedAt  DateTime?
+  refundBRL   Decimal? @db.Decimal(10, 2)
+
+  @@index([orderId])
+  @@map("returns")
+}
+
+enum ReturnStatus {
+  requested
+  authorized
+  in_transit
+  received
+  analyzing
+  refunded
+  rejected
+}
+
+// ==========================================================
+// SUPPLIER (fornecedor — para módulo de compras)
+// ==========================================================
+model Supplier {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name      String
+  contactPhone String?
+  contactEmail String?
+  categories String[]
+
+  // Score (ADR-021)
+  avgLeadTimeDays Int?
+  onTimeRate      Float?
+  defectRate      Float?
+  relationshipScore Float @default(0.5)
+
+  active    Boolean @default(true)
+  createdAt DateTime @default(now())
+
+  quotes    Quote[]
+
+  @@index([tenantId])
+  @@map("suppliers")
+}
+
+// ==========================================================
+// PURCHASE REQUEST + QUOTE (cotação — ADR-021)
+// ==========================================================
+model PurchaseRequest {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Itens desejados (SKU/descrição + quantidade)
+  items     Json     // [{ sku?, description, quantity }]
+  status    PurchaseRequestStatus @default(open)
+  reason    String?  // ex: "reposição preditiva: BL-001 atingiu ponto de pedido"
+
+  createdAt DateTime @default(now())
+  closedAt  DateTime?
+
+  quotes    Quote[]
+
+  @@index([tenantId, status])
+  @@map("purchase_requests")
+}
+
+enum PurchaseRequestStatus {
+  open        // aguardando cotações
+  quoted      // recebeu propostas
+  ordered     // fechou com um fornecedor
+  canceled
+}
+
+model Quote {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  requestId String
+  request   PurchaseRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  supplierId String
+  supplier   Supplier @relation(fields: [supplierId], references: [id])
+
+  // Extraído da resposta do fornecedor (parser IA)
+  items        Json     // [{ description, unitPriceBRL, quantity }]
+  totalBRL     Decimal  @db.Decimal(10, 2)
+  leadTimeDays Int?
+  paymentTerms String?
+  rawMessage   String?  // resposta original do fornecedor (auditoria)
+
+  // Ranking
+  score        Float?
+  selected     Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, requestId])
+  @@map("quotes")
+}
+
+// ==========================================================
+// DOMAIN EVENT (audit trail + event bus)
+// ==========================================================
+model DomainEvent {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  type      String   // ex: order.paid, message.received, return.requested
+  aggregateType String? // order | conversation | product
+  aggregateId   String?
+
+  payload   Json
+  actor     String?  // user:xxx | agent | system | external
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, type, createdAt])
+  @@index([tenantId, aggregateType, aggregateId])
+  @@map("domain_events")
+}
+
+// ==========================================================
+// AUDIT LOG — append-only, hash-chained (ADR-013)
+// Padrão portado de adviser-editor/backend (audit_hash_chain).
+// Cada registro encadeia o hash do anterior: adulterar uma linha
+// quebra toda a cadeia a partir dela (tamper-evident).
+// ==========================================================
+model AuditLog {
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  seq        Int      // sequência por tenant (1, 2, 3, …)
+  action     String   // ex: lgpd.export, lgpd.erase, order.canceled
+  entityType String?
+  entityId   String?
+  actor      String?  // user:xxx | agent | system
+  payload    Json
+
+  prevHash   String   // hash do registro anterior ("" no primeiro)
+  hash       String   // SHA-256(prevHash + seq + action + canonical(payload))
+
+  createdAt  DateTime @default(now())
+
+  @@unique([tenantId, seq])
+  @@index([tenantId, createdAt])
+  @@map("audit_logs")
+}
