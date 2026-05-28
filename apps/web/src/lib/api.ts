@@ -97,7 +97,12 @@ export type Conversation = {
   lastMessageAt: string;
   handoffReason?: string | null;
   summary?: string | null;
+  tags?: string[];
+  assignedToId?: string | null;
+  assignedToName?: string | null;
 };
+
+export type ConversationNote = { id: string; text: string; authorName?: string | null; createdAt: string };
 
 export type Message = {
   id: string;
@@ -121,6 +126,14 @@ export const api = {
     post<{ ok: boolean }>(`/inbox/conversations/${conversationId}/reply`, { text }),
   setStatus: (conversationId: string, status: string) =>
     post<{ ok: boolean; summary?: string }>(`/inbox/conversations/${conversationId}/status`, { status }),
+  setTags: (conversationId: string, tags: string[]) =>
+    post<{ ok: boolean; tags: string[] }>(`/inbox/conversations/${conversationId}/tags`, { tags }),
+  listNotes: (conversationId: string) =>
+    get<ConversationNote[]>(`/inbox/conversations/${conversationId}/notes`),
+  addNote: (conversationId: string, text: string) =>
+    post<ConversationNote>(`/inbox/conversations/${conversationId}/notes`, { text }),
+  assignToMe: (conversationId: string, unassign?: boolean) =>
+    post<{ ok: boolean; assignedToName?: string | null }>(`/inbox/conversations/${conversationId}/assign`, { unassign }),
   suggestReply: (conversationId: string) =>
     post<{ suggestion: string; repliedTo?: string; note?: string; cost: { estimatedCostBRL: number; model: string } | null }>(
       `/inbox/conversations/${conversationId}/suggest`, {}

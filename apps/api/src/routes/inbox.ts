@@ -35,6 +35,9 @@ export const inboxRoutes: FastifyPluginAsync = async (app) => {
         lastMessageAt: c.lastMessageAt,
         handoffReason: c.handoffReason,
         summary: c.summary,
+        tags: c.tags,
+        assignedToId: c.assignedToId,
+        assignedToName: c.assignedToName,
       }));
     });
   });
@@ -92,6 +95,58 @@ export const inboxRoutes: FastifyPluginAsync = async (app) => {
       });
 
       return { ok: true, messageId: msg.id };
+    });
+  });
+
+  // POST /inbox/conversations/:id/tags — define as tags da conversa (ADR-016)
+  app.post("/conversations/:id/tags", async (req, reply) => {
+    const id = (req.params as any).id;
+    const body = z.object({ tenantSlug: z.string(), tags: z.array(z.string().min(1).max(30)).max(12) }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+    const tenant = await resolveTenant(body.data.tenantSlug);
+    if (!tenant) return reply.code(404).send({ error: "tenant not found" });
+    const tags = [...new Set(body.data.tags.map((t) => t.trim().toLowerCase()).filter(Boolean))];
+    return withTenant(tenant.id, async (tx) => {
+      await tx.conversation.update({ where: { id }, data: { tags } });
+      return { ok: true, tags };
+    });
+  });
+
+  // GET /inbox/conversations/:id/notes — notas internas
+  app.get("/conversations/:id/notes", async (req, reply) => {
+    const id = (req.params as any).id;
+    const tenant = await resolveTenant((req.query as any).tenantSlug);
+    if (!tenant) return reply.code(404).send({ error: "tenant not found" });
+    return withTenant(tenant.id, async (tx) =>
+      tx.conversationNote.findMany({ where: { conversationId: id }, orderBy: { createdAt: "asc" } })
+    );
+  });
+
+  // POST /inbox/conversations/:id/notes — adiciona nota interna (autor = operador logado)
+  app.post("/conversations/:id/notes", async (req, reply) => {
+    const id = (req.params as any).id;
+    const body = z.object({ tenantSlug: z.string(), text: z.string().min(1) }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+    const tenant = await resolveTenant(body.data.tenantSlug);
+    if (!tenant) return reply.code(404).send({ error: "tenant not found" });
+    return withTenant(tenant.id, async (tx) =>
+      tx.conversationNote.create({ data: { conversationId: id, text: body.data.text, authorId: req.auth?.sub, authorName: req.auth?.email } })
+    );
+  });
+
+  // POST /inbox/conversations/:id/assign — atribui ao operador logado (ou desatribui)
+  app.post("/conversations/:id/assign", async (req, reply) => {
+    const id = (req.params as any).id;
+    const body = z.object({ tenantSlug: z.string(), unassign: z.boolean().optional() }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+    const tenant = await resolveTenant(body.data.tenantSlug);
+    if (!tenant) return reply.code(404).send({ error: "tenant not found" });
+    const data = body.data.unassign
+      ? { assignedToId: null, assignedToName: null }
+      : { assignedToId: req.auth?.sub ?? null, assignedToName: req.auth?.email ?? null };
+    return withTenant(tenant.id, async (tx) => {
+      await tx.conversation.update({ where: { id }, data });
+      return { ok: true, assignedToName: data.assignedToName };
     });
   });
 

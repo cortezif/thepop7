@@ -257,10 +257,16 @@ model Conversation {
   summary   String?
   handoffReason String?
 
+  // Inbox (ADR-016): organização do atendimento humano.
+  tags           String[]
+  assignedToId   String?
+  assignedToName String?
+
   startedAt DateTime @default(now())
   lastMessageAt DateTime @default(now())
 
   messages  Message[]
+  notes     ConversationNote[]
 
   @@index([tenantId, status])
   @@index([tenantId, contactId])
@@ -272,6 +278,20 @@ enum Channel {
   whatsapp
   instagram
   manual
+}
+
+// Nota interna do atendente (ADR-016) — nunca enviada ao cliente.
+model ConversationNote {
+  id             String   @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  authorId       String?
+  authorName     String?
+  text           String
+  createdAt      DateTime @default(now())
+
+  @@index([conversationId, createdAt])
+  @@map("conversation_notes")
 }
 
 enum ConversationStatus {

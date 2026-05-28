@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Bot, User, Send, Wrench, Sparkles, Brain, AlertTriangle } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { ChatMarkdown } from "../components/ChatMarkdown";
-import { api, type Conversation, type Message } from "../lib/api";
+import { api, type Conversation, type Message, type ConversationNote } from "../lib/api";
 import { cn, formatBRL } from "../lib/utils";
 
 export function Inbox() {
@@ -14,7 +14,34 @@ export function Inbox() {
   const [suggesting, setSuggesting] = useState(false);
   const [suggested, setSuggested] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notes, setNotes] = useState<ConversationNote[]>([]);
+  const [newNote, setNewNote] = useState("");
+  const [newTag, setNewTag] = useState("");
   const threadRef = useRef<HTMLDivElement>(null);
+
+  async function loadNotes(id: string) {
+    try { setNotes(await api.listNotes(id)); } catch { /* ignora */ }
+  }
+  async function addTag() {
+    if (!selected || !newTag.trim() || !current) return;
+    const tags = [...new Set([...(current.tags ?? []), newTag.trim().toLowerCase()])];
+    setNewTag("");
+    try { await api.setTags(selected, tags); await loadConversations(); } catch (e) { setError(String(e)); }
+  }
+  async function removeTag(tag: string) {
+    if (!selected || !current) return;
+    const tags = (current.tags ?? []).filter((t) => t !== tag);
+    try { await api.setTags(selected, tags); await loadConversations(); } catch (e) { setError(String(e)); }
+  }
+  async function addNote() {
+    if (!selected || !newNote.trim()) return;
+    setNewNote("");
+    try { await api.addNote(selected, newNote.trim()); await loadNotes(selected); } catch (e) { setError(String(e)); }
+  }
+  async function toggleAssign() {
+    if (!selected || !current) return;
+    try { await api.assignToMe(selected, !!current.assignedToId); await loadConversations(); } catch (e) { setError(String(e)); }
+  }
 
   async function loadConversations() {
     try {
@@ -35,7 +62,7 @@ export function Inbox() {
   }
 
   useEffect(() => { loadConversations(); }, []);
-  useEffect(() => { if (selected) { loadMessages(selected); setReply(""); setSuggested(false); } }, [selected]);
+  useEffect(() => { if (selected) { loadMessages(selected); loadNotes(selected); setReply(""); setSuggested(false); } }, [selected]);
   useEffect(() => {
     threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight });
   }, [messages]);
@@ -138,6 +165,13 @@ export function Inbox() {
                         handoff: {current.handoffReason}
                       </span>
                     )}
+                    <button
+                      onClick={toggleAssign}
+                      title="Atribuir esta conversa a mim"
+                      className={cn("rounded-md border px-2.5 py-1 text-xs font-medium", current.assignedToId ? "border-primary/40 bg-primary/10 text-primary" : "border-border hover:bg-muted")}
+                    >
+                      {current.assignedToId ? `Atribuída: ${current.assignedToName}` : "Assumir"}
+                    </button>
                     {current.status !== "closed" && (
                       <button
                         onClick={handleClose}
@@ -148,6 +182,23 @@ export function Inbox() {
                       </button>
                     )}
                   </div>
+                </div>
+
+                {/* Tags (ADR-016) */}
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  {(current.tags ?? []).map((t) => (
+                    <span key={t} className="flex items-center gap-1 rounded bg-muted px-2 py-0.5 text-[11px]">
+                      #{t}
+                      <button onClick={() => removeTag(t)} className="text-muted-foreground hover:text-primary">×</button>
+                    </span>
+                  ))}
+                  <input
+                    value={newTag}
+                    onChange={(e) => setNewTag(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && addTag()}
+                    placeholder="+ tag"
+                    className="w-20 rounded border border-dashed border-border bg-background px-1.5 py-0.5 text-[11px] outline-none focus:border-primary"
+                  />
                 </div>
                 {current.summary && (
                   <p className="mt-2 flex items-start gap-1.5 rounded bg-muted/60 px-2.5 py-1.5 text-xs text-muted-foreground">
@@ -161,6 +212,33 @@ export function Inbox() {
                 {messages.map((m) => (
                   <MessageBubble key={m.id} message={m} />
                 ))}
+              </div>
+
+              {/* Notas internas (ADR-016) — nunca enviadas ao cliente */}
+              <div className="border-t border-border bg-amber-50/40 px-3 py-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-700">Notas internas ({notes.length})</p>
+                {notes.length > 0 && (
+                  <div className="mt-1 max-h-24 space-y-1 overflow-y-auto">
+                    {notes.map((n) => (
+                      <p key={n.id} className="text-xs text-muted-foreground">
+                        <span className="text-foreground">{n.text}</span>
+                        <span className="ml-1 opacity-60">— {n.authorName ?? "operador"}</span>
+                      </p>
+                    ))}
+                  </div>
+                )}
+                <div className="mt-1 flex gap-2">
+                  <input
+                    value={newNote}
+                    onChange={(e) => setNewNote(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && addNote()}
+                    placeholder="Anotação interna (não vai pro cliente)…"
+                    className="flex-1 rounded border border-border bg-background px-2 py-1 text-xs outline-none focus:border-primary"
+                  />
+                  <button onClick={addNote} disabled={!newNote.trim()} className="rounded border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50">
+                    Anotar
+                  </button>
+                </div>
               </div>
 
               <div className="border-t border-border p-3">
