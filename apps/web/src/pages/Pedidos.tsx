@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Package, Truck, Sparkles, Plus, Download } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
-import { api, TENANT_SLUG, type Order } from "../lib/api";
+import { api, downloadOrdersCsv, type Order } from "../lib/api";
 import { cn, formatBRL } from "../lib/utils";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -73,12 +73,12 @@ export function Pedidos() {
         <PageHeader eyebrow="PEDIDOS · LIA" title="Ciclo do pedido e pós-venda" />
         <div className="flex items-center gap-2">
           {orders.length > 0 && (
-            <a
-              href={`/api/orders/export.csv?tenantSlug=${TENANT_SLUG}`}
+            <button
+              onClick={() => downloadOrdersCsv().catch((e) => setError(String(e)))}
               className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-muted"
             >
               <Download size={15} /> Exportar CSV
-            </a>
+            </button>
           )}
           <button
             onClick={createSample}

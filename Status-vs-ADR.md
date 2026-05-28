@@ -71,7 +71,7 @@ Legenda:
 |---|---|---|
 | **F0 — Destravamento** | Contas externas + equipe + nicho + fundações de código | 🟡 Fundações de código **adiantadas** (feito muito além do previsto); contas externas (Meta, Bling) e equipe pendentes |
 | **F1 — Laboratório** | Maya atendendo no The Pop 7, 30 dias | 🟢 **Laboratório completo em código** (com conectores mock): Sprint 1.1 (catálogo+enriquecimento) ✓, 1.2 (agente+inbox+co-piloto) ✓, 1.3 (checkout: buscar→reservar→pedido→PIX + auto-aprovação) ✓, 1.4 (pós-venda Lia D+1..D+30 + LGPD) ✓. Falta: rodar 30 dias com tráfego REAL (depende de Meta + pagamento reais) |
-| **F2 — MVP multi-tenant** | 3 lojistas pagantes | 🔴 Multi-tenancy técnico + RLS + cripto/LGPD prontos; falta onboarding self-service, auth de operador, billing, mídia paga |
+| **F2 — MVP multi-tenant** | 3 lojistas pagantes | 🟡 Multi-tenancy/RLS/cripto/LGPD + **auth de operador** (login JWT, senha scrypt, rotas de painel protegidas, tela de login/logout no web) ✓; falta onboarding self-service, billing, mídia paga |
 | **F3 / F4** | Ciclo completo / escala | 🔴 — |
 
 **Observação honesta:** pulei a ordem do plano. O plano dizia "resolver bloqueios externos (F0) antes de codar". Como você pediu pra não atrasar a codificação, construí as fundações técnicas (que não dependem de Meta/Bling) muito além do ponto F0. Isso é bom — mas os bloqueios externos (aprovação Meta, token Bling, equipe) continuam pendentes e são o caminho crítico pra sair do laboratório.

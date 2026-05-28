@@ -1,6 +1,9 @@
+import { useEffect, useState } from "react";
 import { Outlet, NavLink } from "react-router-dom";
-import { LayoutDashboard, MessageSquare, Package, ShoppingCart, ClipboardList, Settings as SettingsIcon } from "lucide-react";
+import { LayoutDashboard, MessageSquare, Package, ShoppingCart, ClipboardList, Settings as SettingsIcon, LogOut } from "lucide-react";
 import { cn } from "./lib/utils";
+import { auth } from "./lib/api";
+import { Login } from "./pages/Login";
 
 const NAV = [
   { to: "/",         label: "Painel",       Icon: LayoutDashboard },
@@ -12,9 +15,19 @@ const NAV = [
 ];
 
 export function App() {
+  const [loggedIn, setLoggedIn] = useState(auth.isLoggedIn());
+
+  useEffect(() => {
+    const onUnauth = () => setLoggedIn(false);
+    window.addEventListener("thepop7:unauthorized", onUnauth);
+    return () => window.removeEventListener("thepop7:unauthorized", onUnauth);
+  }, []);
+
+  if (!loggedIn) return <Login onLogin={() => setLoggedIn(true)} />;
+
   return (
     <div className="grid min-h-screen grid-cols-[240px_1fr] bg-background">
-      <aside className="border-r border-border bg-muted/30 p-6">
+      <aside className="flex flex-col border-r border-border bg-muted/30 p-6">
         <div className="mb-8">
           <p className="text-xs font-bold tracking-[0.2em] text-primary">THE POP 7</p>
           <h1 className="mt-1 font-serif text-xl font-bold text-foreground">Painel</h1>
@@ -39,6 +52,12 @@ export function App() {
             </NavLink>
           ))}
         </nav>
+        <button
+          onClick={() => { auth.clear(); setLoggedIn(false); }}
+          className="mt-auto flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <LogOut size={16} /> Sair
+        </button>
       </aside>
       <main className="overflow-auto">
         <Outlet />

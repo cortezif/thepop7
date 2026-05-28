@@ -85,10 +85,11 @@ model User {
   tenantId  String
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  email     String
-  name      String
-  role      UserRole @default(operator)
-  createdAt DateTime @default(now())
+  email        String
+  name         String
+  role         UserRole @default(operator)
+  passwordHash String?  // scrypt:salt:hash (ADR-013/F2 — auth de operador)
+  createdAt    DateTime @default(now())
 
   @@unique([tenantId, email])
   @@index([tenantId])

@@ -3,9 +3,30 @@
 
 export const TENANT_SLUG = "thepop7";
 
+// ---- Auth (F2): token JWT no localStorage ----
+const TOKEN_KEY = "thepop7_token";
+export const auth = {
+  get: () => localStorage.getItem(TOKEN_KEY),
+  set: (t: string) => localStorage.setItem(TOKEN_KEY, t),
+  clear: () => localStorage.removeItem(TOKEN_KEY),
+  isLoggedIn: () => !!localStorage.getItem(TOKEN_KEY),
+};
+
+function authHeaders(): Record<string, string> {
+  const t = auth.get();
+  return t ? { Authorization: `Bearer ${t}` } : {};
+}
+
+// 401 → token inválido/expirado: limpa e manda pro login.
+function on401() {
+  auth.clear();
+  window.dispatchEvent(new Event("thepop7:unauthorized"));
+}
+
 async function get<T>(path: string): Promise<T> {
   const sep = path.includes("?") ? "&" : "?";
-  const res = await fetch(`/api${path}${sep}tenantSlug=${TENANT_SLUG}`);
+  const res = await fetch(`/api${path}${sep}tenantSlug=${TENANT_SLUG}`, { headers: authHeaders() });
+  if (res.status === 401) { on401(); throw new Error("não autenticado"); }
   if (!res.ok) throw new Error(`GET ${path} → ${res.status}`);
   return res.json();
 }
@@ -13,11 +34,38 @@ async function get<T>(path: string): Promise<T> {
 async function post<T>(path: string, body: Record<string, unknown>): Promise<T> {
   const res = await fetch(`/api${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ tenantSlug: TENANT_SLUG, ...body }),
   });
+  if (res.status === 401) { on401(); throw new Error("não autenticado"); }
   if (!res.ok) throw new Error(`POST ${path} → ${res.status}`);
   return res.json();
+}
+
+/** Baixa o CSV de pedidos com o header de auth (link <a> não manda token). */
+export async function downloadOrdersCsv() {
+  const res = await fetch(`/api/orders/export.csv?tenantSlug=${TENANT_SLUG}`, { headers: authHeaders() });
+  if (res.status === 401) { on401(); throw new Error("não autenticado"); }
+  if (!res.ok) throw new Error(`export → ${res.status}`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = `pedidos-${TENANT_SLUG}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/** Login: guarda o token e devolve o usuário. */
+export async function login(email: string, password: string) {
+  const res = await fetch(`/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tenantSlug: TENANT_SLUG, email, password }),
+  });
+  if (!res.ok) throw new Error("E-mail ou senha inválidos");
+  const data = await res.json();
+  auth.set(data.token);
+  return data.user as { id: string; name: string; email: string; role: string };
 }
 
 export type Conversation = {
@@ -62,7 +110,7 @@ export const api = {
       { channel: "manual", contact: { name: contactName, phone }, text }
     ),
   listProducts: () => get<any[]>(`/catalog/products`).catch(() => []),
-  cacheStats: () => fetch(`/api/admin/cache/stats`).then((r) => r.json()),
+  cacheStats: () => get<any>(`/admin/cache/stats`),
   getConfig: () => get<{ aiEnabled: boolean; monthlyAIBudgetBRL: number; autoApproveMaxBRL: number; retentionDays: number | null }>(`/admin/config`),
   setRetention: (retentionDays: number | null) => post<{ ok: boolean; retentionDays: number | null }>(`/admin/retention-config`, { retentionDays }),
   retentionPreview: () => get<{ enabled: boolean; retentionDays: number | null; conversasAfetadas?: number; mensagensAfetadas?: number }>(`/lgpd/retention/preview`),

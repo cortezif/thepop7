@@ -11,6 +11,8 @@ import { postSaleRoutes } from "./routes/post-sale.js";
 import { orderRoutes } from "./routes/orders.js";
 import { purchasingRoutes } from "./routes/purchasing.js";
 import { lgpdRoutes } from "./routes/lgpd.js";
+import { authRoutes } from "./routes/auth.js";
+import { requireAuth } from "./auth.js";
 
 export function buildApp() {
   const app = Fastify({
@@ -39,18 +41,25 @@ export function buildApp() {
     },
   });
 
+  // Rotas ABERTAS: inbound de cliente/canais (não são ações de operador) + auth + health.
   app.register(healthRoutes,       { prefix: "/health" });
-  app.register(conversationRoutes, { prefix: "/conversations" });
-  app.register(catalogRoutes,      { prefix: "/catalog" });
-  app.register(catalogEnrichmentRoutes, { prefix: "/catalog" });
-  app.register(adminRoutes,        { prefix: "/admin" });
-  app.register(inboxRoutes,        { prefix: "/inbox" });
-  app.register(metricsRoutes,      { prefix: "/metrics" });
-  app.register(postSaleRoutes,     { prefix: "/post-sale" });
-  app.register(orderRoutes,        { prefix: "/orders" });
-  app.register(purchasingRoutes,   { prefix: "/purchasing" });
-  app.register(lgpdRoutes,         { prefix: "/lgpd" });
-  app.register(webhookRoutes,      { prefix: "/webhooks" });
+  app.register(authRoutes,         { prefix: "/auth" });
+  app.register(conversationRoutes, { prefix: "/conversations" }); // /incoming = mensagem da cliente
+  app.register(webhookRoutes,      { prefix: "/webhooks" });      // Meta/MP/Melhor Envio
+
+  // Rotas PROTEGIDAS (painel do operador): exigem JWT válido (F2).
+  app.register(async (secure) => {
+    secure.addHook("preHandler", requireAuth);
+    secure.register(catalogRoutes,            { prefix: "/catalog" });
+    secure.register(catalogEnrichmentRoutes,  { prefix: "/catalog" });
+    secure.register(adminRoutes,              { prefix: "/admin" });
+    secure.register(inboxRoutes,              { prefix: "/inbox" });
+    secure.register(metricsRoutes,            { prefix: "/metrics" });
+    secure.register(postSaleRoutes,           { prefix: "/post-sale" });
+    secure.register(orderRoutes,              { prefix: "/orders" });
+    secure.register(purchasingRoutes,         { prefix: "/purchasing" });
+    secure.register(lgpdRoutes,               { prefix: "/lgpd" });
+  });
 
   return app;
 }
