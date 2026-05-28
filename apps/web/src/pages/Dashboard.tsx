@@ -46,7 +46,7 @@ export function Dashboard() {
         <StatCard label="Conversas ativas"     value={m ? String(m.activeConversations) : "…"} Icon={MessageCircle} />
         <StatCard label="Em atendimento humano" value={m ? String(m.handedOff) : "…"} Icon={UserCheck} />
         <StatCard label="Custo médio/conversa"  value={m ? formatBRL(m.avgCostPerConversationBRL) : "…"} Icon={TrendingUp} />
-        <StatCard label="Catálogo enriquecido"  value={m ? `${m.productsEnriched}/${m.productsTotal}` : "…"} Icon={Package} />
+        <StatCard label="Msgs a revisar (IA)"   value={m ? String(m.flaggedForReview) : "…"} Icon={AlertTriangle} />
       </div>
 
       {/* Margem real (ADR-017) — receita − COGS − frete − gateway */}

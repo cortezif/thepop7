@@ -72,6 +72,8 @@ export interface AgentToolImpl {
 export type AgentTurn = {
   replyText?: string;
   toolCalls: Array<{ name: string; input: unknown; output: unknown }>;
+  // Detecção de alucinação (ADR-014): flagga revisão se afirmou fato sem tool.
+  review?: { flagged: boolean; reasons: string[] };
   llmUsage: {
     model: string;
     inputTokens: number;

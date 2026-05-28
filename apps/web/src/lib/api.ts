@@ -107,6 +107,8 @@ export type Message = {
   llmModel?: string | null;
   llmCostBRL?: string | null;
   toolCalls?: Array<{ name: string; input: unknown; output: unknown }> | null;
+  reviewFlagged?: boolean;
+  reviewReasons?: string[];
   createdAt: string;
 };
 
@@ -216,6 +218,7 @@ export type DailyMetrics = {
   modelDistribution: Record<string, number>;
   productsTotal: number;
   productsEnriched: number;
+  flaggedForReview: number;
   financials: Financials;
   funnel: Funnel;
   budget: Budget;

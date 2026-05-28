@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bot, User, Send, Wrench, Sparkles, Brain } from "lucide-react";
+import { Bot, User, Send, Wrench, Sparkles, Brain, AlertTriangle } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { ChatMarkdown } from "../components/ChatMarkdown";
 import { api, type Conversation, type Message } from "../lib/api";
@@ -238,6 +238,11 @@ function MessageBubble({ message }: { message: Message }) {
         {isAI && (
           <div className="mt-1 text-[10px] opacity-70">
             {message.llmModel} · {message.llmCostBRL ? formatBRL(Number(message.llmCostBRL)) : ""}
+          </div>
+        )}
+        {message.reviewFlagged && (
+          <div className="mt-1 flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700" title={message.reviewReasons?.join("; ")}>
+            <AlertTriangle size={10} /> revisar: {message.reviewReasons?.join("; ")}
           </div>
         )}
       </div>

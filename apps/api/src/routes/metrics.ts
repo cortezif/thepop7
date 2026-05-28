@@ -55,6 +55,9 @@ export const metricsRoutes: FastifyPluginAsync = async (app) => {
         select: { llmCostBRL: true, llmInputTokens: true, llmOutputTokens: true, llmModel: true },
       });
 
+      // Mensagens flaggadas pra revisão (ADR-014: possível alucinação)
+      const flaggedForReview = await tx.message.count({ where: { reviewFlagged: true } });
+
       const aiCostTodayBRL = aiMessagesToday.reduce((s, m) => s + Number(m.llmCostBRL ?? 0), 0);
       const aiMessagesCount = aiMessagesToday.length;
 
@@ -101,6 +104,7 @@ export const metricsRoutes: FastifyPluginAsync = async (app) => {
         modelDistribution: modelDist,
         productsTotal,
         productsEnriched,
+        flaggedForReview,
         financials,
         funnel,
         budget: monthBudget,

@@ -1,4 +1,4 @@
-import { runAgentTurn, summarizeConversation, type AgentConfig, type ConversationContext, type AgentToolImpl } from "@thepop/agent";
+import { runAgentTurn, summarizeConversation, DEFAULT_CASCADE, type AgentConfig, type ConversationContext, type AgentToolImpl } from "@thepop/agent";
 import { getPrisma, withTenant } from "@thepop/db";
 import { getErpConnector, getLogisticsConnector } from "@thepop/connectors";
 import type { ContactProfileUpdate, ProductSummary } from "@thepop/shared";
@@ -61,10 +61,26 @@ export async function handleIncomingMessage(dto: IncomingDTO, log: FastifyBaseLo
       select: { summary: true },
     });
 
-    return { contact, conversation, recent, priorSummaries: priorConvs.map((c) => c.summary!).filter(Boolean) };
+    // Custo de IA do mês (ADR-014: degradação graceful ao estourar orçamento).
+    const startOfMonth = new Date(); startOfMonth.setDate(1); startOfMonth.setHours(0, 0, 0, 0);
+    const spend = await tx.message.aggregate({
+      where: { direction: "out", llmModel: { not: null }, createdAt: { gte: startOfMonth } },
+      _sum: { llmCostBRL: true },
+    });
+
+    return {
+      contact, conversation, recent,
+      priorSummaries: priorConvs.map((c) => c.summary!).filter(Boolean),
+      monthSpendBRL: Number(spend._sum.llmCostBRL ?? 0),
+    };
   });
 
-  const { contact, conversation, recent, priorSummaries } = setup;
+  const { contact, conversation, recent, priorSummaries, monthSpendBRL } = setup;
+
+  // Orçamento estourado → degrada o modelo (pula o Sonnet, começa no Haiku). ADR-014/025.
+  const overBudget = monthSpendBRL >= Number(tenant.monthlyAIBudgetBRL);
+  const cascadeOverride = overBudget ? DEFAULT_CASCADE.filter((m) => m.model !== "claude-sonnet-4-6") : undefined;
+  if (overBudget) log.warn({ monthSpendBRL, budget: Number(tenant.monthlyAIBudgetBRL) }, "orçamento estourado — degradando p/ Haiku");
 
   // Kill-switch (ADR-025): IA pausada → não responde, parqueia pra humano.
   if (!tenant.aiEnabled) {
@@ -118,7 +134,7 @@ export async function handleIncomingMessage(dto: IncomingDTO, log: FastifyBaseLo
     usualSize: contact.usualSize ?? undefined,
     favoriteColors: contact.favoriteColors,
   }, { autoApproveMaxBRL: Number(tenant.autoApproveMaxBRL) });
-  const turn = await runAgentTurn(cfg, ctx, dto.text, tools);
+  const turn = await runAgentTurn(cfg, ctx, dto.text, tools, cascadeOverride);
 
   // FASE 3 (transação curta): persiste a resposta.
   if (turn.replyText) {
@@ -135,6 +151,8 @@ export async function handleIncomingMessage(dto: IncomingDTO, log: FastifyBaseLo
           llmCachedTokens: turn.llmUsage.cachedTokens,
           llmCostBRL:     turn.llmUsage.estimatedCostBRL,
           toolCalls:      turn.toolCalls as any,
+          reviewFlagged:  turn.review?.flagged ?? false,
+          reviewReasons:  turn.review?.reasons ?? [],
         },
       });
     });

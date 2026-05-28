@@ -280,6 +280,10 @@ model Message {
   llmCostBRL     Decimal? @db.Decimal(10, 4)
   toolCalls      Json?
 
+  // Detecção de alucinação (ADR-014): flagga revisão humana.
+  reviewFlagged  Boolean  @default(false)
+  reviewReasons  String[]
+
   // Identificador da mensagem original no canal
   externalId     String?
 

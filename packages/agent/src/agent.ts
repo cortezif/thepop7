@@ -4,6 +4,7 @@ import { buildSystemPrompt } from "./prompt.js";
 import { TOOL_DEFS } from "./tools.js";
 import { cascadeCall, DEFAULT_CASCADE, type ProviderModel } from "./providers.js";
 import { buildSmartCascade } from "./routing.js";
+import { detectHallucination } from "./hallucination.js";
 
 // Tabela aproximada de custos em BRL por 1M tokens (atualizar conforme pricing)
 const PRICING_BRL_PER_MTOK: Record<string, { input: number; output: number; cached: number }> = {
@@ -105,6 +106,7 @@ export async function runAgentTurn(
   return {
     replyText,
     toolCalls: toolCallsLog,
+    review: detectHallucination(replyText, toolCallsLog.map((t) => t.name)),
     llmUsage: {
       model: modelUsed,
       inputTokens: totalIn,

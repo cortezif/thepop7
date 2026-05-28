@@ -52,6 +52,7 @@ export const inboxRoutes: FastifyPluginAsync = async (app) => {
         select: {
           id: true, direction: true, type: true, content: true,
           llmModel: true, llmCostBRL: true, toolCalls: true, createdAt: true,
+          reviewFlagged: true, reviewReasons: true,
         },
       });
       return messages;

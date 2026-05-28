@@ -8,4 +8,5 @@ export * from "./cache.js";
 export * from "./routing.js";
 export * from "./post-sale.js";
 export * from "./summarize.js";
+export * from "./hallucination.js";
 export * from "./purchasing.js";
