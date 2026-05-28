@@ -1,0 +1,15 @@
+# Caddy serve o painel e faz proxy do /api pra API.
+# Com um domínio real apontando pro VPS, o HTTPS (Let's Encrypt) é automático.
+# Sem domínio (teste), use DOMAIN=:80 (sem HTTPS).
+{$DOMAIN:localhost} {
+	# /api/* → API (tira o prefixo /api, igual ao proxy do dev)
+	handle_path /api/* {
+		reverse_proxy api:3001
+	}
+	# Demais rotas → painel estático (SPA: cai pro index.html)
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

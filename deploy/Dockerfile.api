@@ -1,0 +1,20 @@
+# API (cérebro) — roda o monorepo via tsx (os pacotes usam TS source direto).
+FROM node:22-slim
+
+# openssl: exigido pelo Prisma. ca-certificates: chamadas HTTPS (Anthropic etc.)
+RUN apt-get update && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Instala dependências de todo o monorepo (workspaces). Copiamos tudo (ver .dockerignore).
+COPY . .
+RUN npm ci
+
+# Gera o Prisma Client
+RUN npm --workspace @thepop/db run generate
+
+ENV NODE_ENV=production
+EXPOSE 3001
+
+# A API escuta em 0.0.0.0:3001 (ver apps/api/src/main.ts)
+CMD ["node", "--import", "tsx", "apps/api/src/main.ts"]
