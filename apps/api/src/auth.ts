@@ -35,7 +35,7 @@ export function verifyPassword(plain: string, stored: string | null | undefined)
 const b64url = (b: Buffer | string) => Buffer.from(b).toString("base64url");
 const sign = (data: string) => crypto.createHmac("sha256", jwtSecret()).update(data).digest("base64url");
 
-export type AuthClaims = { sub: string; email: string; role: string; tenantId: string };
+export type AuthClaims = { sub: string; email: string; role: string; tenantId: string; tenantSlug: string };
 
 export function signJwt(claims: AuthClaims, ttlSeconds = 60 * 60 * 12): string {
   const header = b64url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
@@ -73,6 +73,13 @@ export async function requireAuth(req: FastifyRequest, reply: FastifyReply) {
   if (!claims) {
     reply.code(401).send({ error: "não autenticado" });
     return reply; // interrompe a cadeia
+  }
+  // Isolamento multi-tenant: o tenantSlug pedido (query/body) DEVE bater com o
+  // do token — impede operador de uma loja acessar dados de outra.
+  const requested = (req.query as any)?.tenantSlug ?? (req.body as any)?.tenantSlug;
+  if (requested && requested !== claims.tenantSlug) {
+    reply.code(403).send({ error: "tenant não autorizado" });
+    return reply;
   }
   req.auth = claims;
 }

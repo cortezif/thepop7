@@ -1,16 +1,18 @@
 // Cliente HTTP do painel. Proxy /api → :3001 (ver vite.config.ts).
 // MVP: tenant fixo. Quando houver auth (Fase 2.2), vem do contexto do usuário.
 
-export const TENANT_SLUG = "thepop7";
-
-// ---- Auth (F2): token JWT no localStorage ----
+// ---- Auth (F2): token JWT + tenant da sessão no localStorage ----
 const TOKEN_KEY = "thepop7_token";
+const TENANT_KEY = "thepop7_tenant";
 export const auth = {
   get: () => localStorage.getItem(TOKEN_KEY),
   set: (t: string) => localStorage.setItem(TOKEN_KEY, t),
-  clear: () => localStorage.removeItem(TOKEN_KEY),
+  clear: () => { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(TENANT_KEY); },
   isLoggedIn: () => !!localStorage.getItem(TOKEN_KEY),
 };
+/** Slug do tenant da sessão (default thepop7 — demo). */
+export const tenantSlug = () => localStorage.getItem(TENANT_KEY) ?? "thepop7";
+const setTenant = (slug: string) => localStorage.setItem(TENANT_KEY, slug);
 
 function authHeaders(): Record<string, string> {
   const t = auth.get();
@@ -25,7 +27,7 @@ function on401() {
 
 async function get<T>(path: string): Promise<T> {
   const sep = path.includes("?") ? "&" : "?";
-  const res = await fetch(`/api${path}${sep}tenantSlug=${TENANT_SLUG}`, { headers: authHeaders() });
+  const res = await fetch(`/api${path}${sep}tenantSlug=${tenantSlug()}`, { headers: authHeaders() });
   if (res.status === 401) { on401(); throw new Error("não autenticado"); }
   if (!res.ok) throw new Error(`GET ${path} → ${res.status}`);
   return res.json();
@@ -35,7 +37,7 @@ async function post<T>(path: string, body: Record<string, unknown>): Promise<T> 
   const res = await fetch(`/api${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify({ tenantSlug: TENANT_SLUG, ...body }),
+    body: JSON.stringify({ tenantSlug: tenantSlug(), ...body }),
   });
   if (res.status === 401) { on401(); throw new Error("não autenticado"); }
   if (!res.ok) throw new Error(`POST ${path} → ${res.status}`);
@@ -44,28 +46,46 @@ async function post<T>(path: string, body: Record<string, unknown>): Promise<T> 
 
 /** Baixa o CSV de pedidos com o header de auth (link <a> não manda token). */
 export async function downloadOrdersCsv() {
-  const res = await fetch(`/api/orders/export.csv?tenantSlug=${TENANT_SLUG}`, { headers: authHeaders() });
+  const res = await fetch(`/api/orders/export.csv?tenantSlug=${tenantSlug()}`, { headers: authHeaders() });
   if (res.status === 401) { on401(); throw new Error("não autenticado"); }
   if (!res.ok) throw new Error(`export → ${res.status}`);
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url; a.download = `pedidos-${TENANT_SLUG}.csv`;
+  a.href = url; a.download = `pedidos-${tenantSlug()}.csv`;
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
 }
 
-/** Login: guarda o token e devolve o usuário. */
-export async function login(email: string, password: string) {
+type AuthResult = { token: string; tenantSlug: string; user: { id: string; name: string; email: string; role: string } };
+
+/** Login: guarda token + tenant da sessão. `slug` = identificador da loja. */
+export async function login(email: string, password: string, slug: string) {
   const res = await fetch(`/api/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tenantSlug: TENANT_SLUG, email, password }),
+    body: JSON.stringify({ tenantSlug: slug.trim().toLowerCase(), email, password }),
   });
-  if (!res.ok) throw new Error("E-mail ou senha inválidos");
-  const data = await res.json();
-  auth.set(data.token);
-  return data.user as { id: string; name: string; email: string; role: string };
+  if (!res.ok) throw new Error("E-mail, senha ou loja inválidos");
+  const data = (await res.json()) as AuthResult;
+  auth.set(data.token); setTenant(data.tenantSlug);
+  return data.user;
+}
+
+/** Cadastro self-service de loja: cria tenant + owner e já loga. */
+export async function signup(input: { storeName: string; slug: string; name: string; email: string; password: string }) {
+  const res = await fetch(`/api/auth/signup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => null);
+    throw new Error(err?.error?.fieldErrors ? JSON.stringify(err.error.fieldErrors) : (err?.error ?? "Não foi possível criar a loja"));
+  }
+  const data = (await res.json()) as AuthResult;
+  auth.set(data.token); setTenant(data.tenantSlug);
+  return data.user;
 }
 
 export type Conversation = {
