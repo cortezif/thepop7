@@ -1,5 +1,5 @@
 import { getPrisma, withTenant } from "@thepop/db";
-import { parseSupplierQuote, composeQuoteRequest } from "@thepop/agent";
+import { parseSupplierQuote, composeQuoteRequest, composePurchaseClose } from "@thepop/agent";
 import { EVENTS } from "@thepop/shared";
 
 /**
@@ -110,6 +110,34 @@ export async function recordQuote(tenantId: string, input: {
     });
     await tx.purchaseRequest.update({ where: { id: input.requestId }, data: { status: "quoted" } });
     return { ok: true, quoteId: quote.id, parsed: q };
+  });
+}
+
+/**
+ * Co-piloto da Bia: sugere a mensagem de fechamento ao fornecedor da cotação
+ * RECOMENDADA (selecionada) de uma requisição. Read-only — não muda estado.
+ */
+export async function suggestPurchaseClose(tenantId: string, requestId: string) {
+  const prisma = getPrisma();
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+  if (!tenant) throw new Error("tenant não encontrado");
+
+  return withTenant(tenantId, async (tx) => {
+    const request = await tx.purchaseRequest.findUnique({ where: { id: requestId } });
+    if (!request) return { ok: false as const, error: "requisição não encontrada" };
+
+    const quote = await tx.quote.findFirst({
+      where: { requestId, selected: true },
+      include: { supplier: { select: { name: true, contactEmail: true } } },
+    });
+    if (!quote) return { ok: false as const, error: "nenhuma cotação selecionada — ranqueie as cotações primeiro" };
+
+    const items = ((request.items as any[]) ?? []).map((i) => ({ description: i.description, quantity: i.quantity }));
+    const message = await composePurchaseClose(
+      { items, totalBRL: Number(quote.totalBRL), leadTimeDays: quote.leadTimeDays, paymentTerms: quote.paymentTerms },
+      { storeName: tenant.name, supplierName: quote.supplier.name, channel: quote.supplier.contactEmail ? "email" : "whatsapp" }
+    );
+    return { ok: true as const, supplier: quote.supplier.name, totalBRL: Number(quote.totalBRL), message };
   });
 }
 

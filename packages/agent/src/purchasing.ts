@@ -119,3 +119,43 @@ Tom objetivo e cordial. Não assine com placeholder.`,
   const textBlock = response.content.find((b): b is Anthropic.Messages.TextBlock => b.type === "text");
   return textBlock?.text ?? "";
 }
+
+/**
+ * Co-piloto da Bia (ADR-021): gera a mensagem de FECHAMENTO ao fornecedor
+ * escolhido, confirmando itens, total, prazo e condição de pagamento da cotação
+ * vencedora. Não inventa números — usa só o que veio na cotação.
+ */
+export async function composePurchaseClose(
+  input: {
+    items: Array<{ description: string; quantity: number }>;
+    totalBRL: number;
+    leadTimeDays?: number | null;
+    paymentTerms?: string | null;
+  },
+  context: { storeName: string; supplierName?: string; channel?: "whatsapp" | "email" },
+  opts: { model?: string } = {}
+): Promise<string> {
+  const model = opts.model ?? process.env.CLAUDE_MODEL_FAST ?? "claude-haiku-4-5-20251001";
+  const itemList = input.items.map((i) => `- ${i.quantity}x ${i.description}`).join("\n");
+  const detalhes = [
+    `Total acordado: R$ ${input.totalBRL.toFixed(2)}`,
+    input.leadTimeDays != null ? `Prazo: ${input.leadTimeDays} dias` : "",
+    input.paymentTerms ? `Pagamento: ${input.paymentTerms}` : "",
+  ].filter(Boolean).join("\n");
+
+  const response = await client().messages.create({
+    model,
+    max_tokens: 300,
+    system: `Você é a Bia, de compras da loja "${context.storeName}". Escreva uma
+mensagem ${context.channel === "email" ? "de email" : "de WhatsApp"} curta e profissional
+CONFIRMANDO o fechamento do pedido com o fornecedor: reafirme os itens, o total, o prazo
+e a condição de pagamento, e peça a confirmação dele + dados pra pagamento/envio.
+Tom objetivo e cordial. NÃO invente valores além dos informados. Não assine com placeholder.`,
+    messages: [{
+      role: "user",
+      content: `Fornecedor: ${context.supplierName ?? "fornecedor"}\nItens:\n${itemList}\n${detalhes}`,
+    }],
+  });
+  const textBlock = response.content.find((b): b is Anthropic.Messages.TextBlock => b.type === "text");
+  return textBlock?.text ?? "";
+}

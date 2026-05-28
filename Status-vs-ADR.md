@@ -35,7 +35,7 @@ Legenda:
 | **018** | Roteiro de fases | ⚫ | Estamos em Fase 0→1 (laboratório), adiantados no técnico | — |
 | **019** | O que NÃO construir | ⚫ | Respeitado (sem TipTap, sem Tauri, sem schema-per-tenant) | — |
 | **020** | Riscos | ⚫ | Registro vivo | — |
-| **021** | Automação fornecedores (Bia) | 🟢 | **Reposição preditiva (ponto de pedido), geração de cotação, parser de resposta em texto solto, ranking ponderado** — validado (3 cotações parseadas + ranqueadas) | Disparo de PIX ao fornecedor; cotação por foto/áudio; webhook de resposta automático |
+| **021** | Automação fornecedores (Bia) | 🟢 | **Reposição preditiva, geração de cotação, parser de texto solto, ranking ponderado** — validado. **Co-piloto de fechamento**: `composePurchaseClose` gera a mensagem de confirmação ao fornecedor recomendado (`GET /purchasing/requests/:id/close-message`, read-only), botão "Sugerir fechamento (Bia)" na aba Compras — validado (R$2.850, Confecções Brás) | Disparo de PIX ao fornecedor; cotação por foto/áudio; webhook de resposta automático |
 | **022** | Cadeia de substitutos (fallback) | 🟢 | **Provider cascade LLM Claude→Groq→Ollama** + **failover de conectores**: `createFailover()` (Proxy genérico) encadeia provedor real → mock como último recurso pra ERP/logística/pagamento/NFe; cai pro próximo em erro recuperável, propaga fatal. **Circuit-breaker**: após N falhas consecutivas o provedor entra em circuito aberto por um cooldown e é pulado proativamente (sucesso fecha); estado por `label`, persiste entre chamadas — **validado** (503→mock, 400→propaga, abre/pula/cooldown/reset, 10 testes) | — |
 | **023** | Pagamento no canal (PIX QR + cartão) | 🟢 | **Maya fecha pedido ponta-a-ponta**: buscar→frete→reservar→criar_pedido→PIX copia-e-cola, validado (pedido R$313,90 persistido) | Mercado Pago real; webhook de confirmação |
 | **024** | MCP Server B2B (atacado) | 🔴 | — | Tudo (Fase 2) |
@@ -70,8 +70,8 @@ Legenda:
 | Fase | Previsto no plano | Real |
 |---|---|---|
 | **F0 — Destravamento** | Contas externas + equipe + nicho + fundações de código | 🟡 Fundações de código **adiantadas** (feito muito além do previsto); contas externas (Meta, Bling) e equipe pendentes |
-| **F1 — Laboratório** | Maya atendendo no The Pop 7, 30 dias | 🟡 Protótipo funcional: Sprint 1.1 (catálogo+enriquecimento) ✓, 1.2 (agente+inbox) ✓, 1.3 (checkout via mock) parcial, 1.4 (pós-venda) stub |
-| **F2 — MVP multi-tenant** | 3 lojistas pagantes | 🔴 Multi-tenancy técnico pronto; onboarding self-service, auth, mídia paga — não |
+| **F1 — Laboratório** | Maya atendendo no The Pop 7, 30 dias | 🟢 **Laboratório completo em código** (com conectores mock): Sprint 1.1 (catálogo+enriquecimento) ✓, 1.2 (agente+inbox+co-piloto) ✓, 1.3 (checkout: buscar→reservar→pedido→PIX + auto-aprovação) ✓, 1.4 (pós-venda Lia D+1..D+30 + LGPD) ✓. Falta: rodar 30 dias com tráfego REAL (depende de Meta + pagamento reais) |
+| **F2 — MVP multi-tenant** | 3 lojistas pagantes | 🔴 Multi-tenancy técnico + RLS + cripto/LGPD prontos; falta onboarding self-service, auth de operador, billing, mídia paga |
 | **F3 / F4** | Ciclo completo / escala | 🔴 — |
 
 **Observação honesta:** pulei a ordem do plano. O plano dizia "resolver bloqueios externos (F0) antes de codar". Como você pediu pra não atrasar a codificação, construí as fundações técnicas (que não dependem de Meta/Bling) muito além do ponto F0. Isso é bom — mas os bloqueios externos (aprovação Meta, token Bling, equipe) continuam pendentes e são o caminho crítico pra sair do laboratório.
@@ -86,14 +86,12 @@ Ver [Plano-Incorporacao-Adviser.md](Plano-Incorporacao-Adviser.md). Resumo: **6/
 
 ## Caminho crítico pra Fase 1 "de verdade" (no The Pop 7)
 
-Em ordem de bloqueio:
+~~3. Máquina de estados de pedido (ADR-011)~~ ✅ FEITO. ~~4. Checkout ligado ao agente (ADR-023)~~ ✅ FEITO (com mock). **Todo o código da F1 está pronto.** O que resta é 100% externo:
 
-1. **Aprovação Meta Business** (externo, Cortez) → destrava ADR-001, 010, 028
-2. **Token Bling produção** (externo, Cortez) → destrava ADR-004 real, 006 sync
-3. **Máquina de estados de pedido** (ADR-011) → fecha o ciclo venda→entrega→devolução
-4. **Checkout ligado ao agente** (ADR-023) → Maya fecha pedido + gera PIX real
-5. **Conta Mercado Pago + PlugNotas** (externo) → pagamento e NFe reais
+1. **Aprovação Meta Business** (externo) → destrava WhatsApp/IG reais (ADR-001, 010, 028)
+2. **Token Bling produção** (externo) → ERP/catálogo reais (ADR-004, 006)
+3. **Conta Mercado Pago + PlugNotas** (externo) → pagamento PIX e NFe reais (ADR-023)
 
-Os itens 3 e 4 são código (posso fazer agora). 1, 2, 5 são contas externas (dependem de você).
+Sem nenhum desses, a Maya roda ponta a ponta **só com conectores mock** (laboratório). Com eles, vira operação real.
 
 *Documento vivo. Atualizar a cada item concluído.*

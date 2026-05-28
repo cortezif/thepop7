@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, Trophy, Truck } from "lucide-react";
+import { AlertTriangle, Trophy, Truck, Sparkles } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { api, type ReorderSuggestion, type PurchaseRequest, type Supplier } from "../lib/api";
 import { cn, formatBRL } from "../lib/utils";
@@ -9,6 +9,20 @@ export function Compras() {
   const [requests, setRequests] = useState<PurchaseRequest[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [closeMsg, setCloseMsg] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState<string | null>(null);
+
+  async function suggestClose(requestId: string) {
+    setBusy(requestId);
+    try {
+      const r = await api.purchaseCloseMessage(requestId);
+      setCloseMsg((m) => ({ ...m, [requestId]: r.ok ? (r.message ?? "") : `(${r.error})` }));
+    } catch (e) {
+      setCloseMsg((m) => ({ ...m, [requestId]: `Erro: ${String(e)}` }));
+    } finally {
+      setBusy(null);
+    }
+  }
 
   useEffect(() => {
     Promise.all([api.reorder(), api.purchaseRequests(), api.suppliers()])
@@ -99,6 +113,23 @@ export function Compras() {
                         </span>
                       </div>
                     ))}
+                  </div>
+                )}
+                {req.quotes.some((q) => q.selected) && (
+                  <div className="mt-3">
+                    <button
+                      onClick={() => suggestClose(req.id)}
+                      disabled={busy === req.id}
+                      title="Bia sugere a mensagem de fechamento ao fornecedor recomendado"
+                      className="flex items-center gap-1 rounded-md border border-primary/40 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/5 disabled:opacity-50"
+                    >
+                      <Sparkles size={12} /> {busy === req.id ? "Bia pensando…" : "Sugerir fechamento (Bia)"}
+                    </button>
+                    {closeMsg[req.id] && (
+                      <div className="mt-2 whitespace-pre-wrap rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
+                        {closeMsg[req.id]}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

@@ -75,6 +75,8 @@ export const api = {
   dailyMetrics: () => get<DailyMetrics>(`/metrics/daily`),
   reorder: () => get<ReorderSuggestion[]>(`/purchasing/reorder`),
   purchaseRequests: () => get<PurchaseRequest[]>(`/purchasing/requests`),
+  purchaseCloseMessage: (requestId: string) =>
+    get<{ ok: boolean; supplier?: string; totalBRL?: number; message?: string; error?: string }>(`/purchasing/requests/${requestId}/close-message`),
   suppliers: () => get<Supplier[]>(`/purchasing/suppliers`),
   listOrders: () => get<Order[]>(`/orders`),
   createSampleOrder: () => post<{ orderId: string }>(`/orders/sample`, {}),
