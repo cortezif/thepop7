@@ -14,6 +14,7 @@ export * from "./payment/mercado-pago.js";
 export * from "./payment/mock-payment.js";
 
 export * from "./fiscal/plug-notas.js";
+export * from "./fiscal/cplug.js";
 export * from "./fiscal/mock-fiscal.js";
 
 export * from "./messaging/whatsapp-cloud.js";

@@ -12,6 +12,7 @@ import { TrayErp }       from "./erp/tray.js";
 import { MelhorEnvio }   from "./logistics/melhor-envio.js";
 import { MercadoPago }   from "./payment/mercado-pago.js";
 import { PlugNotas }     from "./fiscal/plug-notas.js";
+import { CplugFiscal }   from "./fiscal/cplug.js";
 import { WhatsappCloud } from "./messaging/whatsapp-cloud.js";
 import { createFailover } from "./failover.js";
 
@@ -61,9 +62,16 @@ export function getPaymentConnector(): PaymentConnector {
   if (useMocks()) return new MockPayment();
   return createFailover<PaymentConnector>([new MercadoPago(), new MockPayment()], { label: "payment", log });
 }
+// Emissor de NFe selecionável (ADR-004). A loja usa CPlug; PlugNotas segue
+// suportado. `FISCAL_PROVIDER=cplug|plugnotas` (default: cplug).
+export function fiscalProvider(): "cplug" | "plugnotas" {
+  return (process.env.FISCAL_PROVIDER ?? "cplug").toLowerCase() === "plugnotas" ? "plugnotas" : "cplug";
+}
+
 export function getFiscalConnector(): FiscalConnector {
   if (useMocks()) return new MockFiscal();
-  return createFailover<FiscalConnector>([new PlugNotas(), new MockFiscal()], { label: "fiscal", log });
+  const primary: FiscalConnector = fiscalProvider() === "plugnotas" ? new PlugNotas() : new CplugFiscal();
+  return createFailover<FiscalConnector>([primary, new MockFiscal()], { label: `fiscal:${fiscalProvider()}`, log });
 }
 export function getMessagingConnector(): MessagingConnector {
   // Messaging não cai pro mock: enviar pro mock "engoliria" a mensagem em silêncio.

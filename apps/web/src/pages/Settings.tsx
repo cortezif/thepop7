@@ -8,7 +8,7 @@ const INTEGRATIONS = [
   { name: "WhatsApp Business Cloud API",  status: "Aguarda aprovação Meta" },
   { name: "Instagram Graph API",          status: "Aguarda aprovação Meta" },
   { name: "Mercado Pago",                 status: "Sandbox configurável" },
-  { name: "PlugNotas (NFe)",              status: "Sandbox configurável" },
+  { name: "CPlug (NFe / gestão)",         status: "Aguarda credenciais da loja" },
   { name: "Melhor Envio",                 status: "Sandbox configurável" },
   { name: "Anthropic Claude",             status: "Configure ANTHROPIC_API_KEY" },
 ];
