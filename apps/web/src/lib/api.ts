@@ -208,6 +208,17 @@ export const api = {
     post<{ ok: boolean; movementId: string }>(`/stock/receive`, { barcode, quantity, note }),
   stockAdjust: (barcode: string, type: "adjust_in" | "adjust_out", quantity: number, note?: string) =>
     post<{ ok: boolean; movementId: string }>(`/stock/adjust`, { barcode, type, quantity, note }),
+  // Vínculo código ↔ imagem: foto da peça → códigos candidatos
+  barcodesByPhoto: (photoUrls: string[]) => post<BarcodeByPhoto>(`/catalog/barcodes/by-photo`, { photoUrls }),
+};
+
+export type BarcodeByPhoto = {
+  ok: boolean;
+  atributosDetectados?: Record<string, unknown>;
+  candidatos: Array<{
+    productId: string; name: string; priceBRL: number; score: number | null; mainPhoto: string | null;
+    variantes: Array<{ sku: string; color?: string; size?: string; barcode: string | null }>;
+  }>;
 };
 
 export type PickingItem = { variantSku: string; description: string; quantity: number; barcode: string | null };
@@ -225,7 +236,7 @@ export type StockMovement = {
   quantity: number; refType: string | null; refId: string | null; note: string | null; actor: string; at: string;
 };
 export type StockTrace = {
-  barcode: string; productName: string; variantSku: string;
+  barcode: string; productName: string; variantSku: string; photo?: string | null;
   saldoRazao: number; porTipo: Record<string, number>; movimentos: StockMovement[];
 };
 

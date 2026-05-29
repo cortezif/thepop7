@@ -1,5 +1,7 @@
 import { getPrisma, withTenant } from "@thepop/db";
 import { resolveBarcode, normalizeBarcode, isValidEan13 } from "@thepop/shared";
+import { extractProductAttributes } from "@thepop/agent";
+import { searchProducts } from "./product-search.js";
 
 // Atribuição/sincronização de códigos de barras (F0/F1).
 // Decisão: usa o GTIN/EAN que veio da Tray/CPlug (gravado em Product.variants[].barcode);
@@ -77,7 +79,15 @@ export async function backfillBarcodes(tenantId: string): Promise<BackfillResult
   return res;
 }
 
-/** Resolve um código bipado → produto + variante (scan O(1)). */
+/** Foto da peça: foto da variante (se houver) cai pra foto principal do produto. */
+function photoOf(media: unknown, variant: Variant | null): string | null {
+  const vPhoto = variant && typeof variant.photo === "string" ? variant.photo : null;
+  const main = (media as { mainPhoto?: string; photos?: string[] } | null)?.mainPhoto
+    ?? (media as { photos?: string[] } | null)?.photos?.[0];
+  return vPhoto ?? main ?? null;
+}
+
+/** Resolve um código bipado → produto + variante + FOTO (scan O(1)). barcode→imagem. */
 export async function resolveScannedBarcode(tenantId: string, code: string) {
   const barcode = normalizeBarcode(code);
   const row = await getPrisma().productBarcode.findUnique({
@@ -86,9 +96,44 @@ export async function resolveScannedBarcode(tenantId: string, code: string) {
   if (!row) return null;
   const product = await getPrisma().product.findUnique({
     where: { id: row.productId },
-    select: { id: true, name: true, variants: true },
+    select: { id: true, name: true, variants: true, media: true },
   });
   if (!product) return null;
   const variant = ((product.variants as Variant[]) ?? []).find((v) => v.sku === row.variantSku) ?? null;
-  return { barcode, productId: product.id, productName: product.name, variantSku: row.variantSku, variant };
+  return {
+    barcode, productId: product.id, productName: product.name,
+    variantSku: row.variantSku, variant, photo: photoOf(product.media, variant),
+  };
+}
+
+/**
+ * Busca o código de barras A PARTIR DA FOTO da peça (imagem→código). Reusa a
+ * visão (`extractProductAttributes`) + busca por atributos do catálogo, e devolve
+ * os candidatos com seus códigos de barras e foto. Gracioso se a visão falhar.
+ */
+export async function findBarcodesByPhoto(tenantId: string, photoUrls: string[]) {
+  if (!photoUrls?.length) return { ok: false as const, error: "nenhuma foto enviada", candidatos: [] };
+
+  const extraction = await extractProductAttributes({ productName: "peça da foto", photoUrls });
+  if (!extraction.ok) return { ok: false as const, error: `falha na análise da foto: ${extraction.error}`, candidatos: [] };
+  const a = extraction.attributes;
+
+  const intent = [...a.styles, ...a.occasions, `decote ${a.neckline}`, `comprimento ${a.length}`, `manga ${a.sleeveType}`]
+    .filter(Boolean).join(" ");
+  const hits = await searchProducts(tenantId, intent, { estilo: a.styles, ocasiao: a.occasions }, 5);
+
+  // códigos de barras das variantes dos candidatos (lookup por SKU)
+  const skus = hits.flatMap((h) => (h.variants ?? []).map((v) => v.sku));
+  const barcodes = await getPrisma().productBarcode.findMany({ where: { tenantId, variantSku: { in: skus } } });
+  const bySku = new Map(barcodes.map((b) => [b.variantSku, b.barcode]));
+
+  const candidatos = hits.map((h) => ({
+    productId: h.externalId,
+    name: h.name,
+    priceBRL: h.priceBRL,
+    score: (h as { businessScore?: number }).businessScore ?? null,
+    mainPhoto: h.mainPhoto ?? null,
+    variantes: (h.variants ?? []).map((v) => ({ sku: v.sku, color: v.color, size: v.size, barcode: bySku.get(v.sku) ?? null })),
+  }));
+  return { ok: true as const, atributosDetectados: a, candidatos };
 }

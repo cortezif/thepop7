@@ -2,7 +2,8 @@ import type { FastifyPluginAsync } from "fastify";
 import { buildErpForTenant } from "@thepop/connectors";
 import { getPrisma, getTrayCreds } from "@thepop/db";
 import { searchProducts } from "../services/product-search.js";
-import { backfillBarcodes, resolveScannedBarcode } from "../services/barcode-service.js";
+import { backfillBarcodes, resolveScannedBarcode, findBarcodesByPhoto } from "../services/barcode-service.js";
+import { z } from "zod";
 
 export const catalogRoutes: FastifyPluginAsync = async (app) => {
   app.get("/products", async (req) => {
@@ -38,12 +39,24 @@ export const catalogRoutes: FastifyPluginAsync = async (app) => {
     return backfillBarcodes(req.auth!.tenantId);
   });
 
-  // GET /catalog/barcodes/resolve?code=... — scan → produto+variante
+  // GET /catalog/barcodes/resolve?code=... — código → produto+variante+FOTO
   app.get("/barcodes/resolve", async (req, reply) => {
     const code = String((req.query as any).code ?? "");
     const hit = await resolveScannedBarcode(req.auth!.tenantId, code);
     if (!hit) return reply.code(404).send({ error: "código não encontrado" });
     return hit;
+  });
+
+  // POST /catalog/barcodes/by-photo — foto da peça → códigos de barras candidatos
+  app.post("/barcodes/by-photo", async (req, reply) => {
+    const body = z.object({
+      tenantSlug: z.string().optional(),
+      photoUrls: z.array(z.string().url()).min(1, "envie ao menos uma foto"),
+    }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+    const r = await findBarcodesByPhoto(req.auth!.tenantId, body.data.photoUrls);
+    if (!r.ok) return reply.code(422).send(r);
+    return r;
   });
 
   app.get("/products/:id", async (req, reply) => {

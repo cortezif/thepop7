@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { Barcode, Search, Tag, PackagePlus } from "lucide-react";
+import { Barcode, Search, Tag, PackagePlus, Image as ImageIcon } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
-import { api, downloadLabels, type StockTrace } from "../lib/api";
+import { api, downloadLabels, type StockTrace, type BarcodeByPhoto } from "../lib/api";
 
 const TYPE_LABEL: Record<string, string> = {
   purchase_in: "Entrada (compra)",
@@ -23,6 +23,10 @@ export function Estoque() {
   const [entryQty, setEntryQty] = useState("1");
   const [entryType, setEntryType] = useState<"receive" | "adjust_in" | "adjust_out">("receive");
   const [entryMsg, setEntryMsg] = useState<string | null>(null);
+  const [photoUrl, setPhotoUrl] = useState("");
+  const [photoRes, setPhotoRes] = useState<BarcodeByPhoto | null>(null);
+  const [photoErr, setPhotoErr] = useState<string | null>(null);
+  const [photoBusy, setPhotoBusy] = useState(false);
 
   async function lookup(c?: string) {
     const q = (c ?? code).trim();
@@ -58,6 +62,17 @@ export function Estoque() {
     } catch (e: any) {
       setEntryMsg(/404/.test(String(e)) ? "Código não encontrado." : String(e?.message ?? e));
     }
+  }
+
+  async function buscarPorFoto() {
+    const url = photoUrl.trim();
+    if (!url) return;
+    setPhotoBusy(true); setPhotoErr(null); setPhotoRes(null);
+    try {
+      setPhotoRes(await api.barcodesByPhoto([url]));
+    } catch (e: any) {
+      setPhotoErr(/422/.test(String(e)) ? "Não consegui analisar a foto (visão indisponível?)." : String(e?.message ?? e));
+    } finally { setPhotoBusy(false); }
   }
 
   async function baixarEtiquetas(format: "csv" | "zpl") {
@@ -141,14 +156,55 @@ export function Estoque() {
         </div>
       </div>
 
+      <div className="mt-4 rounded-lg border border-border bg-muted/30 p-4">
+        <p className="mb-2 flex items-center gap-1.5 text-sm font-medium">
+          <ImageIcon size={16} className="text-muted-foreground" /> Encontrar código pela foto da peça
+        </p>
+        <div className="flex gap-2">
+          <input
+            value={photoUrl}
+            onChange={(e) => setPhotoUrl(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && buscarPorFoto()}
+            placeholder="URL da foto da peça…"
+            className="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm"
+          />
+          <button onClick={buscarPorFoto} disabled={photoBusy}
+            className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50">
+            {photoBusy ? "Analisando…" : "Buscar"}
+          </button>
+        </div>
+        {photoErr && <p className="mt-2 text-xs text-red-600">{photoErr}</p>}
+        {photoRes && (
+          <ul className="mt-3 space-y-2">
+            {photoRes.candidatos.length === 0 && <li className="text-sm text-muted-foreground">Nenhum candidato.</li>}
+            {photoRes.candidatos.map((c) => (
+              <li key={c.productId} className="flex items-start gap-3 rounded-md border border-border bg-background p-3">
+                {c.mainPhoto && <img src={c.mainPhoto} alt="" className="h-14 w-14 rounded object-cover" />}
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{c.name}</p>
+                  <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
+                    {c.variantes.map((v) => (
+                      <span key={v.sku}>{[v.color, v.size].filter(Boolean).join("/") || v.sku}: <b className="text-foreground">{v.barcode ?? "—"}</b></span>
+                    ))}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
       {err && <p className="mt-4 text-sm text-red-600">{err}</p>}
 
       {trace && (
         <section className="mt-6 rounded-lg border border-border bg-background p-6">
-          <div className="flex items-baseline justify-between">
-            <div>
-              <p className="font-medium">{trace.productName}</p>
-              <p className="text-xs text-muted-foreground">{trace.variantSku} · {trace.barcode}</p>
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start gap-3">
+              {trace.photo && <img src={trace.photo} alt="" className="h-16 w-16 rounded object-cover" />}
+              <div>
+                <p className="font-medium">{trace.productName}</p>
+                <p className="text-xs text-muted-foreground">{trace.variantSku} · {trace.barcode}</p>
+              </div>
             </div>
             <div className="text-right">
               <p className="text-xs text-muted-foreground">Saldo (razão)</p>
