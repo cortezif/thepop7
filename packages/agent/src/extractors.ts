@@ -187,11 +187,29 @@ export function sanitizeAttributes(
 }
 
 /**
- * Extrai atributos enriquecidos de um produto via Claude vision + tool use.
- * Modelo padrão: Haiku 4.5 (rápido + barato, qualidade suficiente pra moda).
- * Em produção, usar Sonnet 4.6 quando confiança for crítica.
+ * Extrai atributos enriquecidos de um produto via vision + tool use.
+ * Tenta Claude (Haiku 4.5 por padrão) e, se falhar (limite/outage) e houver
+ * GEMINI_API_KEY, cai pro Gemini vision — assim a busca por foto sobrevive a
+ * indisponibilidade da Anthropic.
  */
 export async function extractProductAttributes(
+  input: ExtractInput,
+  opts: { model?: string; maxTokens?: number } = {}
+): Promise<ExtractResult> {
+  const anthropicResult = await extractViaAnthropic(input, opts);
+  if (anthropicResult.ok) return anthropicResult;
+
+  // Fallback: Gemini vision (se configurado). Útil quando a Anthropic está no limite.
+  if (process.env.GEMINI_API_KEY) {
+    const gemini = await extractViaGemini(input, opts);
+    if (gemini.ok) return gemini;
+    // Ambos falharam: reporta o erro do Gemini (mais recente) com contexto.
+    return { ok: false, error: `Anthropic falhou (${anthropicResult.error}); Gemini falhou (${gemini.error})` };
+  }
+  return anthropicResult;
+}
+
+async function extractViaAnthropic(
   input: ExtractInput,
   opts: { model?: string; maxTokens?: number } = {}
 ): Promise<ExtractResult> {
@@ -242,6 +260,83 @@ export async function extractProductAttributes(
       usage: {
         inputTokens: response.usage.input_tokens ?? 0,
         outputTokens: response.usage.output_tokens ?? 0,
+      },
+    };
+  } catch (e: any) {
+    return { ok: false, error: e?.message ?? String(e) };
+  }
+}
+
+/**
+ * Fallback de visão pelo Gemini (endpoint OpenAI-compatível, suporta image_url
+ * + function calling). Reusa o MESMO tool schema e a MESMA sanitização do
+ * caminho Anthropic — só muda o transporte.
+ */
+async function extractViaGemini(
+  input: ExtractInput,
+  opts: { model?: string; maxTokens?: number } = {}
+): Promise<ExtractResult> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return { ok: false, error: "GEMINI_API_KEY ausente" };
+  const model = process.env.GEMINI_MODEL ?? "gemini-2.0-flash";
+
+  const content: any[] = [
+    {
+      type: "text",
+      text: [
+        `Produto: ${input.productName}`,
+        input.description ? `Descrição: ${input.description}` : "",
+        "",
+        "Analise e submeta os atributos via submit_product_attributes.",
+      ].filter(Boolean).join("\n"),
+    },
+    ...(input.photoUrls ?? []).slice(0, 5).map((url) => ({ type: "image_url", image_url: { url } })),
+  ];
+
+  try {
+    const res = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model,
+        max_tokens: opts.maxTokens ?? 1024,
+        messages: [
+          { role: "system", content: SYSTEM },
+          { role: "user", content },
+        ],
+        tools: [{
+          type: "function",
+          function: {
+            name: PRODUCT_ATTRIBUTES_TOOL.name,
+            description: PRODUCT_ATTRIBUTES_TOOL.description,
+            parameters: PRODUCT_ATTRIBUTES_TOOL.input_schema,
+          },
+        }],
+        tool_choice: { type: "function", function: { name: PRODUCT_ATTRIBUTES_TOOL.name } },
+      }),
+    });
+    if (!res.ok) return { ok: false, error: `Gemini ${res.status}: ${await res.text()}` };
+    const data = (await res.json()) as any;
+
+    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+    if (!toolCall) return { ok: false, error: "Gemini não retornou tool_call" };
+
+    let raw: ExtractedProductAttributes;
+    try {
+      raw = typeof toolCall.function.arguments === "string"
+        ? JSON.parse(toolCall.function.arguments)
+        : toolCall.function.arguments;
+    } catch {
+      return { ok: false, error: "Gemini retornou arguments não-JSON" };
+    }
+
+    const attrs = sanitizeAttributes(raw, input.productName);
+    return {
+      ok: true,
+      attributes: attrs,
+      usage: {
+        inputTokens: data.usage?.prompt_tokens ?? 0,
+        outputTokens: data.usage?.completion_tokens ?? 0,
       },
     };
   } catch (e: any) {
