@@ -12,6 +12,9 @@ const PRICING_BRL_PER_MTOK: Record<string, { input: number; output: number; cach
   "claude-haiku-4-5-20251001":    { input: 4,  output: 20, cached: 0.4 },
   "llama-3.3-70b-versatile":      { input: 0,  output: 0,  cached: 0   }, // Groq free tier
   "llama3.1:8b":                  { input: 0,  output: 0,  cached: 0   }, // Ollama local
+  "gemini-2.0-flash":             { input: 0.6, output: 2.4, cached: 0.15 }, // ~US$0.10/0.40 por Mtok
+  "deepseek-chat":                { input: 1.5, output: 6,   cached: 0.4 },  // ~US$0.27/1.10 por Mtok
+  "grok-2-1212":                  { input: 11,  output: 55,  cached: 0   },  // ~US$2/10 por Mtok
 };
 
 function estimateCostBRL(model: string, inputTokens: number, outputTokens: number, cachedTokens: number) {

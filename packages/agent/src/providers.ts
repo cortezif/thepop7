@@ -12,7 +12,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { computeCacheKey, getCacheEntry, setCacheEntry } from "./cache.js";
 
-export type ProviderId = "anthropic" | "groq" | "ollama" | "gemini" | "deepseek";
+export type ProviderId = "anthropic" | "groq" | "ollama" | "gemini" | "deepseek" | "xai";
 
 export type ProviderModel = {
   provider: ProviderId;
@@ -22,12 +22,34 @@ export type ProviderModel = {
   label: string;
 };
 
+// Modelos dos provedores externos são configuráveis por env (nomes mudam com
+// frequência) — defaults razoáveis abaixo. Ex.: XAI_MODEL=grok-3 no Railway.
 export const DEFAULT_CASCADE: ProviderModel[] = [
-  { provider: "anthropic", model: "claude-sonnet-4-6",           costWeight: 3,  label: "Sonnet 4.6" },
-  { provider: "anthropic", model: "claude-haiku-4-5-20251001",   costWeight: 1,  label: "Haiku 4.5" },
-  { provider: "groq",      model: "llama-3.3-70b-versatile",     costWeight: 0,  label: "Groq Llama 70B" },
-  { provider: "ollama",    model: "llama3.1:8b",                 costWeight: 0,  label: "Ollama local" },
+  { provider: "anthropic", model: "claude-sonnet-4-6",                           costWeight: 3,  label: "Sonnet 4.6" },
+  { provider: "anthropic", model: "claude-haiku-4-5-20251001",                   costWeight: 1,  label: "Haiku 4.5" },
+  { provider: "gemini",    model: process.env.GEMINI_MODEL   ?? "gemini-2.0-flash",        costWeight: 0,  label: "Gemini 2.0 Flash" },
+  { provider: "groq",      model: process.env.GROQ_MODEL     ?? "llama-3.3-70b-versatile", costWeight: 0,  label: "Groq Llama 70B" },
+  { provider: "deepseek",  model: process.env.DEEPSEEK_MODEL ?? "deepseek-chat",           costWeight: 1,  label: "DeepSeek Chat" },
+  { provider: "xai",       model: process.env.XAI_MODEL      ?? "grok-2-1212",             costWeight: 1,  label: "Grok (xAI)" },
+  { provider: "ollama",    model: process.env.OLLAMA_MODEL   ?? "llama3.1:8b",             costWeight: 0,  label: "Ollama local" },
 ];
+
+/** Endpoints OpenAI-compatíveis + nome da env var da chave, por provider. */
+const OPENAI_COMPATIBLE: Partial<Record<ProviderId, { baseUrl: string; keyEnv: string; label: string }>> = {
+  groq:     { baseUrl: "https://api.groq.com/openai/v1/chat/completions",                       keyEnv: "GROQ_API_KEY",     label: "Groq" },
+  deepseek: { baseUrl: "https://api.deepseek.com/v1/chat/completions",                          keyEnv: "DEEPSEEK_API_KEY", label: "DeepSeek" },
+  xai:      { baseUrl: "https://api.x.ai/v1/chat/completions",                                  keyEnv: "XAI_API_KEY",      label: "Grok/xAI" },
+  gemini:   { baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", keyEnv: "GEMINI_API_KEY", label: "Gemini" },
+};
+
+/** True se a chave do provider está no ambiente (anthropic/ollama tratados à parte). */
+export function isProviderConfigured(p: ProviderId): boolean {
+  switch (p) {
+    case "anthropic": return !!process.env.ANTHROPIC_API_KEY;
+    case "ollama":    return !!process.env.OLLAMA_URL || process.env.NODE_ENV !== "production"; // local só faz sentido em dev
+    default:          return !!process.env[OPENAI_COMPATIBLE[p]?.keyEnv ?? ""];
+  }
+}
 
 type ToolDef = Anthropic.Messages.Tool;
 type Msg = Anthropic.Messages.MessageParam;
@@ -61,8 +83,16 @@ function anthropic(): Anthropic {
 export async function providerCall(pm: ProviderModel, input: ProviderCallInput): Promise<ProviderCallResult> {
   switch (pm.provider) {
     case "anthropic": return anthropicCall(pm.model, input);
-    case "groq":      return groqCall(pm.model, input);
     case "ollama":    return ollamaCall(pm.model, input);
+    case "groq":
+    case "deepseek":
+    case "xai":
+    case "gemini": {
+      const cfg = OPENAI_COMPATIBLE[pm.provider]!;
+      const apiKey = process.env[cfg.keyEnv];
+      if (!apiKey) throw new Error(`${cfg.label}: ${cfg.keyEnv} ausente`);
+      return openAICompatibleCall(cfg.baseUrl, apiKey, cfg.label, pm.model, input);
+    }
     default:
       throw new Error(`Provider ainda não implementado: ${pm.provider}`);
   }
@@ -92,8 +122,23 @@ function isRecoverable(e: unknown): boolean {
   const msg = ((e as Error)?.message ?? "").toLowerCase();
   return (
     msg.includes("rate limit") ||
+    msg.includes("limit") ||         // "usage limit" da Anthropic, quota, etc.
+    msg.includes("quota") ||
+    msg.includes("insufficient") ||  // saldo/crédito insuficiente
+    msg.includes("credit") ||
     msg.includes("overloaded") ||
     msg.includes("timeout") ||
+    msg.includes("ausente") ||       // chave do provider não configurada → pula
+    msg.includes("not configured") ||
+    msg.includes("api key") ||       // chave inválida/ausente em qualquer formato
+    msg.includes("api_key") ||
+    msg.includes("authentication") ||
+    msg.includes("unauthor") ||
+    msg.includes("invalid_argument") ||
+    msg.includes("400") ||           // ex.: Gemini devolve 400 p/ chave inválida
+    msg.includes("429") ||
+    msg.includes("401") ||           // auth inválida nesse provider → tenta o próximo
+    msg.includes("403") ||
     msg.includes("503") ||
     msg.includes("502") ||
     msg.includes("connect") ||
@@ -160,13 +205,13 @@ async function anthropicCall(model: string, input: ProviderCallInput): Promise<P
 }
 
 // ============================================================
-// Groq (OpenAI-compatible, sem suporte completo a system blocks/cache)
+// OpenAI-compatible (Groq, DeepSeek, Grok/xAI, Gemini) — mesma API
+// de /chat/completions. Sem cache_control nem system blocks ricos.
 // ============================================================
-async function groqCall(model: string, input: ProviderCallInput): Promise<ProviderCallResult> {
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) throw new Error("GROQ_API_KEY ausente");
-
-  // Concatena blocos system em um único texto (Groq não tem cache_control)
+async function openAICompatibleCall(
+  baseUrl: string, apiKey: string, label: string, model: string, input: ProviderCallInput
+): Promise<ProviderCallResult> {
+  // Concatena blocos system em um único texto (estes providers não têm cache_control)
   const systemText = Array.isArray(input.systemBlocks)
     ? input.systemBlocks.map((b: any) => b.text ?? "").join("\n\n")
     : String(input.systemBlocks ?? "");
@@ -181,12 +226,12 @@ async function groqCall(model: string, input: ProviderCallInput): Promise<Provid
     function: { name: t.name, description: t.description, parameters: t.input_schema },
   }));
 
-  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+  const res = await fetch(baseUrl, {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({ model, messages: openAIMessages, tools: openAITools, max_tokens: input.maxTokens ?? 1024 }),
   });
-  if (!res.ok) throw new Error(`Groq ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new Error(`${label} ${res.status}: ${await res.text()}`);
   const data = (await res.json()) as any;
 
   const choice = data.choices?.[0]?.message;

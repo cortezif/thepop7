@@ -159,7 +159,17 @@ export const inboxRoutes: FastifyPluginAsync = async (app) => {
     const tenant = await resolveTenant(body.data.tenantSlug);
     if (!tenant) return reply.code(404).send({ error: "tenant not found" });
 
-    return suggestReply(body.data.tenantSlug, id, req.log);
+    try {
+      return await suggestReply(body.data.tenantSlug, id, req.log);
+    } catch (e: any) {
+      // IA indisponível (limite/saldo/outage de TODOS os provedores) → não 500.
+      req.log.error(e, "suggest falhou (IA indisponível)");
+      return reply.code(200).send({
+        suggestion: "",
+        aiUnavailable: true,
+        note: "IA temporariamente indisponível (limite/saldo dos provedores). Responda manualmente ou tente em instantes.",
+      });
+    }
   });
 
   // POST /inbox/conversations/:id/status — muda status (assumir/encerrar/reabrir)

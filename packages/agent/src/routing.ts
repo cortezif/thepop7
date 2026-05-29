@@ -13,7 +13,7 @@
    - Reprocessing / fallback → mantém cascade completo
    ============================================================ */
 
-import { DEFAULT_CASCADE, type ProviderModel } from "./providers.js";
+import { DEFAULT_CASCADE, isProviderConfigured, type ProviderModel } from "./providers.js";
 
 export type RoutingContext = {
   /** Texto do user na rodada atual. */
@@ -67,42 +67,39 @@ export function buildSmartCascade(ctx: RoutingContext): ProviderModel[] {
 
   const SONNET = DEFAULT_CASCADE.find((p) => p.model.includes("sonnet"))!;
   const HAIKU  = DEFAULT_CASCADE.find((p) => p.model.includes("haiku"))!;
-  const GROQ   = DEFAULT_CASCADE.find((p) => p.provider === "groq");
-  const OLLAMA = DEFAULT_CASCADE.find((p) => p.provider === "ollama");
 
   // Mensagem MUITO grande (> 8000 chars) — Llama local não aguenta tool use
   const veryLargeInput = chars > 8000;
 
+  // Base (modelos Anthropic) escolhida pela intenção/sinal de venda.
+  let base: ProviderModel[];
   switch (intent) {
-    case "greeting":
-      return [HAIKU, SONNET];
-
-    case "complaint":
-      // Sempre Sonnet primeiro — atendimento sensível, qualidade importa
-      return [SONNET, HAIKU];
-
-    case "purchase":
-      // Tem perfil rico ou input grande → Sonnet primeiro
-      return ctx.hasRichProfile || veryLargeInput
-        ? [SONNET, HAIKU]
-        : [HAIKU, SONNET];
-
-    case "enrichment":
-      // Vision + JSON estruturado — só modelos premium acertam
-      return [SONNET];
-
+    case "greeting":   base = [HAIKU, SONNET]; break;
+    case "complaint":  base = [SONNET, HAIKU]; break; // sensível: qualidade > custo
+    case "purchase":   base = (ctx.hasRichProfile || veryLargeInput) ? [SONNET, HAIKU] : [HAIKU, SONNET]; break;
+    case "enrichment": base = [SONNET]; break;        // JSON estruturado — premium
     case "browse":
     case "support":
-    default: {
-      // Browse / suporte: cascade completo mas com Sonnet no topo se input grande
-      const base = veryLargeInput ? [SONNET, HAIKU] : [HAIKU, SONNET];
-      // Adiciona fallbacks gratuitos no fim
-      const fallbacks: ProviderModel[] = [];
-      if (GROQ && !veryLargeInput) fallbacks.push(GROQ);
-      if (OLLAMA && chars < 4000) fallbacks.push(OLLAMA);
-      return [...base, ...fallbacks];
-    }
+    default:           base = veryLargeInput ? [SONNET, HAIKU] : [HAIKU, SONNET];
   }
+
+  // Fallbacks externos (Gemini/Groq/DeepSeek/Grok) — só os que têm chave no
+  // ambiente. Entram em TODA cascata pra sobreviver a outage/limite da Anthropic.
+  // Ollama (local) só faz sentido em dev e com input não-gigante.
+  const externals = DEFAULT_CASCADE.filter((p) => {
+    if (p.provider === "anthropic") return false;
+    if (p.provider === "ollama") return chars < 4000 && isProviderConfigured("ollama");
+    return isProviderConfigured(p.provider);
+  });
+
+  // Dedup preservando ordem (base primeiro, depois externos).
+  const seen = new Set<string>();
+  return [...base, ...externals].filter((p) => {
+    const k = `${p.provider}:${p.model}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
 }
 
 /** Helper público: detecta intent só pelo texto (sem precisar de RoutingContext completo). */
