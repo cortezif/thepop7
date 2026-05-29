@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mapTrayProduct, type TrayRawProduct } from "./tray.js";
+import { mapTrayProduct, buildTrayOrderPayload, type TrayRawProduct } from "./tray.js";
 
 test("mapTrayProduct: produto com variantes (cor/tamanho/estoque)", () => {
   const raw: TrayRawProduct = {
@@ -41,4 +41,41 @@ test("mapTrayProduct: campos numéricos sujos → 0, sem quebrar", () => {
   const p = mapTrayProduct(raw);
   assert.equal(p.priceBRL, 0);
   assert.equal(p.variants[0]!.stock, 0);
+});
+
+test("buildTrayOrderPayload: itens viram ProductsSold (reference=sku) + endereço/frete", () => {
+  const payload = buildTrayOrderPayload({
+    contactName: "Ana", contactPhone: "11999990000",
+    items: [
+      { sku: "VF-M-AZ", quantity: 2, unitPriceBRL: 199.9 },
+      { sku: "BOLSA-1", quantity: 1, unitPriceBRL: 120 },
+    ],
+    shippingZip: "01310-100",
+    shippingAddress: { address: "Av Paulista", number: "1000", neighborhood: "Bela Vista", city: "São Paulo", state: "SP", cpf: "12345678900" },
+    totalBRL: 519.8,
+  }) as any;
+
+  assert.equal(payload.Order.Customer.name, "Ana");
+  assert.equal(payload.Order.Customer.cellphone, "11999990000");
+  assert.equal(payload.Order.Customer.cpf, "12345678900");
+  assert.equal(payload.Order.ProductsSold.length, 2);
+  assert.deepEqual(payload.Order.ProductsSold[0].ProductsSold, { reference: "VF-M-AZ", quantity: 2, price: 199.9 });
+  assert.equal(payload.Order.total, 519.8);
+  assert.equal(payload.Order.zip_code, "01310-100");
+  assert.equal(payload.Order.address, "Av Paulista");
+  assert.equal(payload.Order.city, "São Paulo");
+  assert.equal(payload.Order.state, "SP");
+});
+
+test("buildTrayOrderPayload: campos opcionais ausentes → undefined, sem quebrar", () => {
+  const payload = buildTrayOrderPayload({
+    items: [{ sku: "X1", quantity: 1, unitPriceBRL: 50 }],
+    shippingZip: "00000-000",
+    shippingAddress: {},
+    totalBRL: 50,
+  }) as any;
+  assert.equal(payload.Order.Customer.name, "Cliente"); // default
+  assert.equal(payload.Order.Customer.cpf, undefined);
+  assert.equal(payload.Order.address, undefined);
+  assert.equal(payload.Order.ProductsSold[0].ProductsSold.reference, "X1");
 });

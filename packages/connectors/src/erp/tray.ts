@@ -95,6 +95,41 @@ export function mapTrayProduct(raw: TrayRawProduct): ErpProduct {
   };
 }
 
+/**
+ * Monta o corpo do POST /orders da Tray a partir do nosso `ErpOrderInput`
+ * (função pura, testável). A Tray aninha tudo em `Order`; os itens vão em
+ * `ProductsSold` (usamos `reference` = nosso SKU). Campos de endereço/frete
+ * mapeados do `shippingAddress`. A forma exata pode precisar de ajuste fino
+ * contra a loja real — por isso o mapper é isolado e testado por estrutura.
+ */
+export function buildTrayOrderPayload(order: ErpOrderInput): Record<string, unknown> {
+  const addr = order.shippingAddress ?? {};
+  return {
+    Order: {
+      Customer: {
+        name: order.contactName ?? "Cliente",
+        cellphone: order.contactPhone ?? undefined,
+        cpf: addr.cpf ?? undefined,
+      },
+      ProductsSold: order.items.map((it) => ({
+        ProductsSold: {
+          reference: it.sku,
+          quantity: it.quantity,
+          price: it.unitPriceBRL,
+        },
+      })),
+      total: order.totalBRL,
+      zip_code: order.shippingZip,
+      address: addr.address ?? addr.street ?? undefined,
+      number: addr.number ?? undefined,
+      complement: addr.complement ?? undefined,
+      neighborhood: addr.neighborhood ?? addr.district ?? undefined,
+      city: addr.city ?? undefined,
+      state: addr.state ?? addr.uf ?? undefined,
+    },
+  };
+}
+
 export class TrayErp implements ErpConnector {
   private readonly baseUrl: string;
   private readonly token: string;
@@ -148,12 +183,34 @@ export class TrayErp implements ErpConnector {
     return 0;
   }
 
-  async createOrder(_order: ErpOrderInput): Promise<{ externalId: string }> {
-    // POST /orders — documentado como stub até validar contra a loja real.
-    throw new Error("TrayErp.createOrder not implemented — validar payload /orders com a loja");
+  private async send<T>(method: "POST" | "PUT", path: string, body: unknown): Promise<T> {
+    this.assertCreds();
+    const url = new URL(`${this.baseUrl}${path}`);
+    url.searchParams.set("access_token", this.token);
+    const res = await fetch(url.toString(), {
+      method,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`Tray ${method} ${path} ${res.status}: ${await res.text()}`);
+    return (await res.json()) as T;
   }
 
-  async cancelOrder(_externalId: string, _reason: string): Promise<void> {
-    throw new Error("TrayErp.cancelOrder not implemented");
+  async createOrder(order: ErpOrderInput): Promise<{ externalId: string }> {
+    const payload = buildTrayOrderPayload(order);
+    // A Tray devolve o id do pedido criado (campo varia: id / Order.id).
+    const data = await this.send<{ id?: number | string; Order?: { id?: number | string } }>(
+      "POST", "/orders", payload,
+    );
+    const id = data.id ?? data.Order?.id;
+    if (id == null) throw new Error("Tray /orders: resposta sem id do pedido");
+    return { externalId: String(id) };
+  }
+
+  async cancelOrder(externalId: string, reason: string): Promise<void> {
+    // Cancelamento na Tray = atualização de status do pedido (status "canceled").
+    await this.send("PUT", `/orders/${externalId}`, {
+      Order: { status: "canceled", cancel_reason: reason },
+    });
   }
 }
