@@ -17,7 +17,7 @@ DECLARE
   t text;
   tables text[] := ARRAY[
     'users','contacts','products','conversations','orders',
-    'stock_reservations','suppliers','domain_events','integrations'
+    'stock_reservations','suppliers','domain_events','integrations','product_barcodes'
   ];
 BEGIN
   FOREACH t IN ARRAY tables LOOP

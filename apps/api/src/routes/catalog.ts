@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { buildErpForTenant } from "@thepop/connectors";
 import { getPrisma, getTrayCreds } from "@thepop/db";
 import { searchProducts } from "../services/product-search.js";
+import { backfillBarcodes, resolveScannedBarcode } from "../services/barcode-service.js";
 
 export const catalogRoutes: FastifyPluginAsync = async (app) => {
   app.get("/products", async (req) => {
@@ -30,6 +31,19 @@ export const catalogRoutes: FastifyPluginAsync = async (app) => {
         preco: h.priceBRL, estoque: h.variants.reduce((s, v) => s + v.stock, 0),
       })),
     };
+  });
+
+  // POST /catalog/barcodes/backfill — atribui/sincroniza códigos (Tray/CPlug → interno)
+  app.post("/barcodes/backfill", async (req) => {
+    return backfillBarcodes(req.auth!.tenantId);
+  });
+
+  // GET /catalog/barcodes/resolve?code=... — scan → produto+variante
+  app.get("/barcodes/resolve", async (req, reply) => {
+    const code = String((req.query as any).code ?? "");
+    const hit = await resolveScannedBarcode(req.auth!.tenantId, code);
+    if (!hit) return reply.code(404).send({ error: "código não encontrado" });
+    return hit;
   });
 
   app.get("/products/:id", async (req, reply) => {

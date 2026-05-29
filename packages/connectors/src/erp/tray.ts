@@ -26,12 +26,16 @@ export type TrayRawProduct = {
   cost_price?: string | number;
   reference?: string; // SKU "pai"
   stock?: string | number;
+  ean?: string;     // GTIN/EAN do produto (sem variantes)
+  barcode?: string;
   ProductImage?: Array<{ https?: string; http?: string }>;
   Variant?: Array<{
     Variant?: {
       id?: number | string;
       sku?: string;
       stock?: string | number;
+      ean?: string;     // GTIN/EAN da variante na Tray
+      barcode?: string; // fallback de nome
       // atributos da variante (cor/tamanho) vêm em SkuValue/ValuesVariant
       ValuesVariant?: Array<{ type?: string; value?: string }>;
     };
@@ -67,6 +71,7 @@ export function mapTrayProduct(raw: TrayRawProduct): ErpProduct {
         color,
         size,
         stock: num(v.stock),
+        barcode: v.ean ?? v.barcode ?? undefined,
       };
     });
 
@@ -77,6 +82,7 @@ export function mapTrayProduct(raw: TrayRawProduct): ErpProduct {
       color: undefined,
       size: undefined,
       stock: num(raw.stock),
+      barcode: raw.ean ?? raw.barcode ?? undefined,
     });
   }
 
