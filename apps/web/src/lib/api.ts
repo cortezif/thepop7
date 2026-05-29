@@ -180,6 +180,9 @@ export const api = {
   purchaseRequests: () => get<PurchaseRequest[]>(`/purchasing/requests`),
   purchaseCloseMessage: (requestId: string) =>
     get<{ ok: boolean; supplier?: string; totalBRL?: number; message?: string; error?: string }>(`/purchasing/requests/${requestId}/close-message`),
+  getReceiving: (requestId: string) => get<ReceivingList>(`/purchasing/requests/${requestId}/receiving`),
+  receivePurchase: (requestId: string, scanned: string[]) =>
+    post<ReceiveResult>(`/purchasing/requests/${requestId}/receive`, { scanned }),
   suppliers: () => get<Supplier[]>(`/purchasing/suppliers`),
   listOrders: () => get<Order[]>(`/orders`),
   createSampleOrder: () => post<{ orderId: string }>(`/orders/sample`, {}),
@@ -298,6 +301,14 @@ export type PurchaseRequest = {
 export type Supplier = {
   id: string; name: string; contactPhone: string | null;
   relationshipScore: number; avgLeadTimeDays: number | null;
+};
+
+export type ReceivingItem = { sku: string | null; description: string; quantity: number; barcode: string | null };
+export type ReceivingList = { requestId: string; status: string; items: ReceivingItem[] };
+export type ReceiveResult = {
+  ok: boolean; complete: boolean; recorded: number;
+  items: Array<{ variantSku: string; barcode: string; expected: number; conferred: number; missing: number }>;
+  extras: Array<{ barcode: string; count: number }>;
 };
 
 export type DailyMetrics = {

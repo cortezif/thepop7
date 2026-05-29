@@ -1,6 +1,8 @@
 import { getPrisma, withTenant } from "@thepop/db";
 import { parseSupplierQuote, composeQuoteRequest, composePurchaseClose } from "@thepop/agent";
-import { EVENTS } from "@thepop/shared";
+import { EVENTS, normalizeBarcode } from "@thepop/shared";
+import { reconcilePicking } from "./picking-service.js";
+import { movementByBarcode } from "./stock-movement-service.js";
 
 /**
  * Reposição preditiva (ADR-021): detecta produtos cujo estoque disponível
@@ -185,4 +187,67 @@ export async function rankQuotes(tenantId: string, requestId: string) {
     }
     return { ranked, recommended: ranked[0] };
   });
+}
+
+/**
+ * Conferência de recebimento (barcode): casa os itens da requisição (por SKU →
+ * código de barras) com o que foi bipado na chegada da mercadoria. Reusa a
+ * reconciliação do picking. Para o painel mostrar o esperado por item.
+ */
+export async function getReceivingList(tenantId: string, requestId: string) {
+  const prisma = getPrisma();
+  const reqRow = await prisma.purchaseRequest.findFirst({ where: { id: requestId, tenantId } });
+  if (!reqRow) return null;
+  const items = (reqRow.items as Array<{ sku?: string; description: string; quantity: number }>) ?? [];
+  const skus = items.map((i) => i.sku).filter((s): s is string => !!s);
+  const barcodes = skus.length
+    ? await prisma.productBarcode.findMany({ where: { tenantId, variantSku: { in: skus } } })
+    : [];
+  const bySku = new Map(barcodes.map((b) => [b.variantSku, b.barcode]));
+  return {
+    requestId,
+    status: reqRow.status,
+    items: items.map((i) => ({
+      sku: i.sku ?? null,
+      description: i.description,
+      quantity: i.quantity,
+      barcode: i.sku ? bySku.get(i.sku) ?? null : null,
+    })),
+  };
+}
+
+/**
+ * Confere o recebimento: registra `purchase_in` (estoque + razão) para cada
+ * código bipado, reconcilia contra o esperado e, se completo, marca a requisição
+ * como `received`. `refId` = requestId (rastreabilidade compra→estoque).
+ */
+export async function confirmReceiving(tenantId: string, requestId: string, scanned: string[]) {
+  const list = await getReceivingList(tenantId, requestId);
+  if (!list) return { ok: false as const, reason: "requisição não encontrada" };
+
+  const expected = list.items
+    .filter((i) => i.barcode)
+    .map((i) => ({ variantSku: i.sku!, barcode: i.barcode!, quantity: i.quantity }));
+  const result = reconcilePicking(expected, scanned);
+
+  // Conta bipados por código e registra purchase_in (estoque + razão).
+  const counts = new Map<string, number>();
+  for (const raw of scanned) { const b = normalizeBarcode(raw); if (b) counts.set(b, (counts.get(b) ?? 0) + 1); }
+  const recorded: string[] = [];
+  for (const [barcode, qty] of counts) {
+    try {
+      await movementByBarcode(tenantId, { barcode, type: "purchase_in", quantity: qty, refType: "purchase_request", refId: requestId });
+      recorded.push(barcode);
+    } catch { /* código não cadastrado: ignora (vira "extra" no reconcile) */ }
+  }
+
+  if (result.complete) {
+    await withTenant(tenantId, async (tx) => {
+      await tx.purchaseRequest.update({ where: { id: requestId }, data: { status: "received", closedAt: new Date() } });
+      await tx.domainEvent.create({
+        data: { tenantId, type: "purchase.received", aggregateType: "purchase_request", aggregateId: requestId, payload: { recorded: recorded.length } as any, actor: "operator" },
+      });
+    });
+  }
+  return { ok: true as const, ...result, recorded: recorded.length };
 }

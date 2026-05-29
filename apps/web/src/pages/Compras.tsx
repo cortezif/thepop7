@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, Trophy, Truck, Sparkles } from "lucide-react";
+import { AlertTriangle, Trophy, Truck, Sparkles, Barcode, Check, X } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
-import { api, type ReorderSuggestion, type PurchaseRequest, type Supplier } from "../lib/api";
+import { api, type ReorderSuggestion, type PurchaseRequest, type Supplier, type ReceivingItem, type ReceiveResult } from "../lib/api";
 import { cn, formatBRL } from "../lib/utils";
 
 export function Compras() {
@@ -11,6 +11,7 @@ export function Compras() {
   const [error, setError] = useState<string | null>(null);
   const [closeMsg, setCloseMsg] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
+  const [receiving, setReceiving] = useState<string | null>(null);
 
   async function suggestClose(requestId: string) {
     setBusy(requestId);
@@ -24,11 +25,12 @@ export function Compras() {
     }
   }
 
-  useEffect(() => {
+  function load() {
     Promise.all([api.reorder(), api.purchaseRequests(), api.suppliers()])
       .then(([r, p, s]) => { setReorder(r); setRequests(p); setSuppliers(s); })
       .catch((e) => setError(String(e)));
-  }, []);
+  }
+  useEffect(load, []);
 
   return (
     <div className="mx-auto max-w-6xl p-10">
@@ -132,6 +134,15 @@ export function Compras() {
                     )}
                   </div>
                 )}
+                {req.status !== "received" && (
+                  <button
+                    onClick={() => setReceiving(receiving === req.id ? null : req.id)}
+                    className="mt-3 flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted"
+                  >
+                    <Barcode size={13} /> Receber mercadoria
+                  </button>
+                )}
+                {receiving === req.id && <ReceivingPanel requestId={req.id} onDone={() => { setReceiving(null); load(); }} />}
               </div>
             ))}
           </div>
@@ -156,6 +167,81 @@ export function Compras() {
           ))}
         </div>
       </section>
+    </div>
+  );
+}
+
+/** Conferência de recebimento da compra: bipa o que chegou e registra purchase_in. */
+function ReceivingPanel({ requestId, onDone }: { requestId: string; onDone: () => void }) {
+  const [items, setItems] = useState<ReceivingItem[]>([]);
+  const [scanned, setScanned] = useState<string[]>([]);
+  const [input, setInput] = useState("");
+  const [result, setResult] = useState<ReceiveResult | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.getReceiving(requestId).then((l) => setItems(l.items)).catch((e) => setErr(String(e)));
+  }, [requestId]);
+
+  function addScan() {
+    const c = input.trim();
+    if (!c) return;
+    setScanned((s) => [...s, c]); setInput(""); setResult(null);
+  }
+
+  async function confirmar() {
+    setErr(null);
+    try {
+      const r = await api.receivePurchase(requestId, scanned);
+      setResult(r);
+      if (r.complete) setTimeout(onDone, 1200);
+    } catch (e: any) { setErr(String(e?.message ?? e)); }
+  }
+
+  const scanCount = scanned.reduce<Record<string, number>>((m, c) => { m[c] = (m[c] ?? 0) + 1; return m; }, {});
+
+  return (
+    <div className="mt-3 rounded-md border border-border bg-muted/30 p-4">
+      <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+        <Barcode size={13} /> Conferência de recebimento
+      </p>
+      <div className="flex gap-2">
+        <input
+          autoFocus value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && addScan()}
+          placeholder="Bipe o código do item que chegou…"
+          className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm"
+        />
+        <button onClick={confirmar} disabled={scanned.length === 0}
+          className="rounded-md bg-foreground px-4 py-1.5 text-sm font-medium text-background disabled:opacity-50">
+          Conferir ({scanned.length})
+        </button>
+      </div>
+      <ul className="mt-3 space-y-1 text-sm">
+        {items.map((it) => {
+          const got = scanCount[it.barcode ?? ""] ?? 0;
+          const line = result?.items.find((r) => r.barcode === it.barcode);
+          const conferred = line ? line.conferred : Math.min(got, it.quantity);
+          const ok = !!it.barcode && conferred >= it.quantity;
+          return (
+            <li key={it.sku ?? it.description} className="flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                {ok ? <Check size={14} className="text-emerald-600" /> : <X size={14} className="text-muted-foreground" />}
+                <span>{it.description}</span>
+                <span className="text-xs text-muted-foreground">{it.barcode ?? "sem código"}</span>
+              </span>
+              <span className={cn("text-xs", ok ? "text-emerald-600" : "text-muted-foreground")}>{conferred}/{it.quantity}</span>
+            </li>
+          );
+        })}
+      </ul>
+      {result && (
+        <p className={cn("mt-2 flex items-center gap-1.5 text-sm font-medium", result.complete ? "text-emerald-700" : "text-amber-600")}>
+          {result.complete ? <><Check size={14} /> Recebimento conferido — compra marcada como recebida.</> : <>Parcial — {result.recorded} código(s) lançado(s) no estoque.</>}
+        </p>
+      )}
+      {err && <p className="mt-2 text-xs text-red-600">{err}</p>}
     </div>
   );
 }

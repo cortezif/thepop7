@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { getPrisma, withTenant } from "@thepop/db";
-import { detectReorder, openPurchaseRequest, recordQuote, rankQuotes, suggestPurchaseClose } from "../services/purchasing-service.js";
+import { detectReorder, openPurchaseRequest, recordQuote, rankQuotes, suggestPurchaseClose, getReceivingList, confirmReceiving } from "../services/purchasing-service.js";
 
 async function tid(slug: string) {
   const t = await getPrisma().tenant.findUnique({ where: { slug } });
@@ -57,6 +57,26 @@ export const purchasingRoutes: FastifyPluginAsync = async (app) => {
     const id = await tid((req.query as any).tenantSlug);
     if (!id) return reply.code(404).send({ error: "tenant not found" });
     return suggestPurchaseClose(id, (req.params as any).id);
+  });
+
+  // GET /purchasing/requests/:id/receiving?tenantSlug= — itens esperados + código de barras
+  app.get("/requests/:id/receiving", async (req, reply) => {
+    const id = await tid((req.query as any).tenantSlug);
+    if (!id) return reply.code(404).send({ error: "tenant not found" });
+    const list = await getReceivingList(id, (req.params as any).id);
+    if (!list) return reply.code(404).send({ error: "requisição não encontrada" });
+    return list;
+  });
+
+  // POST /purchasing/requests/:id/receive — confere a chegada (purchase_in) por scan
+  app.post("/requests/:id/receive", async (req, reply) => {
+    const body = z.object({ tenantSlug: z.string(), scanned: z.array(z.string()) }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+    const id = await tid(body.data.tenantSlug);
+    if (!id) return reply.code(404).send({ error: "tenant not found" });
+    const r = await confirmReceiving(id, (req.params as any).id, body.data.scanned);
+    if (!r.ok) return reply.code(404).send(r);
+    return r;
   });
 
   // GET /purchasing/requests?tenantSlug= — lista requisições + cotações (pro painel)

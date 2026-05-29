@@ -639,6 +639,7 @@ enum PurchaseRequestStatus {
   open        // aguardando cotações
   quoted      // recebeu propostas
   ordered     // fechou com um fornecedor
+  received    // mercadoria recebida e conferida
   canceled
 }
 
