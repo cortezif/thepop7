@@ -1,4 +1,5 @@
 import { PrismaClient, Prisma } from "@prisma/client";
+import { decryptPII } from "./pii-crypto.js";
 
 export * from "@prisma/client";
 export * from "./pii-crypto.js";
@@ -30,4 +31,20 @@ export async function withTenant<T>(
     await tx.$executeRawUnsafe(`SET LOCAL app.current_tenant_id = '${tenantId.replace(/'/g, "''")}'`);
     return fn(tx);
   });
+}
+
+/**
+ * Credencial Tray do tenant (token decifrado) pra injetar no connector ERP.
+ * `null` se a loja não conectou a Tray (ou o token foi removido). Compartilhado
+ * por api e worker (ambos resolvem o ERP por tenant via `buildErpForTenant`).
+ */
+export async function getTrayCreds(
+  tenantId: string
+): Promise<{ apiUrl: string; accessToken: string } | null> {
+  const row = await getPrisma().integration.findUnique({
+    where: { tenantId_provider: { tenantId, provider: "tray" } },
+  });
+  const accessToken = decryptPII(row?.accessToken);
+  if (!row?.apiAddress || !accessToken || row.status !== "connected") return null;
+  return { apiUrl: row.apiAddress, accessToken };
 }

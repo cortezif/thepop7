@@ -1,6 +1,6 @@
 import { runAgentTurn, summarizeConversation, extractProductAttributes, DEFAULT_CASCADE, type AgentConfig, type ConversationContext, type AgentToolImpl } from "@thepop/agent";
-import { getPrisma, withTenant } from "@thepop/db";
-import { getErpConnector, getLogisticsConnector } from "@thepop/connectors";
+import { getPrisma, withTenant, getTrayCreds } from "@thepop/db";
+import { buildErpForTenant, getLogisticsConnector } from "@thepop/connectors";
 import type { ContactProfileUpdate, ProductSummary } from "@thepop/shared";
 import type { FastifyBaseLogger } from "fastify";
 import { searchProducts, type CustomerProfile, type ProductFilter } from "./product-search.js";
@@ -175,7 +175,7 @@ export async function handleIncomingMessage(dto: IncomingDTO, log: FastifyBaseLo
     avoid: contact.avoid,
     usualSize: contact.usualSize ?? undefined,
     favoriteColors: contact.favoriteColors,
-  }, { autoApproveMaxBRL: Number(tenant.autoApproveMaxBRL), photoUrls: dto.photoUrls });
+  }, { autoApproveMaxBRL: Number(tenant.autoApproveMaxBRL), photoUrls: dto.photoUrls, trayCreds: await getTrayCreds(tenant.id) });
 
   // Se a cliente mandou foto, avisa o agente p/ chamar a busca visual (ele é text-only).
   let agentMessage = dto.text ?? "";
@@ -319,7 +319,7 @@ export async function suggestReply(tenantSlug: string, conversationId: string, l
     avoid: contact?.avoid ?? [],
     usualSize: contact?.usualSize ?? undefined,
     favoriteColors: contact?.favoriteColors ?? [],
-  }, { readOnly: true });
+  }, { readOnly: true, trayCreds: await getTrayCreds(tenant.id) });
 
   const turn = await runAgentTurn(cfg, ctx, userMessage, tools);
   return {
@@ -335,8 +335,8 @@ export async function suggestReply(tenantSlug: string, conversationId: string, l
  * Tudo o que o agente "decide fazer" passa por aqui — então este é o
  * lugar pra colocar guardrails (limites, regras de negócio, auditoria).
  */
-function buildAgentTools(tenantId: string, contactId: string, conversationId: string, log: FastifyBaseLogger, customerProfile: CustomerProfile = {}, opts: { readOnly?: boolean; autoApproveMaxBRL?: number; photoUrls?: string[] } = {}): AgentToolImpl {
-  const erp       = getErpConnector();
+function buildAgentTools(tenantId: string, contactId: string, conversationId: string, log: FastifyBaseLogger, customerProfile: CustomerProfile = {}, opts: { readOnly?: boolean; autoApproveMaxBRL?: number; photoUrls?: string[]; trayCreds?: { apiUrl: string; accessToken: string } | null } = {}): AgentToolImpl {
+  const erp       = buildErpForTenant({ trayCreds: opts.trayCreds });
   const logistics = getLogisticsConnector();
   const prisma    = getPrisma();
   const readOnly  = opts.readOnly ?? false;

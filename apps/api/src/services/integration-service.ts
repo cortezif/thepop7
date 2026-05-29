@@ -133,13 +133,5 @@ export async function getTrayStatus(tenantId: string): Promise<TrayStatus> {
   };
 }
 
-/** Credencial do connector Tray por tenant (token decifrado) — para injetar no TrayErp. */
-export async function getTrayConnectorCreds(tenantId: string): Promise<{ apiUrl: string; accessToken: string } | null> {
-  const prisma = getPrisma();
-  const row = await prisma.integration.findUnique({
-    where: { tenantId_provider: { tenantId, provider: PROVIDER } },
-  });
-  const accessToken = decryptPII(row?.accessToken);
-  if (!row?.apiAddress || !accessToken || row.status !== "connected") return null;
-  return { apiUrl: row.apiAddress, accessToken };
-}
+// A credencial decifrada pro connector vive em @thepop/db (`getTrayCreds`),
+// reusada por api e worker via `buildErpForTenant`.

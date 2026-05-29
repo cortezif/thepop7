@@ -1,11 +1,12 @@
 import type { FastifyPluginAsync } from "fastify";
-import { getErpConnector } from "@thepop/connectors";
-import { getPrisma } from "@thepop/db";
+import { buildErpForTenant } from "@thepop/connectors";
+import { getPrisma, getTrayCreds } from "@thepop/db";
 import { searchProducts } from "../services/product-search.js";
 
 export const catalogRoutes: FastifyPluginAsync = async (app) => {
-  app.get("/products", async () => {
-    const erp = getErpConnector();
+  app.get("/products", async (req) => {
+    const tenantId = req.auth!.tenantId;
+    const erp = buildErpForTenant({ trayCreds: await getTrayCreds(tenantId) });
     return erp.listProducts();
   });
 
@@ -33,7 +34,8 @@ export const catalogRoutes: FastifyPluginAsync = async (app) => {
 
   app.get("/products/:id", async (req, reply) => {
     const id = (req.params as any).id;
-    const product = await getErpConnector().getProduct(id);
+    const erp = buildErpForTenant({ trayCreds: await getTrayCreds(req.auth!.tenantId) });
+    const product = await erp.getProduct(id);
     if (!product) return reply.code(404).send({ error: "not found" });
     return product;
   });

@@ -1,6 +1,6 @@
 import type { Job } from "bullmq";
-import { getPrisma, withTenant } from "@thepop/db";
-import { getErpConnector } from "@thepop/connectors";
+import { withTenant, getTrayCreds } from "@thepop/db";
+import { buildErpForTenant } from "@thepop/connectors";
 
 type CatalogSyncJobData = { tenantId: string };
 
@@ -13,7 +13,9 @@ type CatalogSyncJobData = { tenantId: string };
  */
 export async function catalogSyncProcessor(job: Job<CatalogSyncJobData>): Promise<void> {
   const { tenantId } = job.data;
-  const erp = getErpConnector();
+  // ERP por tenant: usa o token Tray salvo da loja (onboarding OAuth), com
+  // failover pro mock se não houver credencial/Redis (ADR-022).
+  const erp = buildErpForTenant({ trayCreds: await getTrayCreds(tenantId) });
 
   const products = await erp.listProducts();
   console.log(`[catalog-sync] tenant=${tenantId} produtos=${products.length}`);

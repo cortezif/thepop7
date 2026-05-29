@@ -34,6 +34,25 @@ export function getErpConnector(): ErpConnector {
   const primary: ErpConnector = erpProvider() === "bling" ? new BlingErp() : new TrayErp();
   return createFailover<ErpConnector>([primary, new MockErp()], { label: `erp:${erpProvider()}`, log });
 }
+
+/**
+ * ERP por tenant: usa a credencial Tray armazenada (token da loja, vindo do
+ * onboarding OAuth) em vez do env. O chamador (api/worker) carrega a credencial
+ * do banco (`getTrayCreds`) e injeta aqui. Mantém o failover pro mock (ADR-022).
+ * Sem credencial Tray salva, cai pro comportamento de env (`getErpConnector`).
+ */
+export function buildErpForTenant(opts: {
+  provider?: "tray" | "bling";
+  trayCreds?: { apiUrl: string; accessToken: string } | null;
+}): ErpConnector {
+  if (useMocks()) return new MockErp();
+  const provider = opts.provider ?? erpProvider();
+  if (provider === "bling") {
+    return createFailover<ErpConnector>([new BlingErp(), new MockErp()], { label: "erp:bling", log });
+  }
+  const tray = opts.trayCreds ? new TrayErp(opts.trayCreds) : new TrayErp();
+  return createFailover<ErpConnector>([tray, new MockErp()], { label: "erp:tray", log });
+}
 export function getLogisticsConnector(): LogisticsConnector {
   if (useMocks()) return new MockLogistics();
   return createFailover<LogisticsConnector>([new MelhorEnvio(), new MockLogistics()], { label: "logistics", log });
