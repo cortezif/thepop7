@@ -203,6 +203,11 @@ export const api = {
   // Picking / conferência de envio (F3)
   getPicking: (orderId: string) => get<PickingList>(`/orders/${orderId}/picking`),
   packOrder: (orderId: string, scanned: string[]) => post<PackResult>(`/orders/${orderId}/pack`, { scanned }),
+  // Entradas/ajustes de estoque por scan (extras)
+  stockReceive: (barcode: string, quantity: number, note?: string) =>
+    post<{ ok: boolean; movementId: string }>(`/stock/receive`, { barcode, quantity, note }),
+  stockAdjust: (barcode: string, type: "adjust_in" | "adjust_out", quantity: number, note?: string) =>
+    post<{ ok: boolean; movementId: string }>(`/stock/adjust`, { barcode, type, quantity, note }),
 };
 
 export type PickingItem = { variantSku: string; description: string; quantity: number; barcode: string | null };

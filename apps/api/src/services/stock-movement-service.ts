@@ -6,6 +6,9 @@ import { getPrisma, withTenant, type Prisma } from "@thepop/db";
 
 export type MovementType = "purchase_in" | "sale_out" | "return_in" | "adjust_in" | "adjust_out";
 const IN_TYPES: MovementType[] = ["purchase_in", "return_in", "adjust_in"];
+const DELTA_SIGN: Record<MovementType, number> = {
+  purchase_in: 1, return_in: 1, adjust_in: 1, sale_out: -1, adjust_out: -1,
+};
 
 export type MovementInput = {
   productId: string;
@@ -39,6 +42,38 @@ export async function recordMovement(tenantId: string, m: MovementInput, tx?: Pr
     });
   };
   return tx ? run(tx) : withTenant(tenantId, run);
+}
+
+/** Aplica delta no estoque local da variante (espelho; a verdade é Tray/CPlug). */
+async function applyStockDelta(tx: Prisma.TransactionClient, productId: string, variantSku: string, delta: number) {
+  const product = await tx.product.findUnique({ where: { id: productId } });
+  if (!product) return;
+  const variants = (product.variants as Array<{ sku: string; stock: number; [k: string]: unknown }>) ?? [];
+  let changed = false;
+  for (const v of variants) if (v.sku === variantSku) { v.stock = Math.max(0, (Number(v.stock) || 0) + delta); changed = true; }
+  if (changed) await tx.product.update({ where: { id: productId }, data: { variants: variants as any } });
+}
+
+/**
+ * Movimento por código de barras (scan): resolve produto+variante, aplica o delta
+ * no estoque local conforme o tipo e registra no razão. Usado por recebimento e
+ * ajuste manual (balanço/quebra). Lança se o código não existir.
+ */
+export async function movementByBarcode(
+  tenantId: string,
+  m: { barcode: string; type: MovementType; quantity: number; note?: string; refType?: string; refId?: string; actor?: string },
+) {
+  return withTenant(tenantId, async (tx) => {
+    const row = await tx.productBarcode.findUnique({ where: { tenantId_barcode: { tenantId, barcode: m.barcode } } });
+    if (!row) throw new Error("código de barras não encontrado");
+    const qty = Math.abs(m.quantity);
+    await applyStockDelta(tx, row.productId, row.variantSku, DELTA_SIGN[m.type] * qty);
+    const mov = await recordMovement(tenantId, {
+      productId: row.productId, variantSku: row.variantSku, type: m.type, quantity: qty,
+      barcode: m.barcode, note: m.note, refType: m.refType, refId: m.refId, actor: m.actor ?? "operator",
+    }, tx);
+    return { ok: true as const, movementId: mov.id, productId: row.productId, variantSku: row.variantSku };
+  });
 }
 
 /** Lista movimentos (por barcode OU por produto/variante), mais recentes primeiro. */

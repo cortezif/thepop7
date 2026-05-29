@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Barcode, Search, Tag } from "lucide-react";
+import { Barcode, Search, Tag, PackagePlus } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { api, downloadLabels, type StockTrace } from "../lib/api";
 
@@ -19,6 +19,10 @@ export function Estoque() {
   const [busy, setBusy] = useState(false);
   const [backfillMsg, setBackfillMsg] = useState<string | null>(null);
   const [labelMsg, setLabelMsg] = useState<string | null>(null);
+  const [entryBarcode, setEntryBarcode] = useState("");
+  const [entryQty, setEntryQty] = useState("1");
+  const [entryType, setEntryType] = useState<"receive" | "adjust_in" | "adjust_out">("receive");
+  const [entryMsg, setEntryMsg] = useState<string | null>(null);
 
   async function lookup(c?: string) {
     const q = (c ?? code).trim();
@@ -37,6 +41,23 @@ export function Estoque() {
       const r = await api.backfillBarcodes();
       setBackfillMsg(`${r.variantes} variantes — ${r.jaTinham} já tinham, ${r.gerados} gerados.`);
     } catch (e: any) { setBackfillMsg(`Erro: ${e?.message ?? e}`); }
+  }
+
+  async function lancarEntrada() {
+    setEntryMsg(null);
+    const bc = entryBarcode.trim();
+    const qty = Number(entryQty);
+    if (!bc) { setEntryMsg("Bipe o código."); return; }
+    if (!Number.isInteger(qty) || qty <= 0) { setEntryMsg("Quantidade inválida."); return; }
+    try {
+      if (entryType === "receive") await api.stockReceive(bc, qty);
+      else await api.stockAdjust(bc, entryType, qty);
+      setEntryMsg("Lançado ✓");
+      setEntryBarcode(""); setEntryQty("1");
+      if (trace?.barcode === bc) lookup(bc); // atualiza o histórico se for o mesmo código
+    } catch (e: any) {
+      setEntryMsg(/404/.test(String(e)) ? "Código não encontrado." : String(e?.message ?? e));
+    }
   }
 
   async function baixarEtiquetas(format: "csv" | "zpl") {
@@ -88,6 +109,36 @@ export function Estoque() {
           Baixar ZPL (Zebra)
         </button>
         {labelMsg && <span className="text-xs text-muted-foreground">{labelMsg}</span>}
+      </div>
+
+      <div className="mt-4 rounded-lg border border-border bg-muted/30 p-4">
+        <p className="mb-2 flex items-center gap-1.5 text-sm font-medium">
+          <PackagePlus size={16} className="text-muted-foreground" /> Entrada / ajuste de estoque
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <select value={entryType} onChange={(e) => setEntryType(e.target.value as any)}
+            className="rounded-md border border-border bg-background px-2 py-2 text-sm">
+            <option value="receive">Recebimento (fornecedor)</option>
+            <option value="adjust_in">Ajuste + (balanço)</option>
+            <option value="adjust_out">Ajuste − (quebra/perda)</option>
+          </select>
+          <input
+            value={entryBarcode}
+            onChange={(e) => setEntryBarcode(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && lancarEntrada()}
+            placeholder="Código de barras…"
+            className="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm"
+          />
+          <input
+            type="number" min={1} value={entryQty} onChange={(e) => setEntryQty(e.target.value)}
+            className="w-20 rounded-md border border-border bg-background px-3 py-2 text-sm"
+          />
+          <button onClick={lancarEntrada}
+            className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background">
+            Lançar
+          </button>
+          {entryMsg && <span className="text-xs text-muted-foreground">{entryMsg}</span>}
+        </div>
       </div>
 
       {err && <p className="mt-4 text-sm text-red-600">{err}</p>}

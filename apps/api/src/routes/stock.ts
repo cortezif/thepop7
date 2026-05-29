@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { listMovements, traceByBarcode, recordMovement } from "../services/stock-movement-service.js";
+import { listMovements, traceByBarcode, movementByBarcode } from "../services/stock-movement-service.js";
 import { resolveScannedBarcode } from "../services/barcode-service.js";
 import { buildLabelItems, labelsToCsv, labelsToZpl } from "../services/label-service.js";
 import { getPrisma } from "@thepop/db";
@@ -59,22 +59,41 @@ export const stockRoutes: FastifyPluginAsync = async (app) => {
     return labelsToCsv(items);
   });
 
-  // POST /stock/adjust — ajuste manual (balanço/perda) → adjust_in | adjust_out
+  // POST /stock/receive — recebimento de mercadoria (purchase_in) por scan.
+  app.post("/receive", async (req, reply) => {
+    const body = z.object({
+      tenantSlug: z.string(),
+      barcode: z.string(),
+      quantity: z.number().int().positive(),
+      note: z.string().optional(),
+      purchaseRequestId: z.string().optional(),
+    }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+    try {
+      return await movementByBarcode(req.auth!.tenantId, {
+        barcode: normalizeBarcode(body.data.barcode), type: "purchase_in",
+        quantity: body.data.quantity, note: body.data.note,
+        refType: body.data.purchaseRequestId ? "purchase_request" : "manual",
+        refId: body.data.purchaseRequestId,
+      });
+    } catch (e: any) { return reply.code(404).send({ error: e?.message ?? String(e) }); }
+  });
+
+  // POST /stock/adjust — ajuste manual (balanço/perda) por scan → adjust_in | adjust_out
   app.post("/adjust", async (req, reply) => {
     const body = z.object({
       tenantSlug: z.string(),
-      productId: z.string(),
-      variantSku: z.string(),
+      barcode: z.string(),
       type: z.enum(["adjust_in", "adjust_out"]),
       quantity: z.number().int().positive(),
       note: z.string().optional(),
     }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
-    const m = await recordMovement(req.auth!.tenantId, {
-      productId: body.data.productId, variantSku: body.data.variantSku,
-      type: body.data.type, quantity: body.data.quantity, note: body.data.note,
-      refType: "manual", actor: "operator",
-    });
-    return { ok: true, id: m.id };
+    try {
+      return await movementByBarcode(req.auth!.tenantId, {
+        barcode: normalizeBarcode(body.data.barcode), type: body.data.type,
+        quantity: body.data.quantity, note: body.data.note, refType: "manual",
+      });
+    } catch (e: any) { return reply.code(404).send({ error: e?.message ?? String(e) }); }
   });
 };
