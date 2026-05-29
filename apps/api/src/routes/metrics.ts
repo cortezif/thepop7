@@ -87,6 +87,14 @@ export const metricsRoutes: FastifyPluginAsync = async (app) => {
         ? aiCostTotalBRL / totalConversations
         : 0;
 
+      // NF-e pendente: pedidos pagos (ou adiante) sem número de nota emitida.
+      const nfePending = await tx.order.count({
+        where: {
+          status: { in: ["paid", "picking", "shipped", "in_transit", "out_for_delivery", "delivered", "finalized"] },
+          nfeNumber: null,
+        },
+      });
+
       // Catálogo
       const productsTotal = await tx.product.count();
       const productsEnriched = await tx.product.count({
@@ -107,6 +115,7 @@ export const metricsRoutes: FastifyPluginAsync = async (app) => {
         productsTotal,
         productsEnriched,
         flaggedForReview,
+        nfePending,
         financials,
         funnel,
         budget: monthBudget,

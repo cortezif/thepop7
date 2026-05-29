@@ -3,6 +3,7 @@ import { getPrisma } from "@thepop/db";
 import { z } from "zod";
 import { listOrders, createSampleOrder, exportOrdersCSV, approveOrder, receiveReturn } from "../services/order-service.js";
 import { getPickingList, confirmPicking } from "../services/picking-service.js";
+import { issueNfeForOrder } from "../services/fiscal-service.js";
 
 async function tid(slug: string) {
   const t = await getPrisma().tenant.findUnique({ where: { slug } });
@@ -48,6 +49,15 @@ export const orderRoutes: FastifyPluginAsync = async (app) => {
     if (!id) return reply.code(404).send({ error: "tenant not found" });
     const r = await receiveReturn(id, (req.params as any).returnId);
     if (!r.ok) return reply.code(400).send(r);
+    return r;
+  });
+
+  // POST /orders/:id/issue-nfe — (re)emite a NF-e manualmente (idempotente)
+  app.post("/:id/issue-nfe", async (req, reply) => {
+    const id = await tid((req.body as any)?.tenantSlug);
+    if (!id) return reply.code(404).send({ error: "tenant not found" });
+    const r = await issueNfeForOrder(id, (req.params as any).id);
+    if (!r.ok && !("skipped" in r)) return reply.code(502).send(r);
     return r;
   });
 

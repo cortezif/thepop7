@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { TrendingUp, MessageCircle, Bot, Coins, Package, UserCheck, Wallet, Filter, AlertTriangle } from "lucide-react";
+import { TrendingUp, MessageCircle, Bot, Coins, Package, UserCheck, Wallet, Filter, AlertTriangle, FileWarning } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { StatCard } from "../components/StatCard";
 import { api, type DailyMetrics } from "../lib/api";
@@ -47,6 +47,7 @@ export function Dashboard() {
         <StatCard label="Em atendimento humano" value={m ? String(m.handedOff) : "…"} Icon={UserCheck} />
         <StatCard label="Custo médio/conversa"  value={m ? formatBRL(m.avgCostPerConversationBRL) : "…"} Icon={TrendingUp} />
         <StatCard label="Msgs a revisar (IA)"   value={m ? String(m.flaggedForReview) : "…"} Icon={AlertTriangle} />
+        <StatCard label="NF-e pendentes"        value={m ? String(m.nfePending) : "…"} Icon={FileWarning} alert={!!m && m.nfePending > 0} />
       </div>
 
       {/* Margem real (ADR-017) — receita − COGS − frete − gateway */}

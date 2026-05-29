@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Package, Truck, Sparkles, Plus, Download, Barcode, Check, X } from "lucide-react";
+import { Package, Truck, Sparkles, Plus, Download, Barcode, Check, X, FileWarning } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { api, downloadOrdersCsv, type Order, type PickingItem, type PackResult } from "../lib/api";
 import { cn, formatBRL } from "../lib/utils";
@@ -21,6 +21,7 @@ const EVENT_LABEL: Record<string, string> = {
 };
 
 const STAGES = ["d1", "d7", "d14", "d30"] as const;
+const NFE_PENDING_STATUSES = ["paid", "picking", "shipped", "in_transit", "out_for_delivery", "delivered", "finalized"];
 
 export function Pedidos() {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -45,6 +46,16 @@ export function Pedidos() {
     setBusy(id); setError(null);
     try { await api.simulateDelivery(id); load(); }
     catch (e) { setError(String(e)); }
+    finally { setBusy(null); }
+  }
+
+  async function emitNfe(id: string) {
+    setBusy(`nfe:${id}`); setError(null);
+    try {
+      const r = await api.issueNfe(id);
+      if (!r.ok && !r.skipped) setError(r.reason ?? "falha ao emitir NF-e");
+      load();
+    } catch (e) { setError(String(e)); }
     finally { setBusy(null); }
   }
 
@@ -126,7 +137,7 @@ export function Pedidos() {
                   <span className="ml-2 font-semibold text-foreground">{formatBRL(o.totalBRL)}</span>
                 </div>
 
-                {o.nfeNumber && (
+                {o.nfeNumber ? (
                   <div className="mt-2 text-xs text-emerald-700">
                     NF-e {o.nfeNumber}
                     {o.nfePdfUrl && (
@@ -134,6 +145,17 @@ export function Pedidos() {
                         DANFE (PDF)
                       </a>
                     )}
+                  </div>
+                ) : NFE_PENDING_STATUSES.includes(o.status) && (
+                  <div className="mt-2 flex items-center gap-2 text-xs text-amber-700">
+                    <FileWarning size={13} /> NF-e pendente
+                    <button
+                      onClick={() => emitNfe(o.id)}
+                      disabled={busy === `nfe:${o.id}`}
+                      className="rounded-md border border-amber-300 px-2 py-1 font-medium hover:bg-amber-50 disabled:opacity-50"
+                    >
+                      {busy === `nfe:${o.id}` ? "Emitindo…" : "Emitir NF-e"}
+                    </button>
                   </div>
                 )}
 

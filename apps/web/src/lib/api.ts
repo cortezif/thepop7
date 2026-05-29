@@ -190,6 +190,8 @@ export const api = {
     post<{ ok: boolean; totalBRL?: number; pix?: { qrCode?: string }; reason?: string }>(`/orders/${orderId}/approve`, {}),
   simulateDelivery: (orderId: string) =>
     post<{ ok: boolean; transitions: string[] }>(`/post-sale/simulate-delivery`, { orderId }),
+  issueNfe: (orderId: string) =>
+    post<{ ok: boolean; number?: string; reason?: string; skipped?: boolean }>(`/orders/${orderId}/issue-nfe`, {}),
   triggerPostSale: (orderId: string, stage: "d1" | "d7" | "d14" | "d30") =>
     post<{ stage: string; message?: string; skipped?: boolean; reason?: string }>(
       `/post-sale/trigger`, { orderId, stage }
@@ -325,6 +327,7 @@ export type DailyMetrics = {
   productsTotal: number;
   productsEnriched: number;
   flaggedForReview: number;
+  nfePending: number;
   financials: Financials;
   funnel: Funnel;
   budget: Budget;
