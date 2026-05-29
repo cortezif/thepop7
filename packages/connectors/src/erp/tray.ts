@@ -96,8 +96,15 @@ export function mapTrayProduct(raw: TrayRawProduct): ErpProduct {
 }
 
 export class TrayErp implements ErpConnector {
-  private readonly baseUrl = process.env.TRAY_API_URL ?? "";
-  private readonly token = process.env.TRAY_ACCESS_TOKEN ?? "";
+  private readonly baseUrl: string;
+  private readonly token: string;
+
+  // Credencial pode vir injetada (token por loja, vindo do onboarding OAuth) ou
+  // do env (atalho de dev). Injetada tem prioridade.
+  constructor(creds?: { apiUrl?: string; accessToken?: string }) {
+    this.baseUrl = creds?.apiUrl ?? process.env.TRAY_API_URL ?? "";
+    this.token = creds?.accessToken ?? process.env.TRAY_ACCESS_TOKEN ?? "";
+  }
 
   private assertCreds() {
     if (!this.baseUrl || !this.token) {

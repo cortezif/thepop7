@@ -1,13 +1,12 @@
 import { useEffect, useState } from "react";
-import { Power, Users, GitMerge } from "lucide-react";
+import { Power, Users, GitMerge, Store } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
-import { api, type DuplicateGroup } from "../lib/api";
+import { api, type DuplicateGroup, type TrayStatus } from "../lib/api";
 import { cn } from "../lib/utils";
 
 const INTEGRATIONS = [
   { name: "WhatsApp Business Cloud API",  status: "Aguarda aprovação Meta" },
   { name: "Instagram Graph API",          status: "Aguarda aprovação Meta" },
-  { name: "Bling (ERP)",                  status: "Aguarda token de produção" },
   { name: "Mercado Pago",                 status: "Sandbox configurável" },
   { name: "PlugNotas (NFe)",              status: "Sandbox configurável" },
   { name: "Melhor Envio",                 status: "Sandbox configurável" },
@@ -25,6 +24,8 @@ export function Settings() {
 
       <IdentityMerge />
 
+      <TrayIntegration />
+
       <h2 className="mt-10 font-serif text-lg font-bold">Integrações</h2>
       <div className="mt-3 divide-y divide-border rounded-lg border border-border bg-background">
         {INTEGRATIONS.map((i) => (
@@ -40,6 +41,120 @@ export function Settings() {
         ))}
       </div>
     </div>
+  );
+}
+
+function TrayIntegration() {
+  const [st, setSt] = useState<TrayStatus | null>(null);
+  const [apiAddress, setApiAddress] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  function load() {
+    api.trayStatus().then(setSt).catch((e) => setErr(String(e)));
+  }
+  useEffect(() => {
+    load();
+    // Volta do callback OAuth: ?tray=ok | ?tray=erro&motivo=...
+    const p = new URLSearchParams(window.location.search);
+    const tray = p.get("tray");
+    if (tray === "ok") setMsg("Tray conectada com sucesso ✓");
+    if (tray === "erro") setErr(`Falha ao conectar: ${p.get("motivo") ?? "desconhecido"}`);
+    if (tray) window.history.replaceState({}, "", "/settings");
+  }, []);
+
+  async function connect() {
+    setErr(null); setMsg(null);
+    const addr = apiAddress.trim();
+    if (!/^https?:\/\//.test(addr)) { setErr("Informe a URL web_api da loja (https://...)"); return; }
+    setBusy(true);
+    try {
+      const { url } = await api.trayAuthorizeUrl(addr);
+      window.location.href = url; // redireciona pra Tray autorizar
+    } catch (e: any) {
+      setErr(String(e?.message ?? e));
+      setBusy(false);
+    }
+  }
+
+  async function refresh() {
+    setBusy(true); setErr(null); setMsg(null);
+    try { await api.trayRefresh(); setMsg("Token renovado ✓"); load(); }
+    catch (e: any) { setErr(String(e?.message ?? e)); }
+    finally { setBusy(false); }
+  }
+
+  async function disconnect() {
+    setBusy(true); setErr(null); setMsg(null);
+    try { await api.trayDisconnect(); setMsg("Tray desconectada."); load(); }
+    catch (e: any) { setErr(String(e?.message ?? e)); }
+    finally { setBusy(false); }
+  }
+
+  const connected = st?.connected;
+
+  return (
+    <section className="mt-10 rounded-lg border border-border bg-background p-6">
+      <div className="flex items-center gap-2">
+        <Store className="h-5 w-5 text-muted-foreground" />
+        <h2 className="font-serif text-lg font-bold">Tray Commerce (ERP / catálogo)</h2>
+        <span className={cn(
+          "ml-auto rounded-full px-2.5 py-0.5 text-xs font-medium",
+          connected ? "bg-emerald-100 text-emerald-800" : "bg-muted text-muted-foreground",
+        )}>
+          {connected ? "Conectada" : st?.status === "error" ? "Erro" : "Desconectada"}
+        </span>
+      </div>
+      <p className="mt-1 text-sm text-muted-foreground">
+        A loja usa Tray. Conecte para sincronizar produtos, estoque e pedidos.
+      </p>
+
+      {st && !st.appConfigured && (
+        <p className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          Defina <code>TRAY_CONSUMER_KEY</code> e <code>TRAY_CONSUMER_SECRET</code> no servidor para habilitar a conexão.
+        </p>
+      )}
+
+      {connected ? (
+        <div className="mt-4 space-y-1 text-sm">
+          <p>Loja: <span className="font-medium">{st?.storeId ?? "—"}</span></p>
+          <p className="text-muted-foreground">web_api: {st?.apiAddress}</p>
+          {st?.accessExpiresAt && (
+            <p className="text-xs text-muted-foreground">
+              Token expira em {new Date(st.accessExpiresAt).toLocaleString("pt-BR")}
+            </p>
+          )}
+          <div className="mt-3 flex gap-2">
+            <button onClick={refresh} disabled={busy}
+              className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted disabled:opacity-50">
+              Renovar token
+            </button>
+            <button onClick={disconnect} disabled={busy}
+              className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50">
+              Desconectar
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+          <input
+            value={apiAddress}
+            onChange={(e) => setApiAddress(e.target.value)}
+            placeholder="https://sualoja.commercesuite.com.br/web_api"
+            className="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm"
+          />
+          <button onClick={connect} disabled={busy || (st != null && !st.appConfigured)}
+            className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background hover:opacity-90 disabled:opacity-50">
+            {busy ? "Redirecionando…" : "Conectar Tray"}
+          </button>
+        </div>
+      )}
+
+      {msg && <p className="mt-3 text-sm text-emerald-700">{msg}</p>}
+      {err && <p className="mt-3 text-sm text-red-600">{err}</p>}
+      {st?.lastError && !err && <p className="mt-2 text-xs text-red-500">Último erro: {st.lastError}</p>}
+    </section>
   );
 }
 

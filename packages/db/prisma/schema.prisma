@@ -69,8 +69,33 @@ model Tenant {
   quotes           Quote[]
   auditLogs        AuditLog[]
   npsResponses     NpsResponse[]
+  integrations     Integration[]
 
   @@map("tenants")
+}
+
+// Credenciais de integração externa por tenant (ADR-004). Hoje: Tray (ERP).
+// Tokens cifrados at-rest (enc:v1:) — NUNCA expor crus na API/UI/prompt.
+model Integration {
+  id            String   @id @default(cuid())
+  tenantId      String
+  provider      String   // "tray"
+  status        String   @default("disconnected") // connected | disconnected | error
+  apiAddress    String?  // web_api da loja (api_address devolvido pela Tray no callback)
+  storeId       String?
+  accessToken   String?  // cifrado
+  refreshToken  String?  // cifrado
+  accessExpiresAt  DateTime?
+  refreshExpiresAt DateTime?
+  lastError     String?
+  connectedAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, provider])
+  @@map("integrations")
 }
 
 // NPS rastreado (ADR-017): produto e atendimento separados.

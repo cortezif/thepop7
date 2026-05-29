@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { getPrisma } from "@thepop/db";
 import { verifyPassword, hashPassword, signJwt, requireAuth } from "../auth.js";
+import { connectTrayFromCallback } from "../services/integration-service.js";
 
 export const authRoutes: FastifyPluginAsync = async (app) => {
   // POST /auth/login — { tenantSlug, email, password } → { token, user }
@@ -65,5 +66,31 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
   // GET /auth/me — valida o token e devolve o usuário (pro web saber se está logado)
   app.get("/me", { preHandler: requireAuth }, async (req) => {
     return { id: req.auth!.sub, email: req.auth!.email, role: req.auth!.role };
+  });
+
+  // GET /auth/tray/callback — callback OAuth da Tray (passo 2). Aberta: a Tray
+  // redireciona o NAVEGADOR do lojista pra cá com code + api_address. O tenant
+  // vem no `state` (slug) que mandamos na URL de autorização. Troca o code por
+  // tokens, persiste cifrado e redireciona de volta pro painel.
+  app.get("/tray/callback", async (req, reply) => {
+    const q = z.object({
+      code: z.string().min(1),
+      api_address: z.string().url(),
+      state: z.string().optional(), // slug do tenant
+    }).safeParse(req.query);
+    const redirectBase = "/settings";
+    if (!q.success) return reply.redirect(`${redirectBase}?tray=erro&motivo=callback_invalido`);
+
+    const slug = (q.data.state ?? "thepop7").toLowerCase();
+    const tenant = await getPrisma().tenant.findUnique({ where: { slug } });
+    if (!tenant) return reply.redirect(`${redirectBase}?tray=erro&motivo=loja_nao_encontrada`);
+
+    try {
+      await connectTrayFromCallback(tenant.id, q.data.code, q.data.api_address);
+      return reply.redirect(`${redirectBase}?tray=ok`);
+    } catch (e: any) {
+      req.log.error(e, "tray callback falhou");
+      return reply.redirect(`${redirectBase}?tray=erro&motivo=${encodeURIComponent(e?.message ?? "falha")}`);
+    }
   });
 };

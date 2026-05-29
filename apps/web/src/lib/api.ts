@@ -172,6 +172,25 @@ export const api = {
     post<{ stage: string; message?: string; skipped?: boolean; reason?: string }>(
       `/post-sale/trigger`, { orderId, stage }
     ),
+  // Integração Tray (ERP) — onboarding OAuth
+  trayStatus: () => get<TrayStatus>(`/integrations/tray`),
+  trayAuthorizeUrl: (apiAddress: string) =>
+    get<{ url: string }>(`/integrations/tray/authorize?apiAddress=${encodeURIComponent(apiAddress)}`),
+  trayRefresh: () => post<{ ok: boolean }>(`/integrations/tray/refresh`, {}),
+  trayDisconnect: () => post<{ ok: boolean }>(`/integrations/tray/disconnect`, {}),
+};
+
+export type TrayStatus = {
+  provider: "tray";
+  connected: boolean;
+  status: string;
+  storeId: string | null;
+  apiAddress: string | null;
+  connectedAt: string | null;
+  accessExpiresAt: string | null;
+  refreshExpiresAt: string | null;
+  appConfigured: boolean;
+  lastError: string | null;
 };
 
 export type DuplicateContact = {
