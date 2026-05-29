@@ -34,6 +34,49 @@ export const catalogRoutes: FastifyPluginAsync = async (app) => {
     };
   });
 
+  // GET /catalog/wholesale — produtos internos + config de atacado (ADR-024)
+  app.get("/wholesale", async (req) => {
+    const products = await getPrisma().product.findMany({
+      where: { tenantId: req.auth!.tenantId, active: true },
+      orderBy: { name: "asc" },
+      select: { id: true, externalId: true, name: true, priceBRL: true, variants: true, wholesaleEnabled: true, wholesalePriceBRL: true, wholesaleMinQty: true },
+    });
+    return products.map((p) => ({
+      id: p.id, externalId: p.externalId, name: p.name, priceBRL: Number(p.priceBRL),
+      stock: ((p.variants as Array<{ stock?: number }>) ?? []).reduce((s, v) => s + (Number(v.stock) || 0), 0),
+      wholesaleEnabled: p.wholesaleEnabled,
+      wholesalePriceBRL: p.wholesalePriceBRL == null ? null : Number(p.wholesalePriceBRL),
+      wholesaleMinQty: p.wholesaleMinQty,
+    }));
+  });
+
+  // POST /catalog/wholesale/:id — define a exposição do produto no atacado
+  app.post("/wholesale/:id", async (req, reply) => {
+    const body = z.object({
+      tenantSlug: z.string().optional(),
+      enabled: z.boolean(),
+      priceBRL: z.number().positive().nullable().optional(),
+      minQty: z.number().int().positive().optional(),
+    }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+    const tenantId = req.auth!.tenantId;
+    const id = (req.params as any).id;
+    const prod = await getPrisma().product.findFirst({ where: { id, tenantId } });
+    if (!prod) return reply.code(404).send({ error: "produto não encontrado" });
+    if (body.data.enabled && body.data.priceBRL == null && prod.wholesalePriceBRL == null) {
+      return reply.code(400).send({ error: "informe o preço de atacado para expor o produto" });
+    }
+    await getPrisma().product.update({
+      where: { id },
+      data: {
+        wholesaleEnabled: body.data.enabled,
+        ...(body.data.priceBRL !== undefined ? { wholesalePriceBRL: body.data.priceBRL } : {}),
+        ...(body.data.minQty !== undefined ? { wholesaleMinQty: body.data.minQty } : {}),
+      },
+    });
+    return { ok: true };
+  });
+
   // POST /catalog/barcodes/backfill — atribui/sincroniza códigos (Tray/CPlug → interno)
   app.post("/barcodes/backfill", async (req) => {
     return backfillBarcodes(req.auth!.tenantId);

@@ -205,6 +205,10 @@ export const api = {
   // Estoque / código de barras (F1/F2)
   backfillBarcodes: () => post<BackfillResult>(`/catalog/barcodes/backfill`, {}),
   stockTrace: (code: string) => get<StockTrace>(`/stock/trace?code=${encodeURIComponent(code)}`),
+  // Atacado B2B (ADR-024)
+  listWholesale: () => get<WholesaleProductRow[]>(`/catalog/wholesale`),
+  setWholesale: (id: string, payload: { enabled: boolean; priceBRL?: number | null; minQty?: number }) =>
+    post<{ ok: boolean }>(`/catalog/wholesale/${id}`, payload),
   // Picking / conferência de envio (F3)
   getPicking: (orderId: string) => get<PickingList>(`/orders/${orderId}/picking`),
   packOrder: (orderId: string, scanned: string[]) => post<PackResult>(`/orders/${orderId}/pack`, { scanned }),
@@ -224,6 +228,11 @@ export type BarcodeByPhoto = {
     productId: string; name: string; priceBRL: number; score: number | null; mainPhoto: string | null;
     variantes: Array<{ sku: string; color?: string; size?: string; barcode: string | null }>;
   }>;
+};
+
+export type WholesaleProductRow = {
+  id: string; externalId: string; name: string; priceBRL: number; stock: number;
+  wholesaleEnabled: boolean; wholesalePriceBRL: number | null; wholesaleMinQty: number;
 };
 
 export type PickingItem = { variantSku: string; description: string; quantity: number; barcode: string | null };
