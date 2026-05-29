@@ -66,23 +66,25 @@ export function mapTrayProduct(raw: TrayRawProduct): ErpProduct {
     .filter((v): v is NonNullable<typeof v> => !!v)
     .map((v) => {
       const { color, size } = variantAttrs(v.ValuesVariant);
+      const barcode = v.ean ?? v.barcode;
       return {
         sku: String(v.sku ?? raw.reference ?? raw.id),
         color,
         size,
         stock: num(v.stock),
-        barcode: v.ean ?? v.barcode ?? undefined,
+        ...(barcode ? { barcode } : {}),
       };
     });
 
   // Produto sem variantes cadastradas: trata o próprio produto como 1 variante.
   if (variants.length === 0) {
+    const barcode = raw.ean ?? raw.barcode;
     variants.push({
       sku: String(raw.reference ?? raw.id),
       color: undefined,
       size: undefined,
       stock: num(raw.stock),
-      barcode: raw.ean ?? raw.barcode ?? undefined,
+      ...(barcode ? { barcode } : {}),
     });
   }
 

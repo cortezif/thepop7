@@ -28,6 +28,14 @@ test("mapTrayProduct: produto com variantes (cor/tamanho/estoque)", () => {
   assert.equal(v1!.size, "G");
 });
 
+test("mapTrayProduct: lê o EAN da variante quando a Tray fornece", () => {
+  const raw: TrayRawProduct = {
+    id: 5, name: "Camisa", price: 90,
+    Variant: [{ Variant: { sku: "C-P", ean: "7891234567895", stock: 4 } }],
+  };
+  assert.equal(mapTrayProduct(raw).variants[0]!.barcode, "7891234567895");
+});
+
 test("mapTrayProduct: produto sem variantes vira 1 variante pelo reference", () => {
   const raw: TrayRawProduct = { id: 7, name: "Bolsa", price: 120, reference: "BOLSA-1", stock: "5" };
   const p = mapTrayProduct(raw);

@@ -26,6 +26,12 @@ export async function issueNfeForOrder(tenantId: string, orderId: string): Promi
   if (order.nfeNumber) return { ok: false, reason: "NF-e já emitida", skipped: true };
 
   const addr = (order.shippingAddress as Record<string, string> | null) ?? {};
+  // Códigos de barras dos itens (cEAN na NF-e) — lookup por SKU da variante.
+  const barcodes = await prisma.productBarcode.findMany({
+    where: { tenantId, variantSku: { in: order.items.map((i) => i.variantSku) } },
+    select: { variantSku: true, barcode: true },
+  });
+  const barcodeBySku = new Map(barcodes.map((b) => [b.variantSku, b.barcode]));
   const input: NfeInput = {
     orderId: order.id,
     customer: {
@@ -39,6 +45,7 @@ export async function issueNfeForOrder(tenantId: string, orderId: string): Promi
       sku: it.variantSku,
       quantity: it.quantity,
       unitPriceBRL: Number(it.unitPriceBRL),
+      barcode: barcodeBySku.get(it.variantSku),
     })),
     totalBRL: Number(order.totalBRL),
   };

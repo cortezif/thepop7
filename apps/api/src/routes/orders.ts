@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { getPrisma } from "@thepop/db";
 import { z } from "zod";
 import { listOrders, createSampleOrder, exportOrdersCSV, approveOrder, receiveReturn } from "../services/order-service.js";
+import { getPickingList, confirmPicking } from "../services/picking-service.js";
 
 async function tid(slug: string) {
   const t = await getPrisma().tenant.findUnique({ where: { slug } });
@@ -47,6 +48,26 @@ export const orderRoutes: FastifyPluginAsync = async (app) => {
     if (!id) return reply.code(404).send({ error: "tenant not found" });
     const r = await receiveReturn(id, (req.params as any).returnId);
     if (!r.ok) return reply.code(400).send(r);
+    return r;
+  });
+
+  // GET /orders/:id/picking — lista de separação (itens + código de barras)
+  app.get("/:id/picking", async (req, reply) => {
+    const id = await tid((req.query as any)?.tenantSlug);
+    if (!id) return reply.code(404).send({ error: "tenant not found" });
+    const list = await getPickingList(id, (req.params as any).id);
+    if (!list) return reply.code(404).send({ error: "pedido não encontrado" });
+    return list;
+  });
+
+  // POST /orders/:id/pack — confere os códigos bipados contra o pedido
+  app.post("/:id/pack", async (req, reply) => {
+    const body = z.object({ tenantSlug: z.string(), scanned: z.array(z.string()) }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+    const id = await tid(body.data.tenantSlug);
+    if (!id) return reply.code(404).send({ error: "tenant not found" });
+    const r = await confirmPicking(id, (req.params as any).id, body.data.scanned);
+    if (!r.ok) return reply.code(404).send({ error: "pedido não encontrado" });
     return r;
   });
 

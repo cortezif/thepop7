@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { Barcode, Search } from "lucide-react";
+import { Barcode, Search, Tag } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
-import { api, type StockTrace } from "../lib/api";
+import { api, downloadLabels, type StockTrace } from "../lib/api";
 
 const TYPE_LABEL: Record<string, string> = {
   purchase_in: "Entrada (compra)",
@@ -18,6 +18,7 @@ export function Estoque() {
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [backfillMsg, setBackfillMsg] = useState<string | null>(null);
+  const [labelMsg, setLabelMsg] = useState<string | null>(null);
 
   async function lookup(c?: string) {
     const q = (c ?? code).trim();
@@ -36,6 +37,14 @@ export function Estoque() {
       const r = await api.backfillBarcodes();
       setBackfillMsg(`${r.variantes} variantes — ${r.jaTinham} já tinham, ${r.gerados} gerados.`);
     } catch (e: any) { setBackfillMsg(`Erro: ${e?.message ?? e}`); }
+  }
+
+  async function baixarEtiquetas(format: "csv" | "zpl") {
+    setLabelMsg(null);
+    try {
+      const r = await downloadLabels(format);
+      setLabelMsg(`Arquivo ${format.toUpperCase()} gerado${r.missing ? ` (${r.missing} sem código, ignorados)` : ""}.`);
+    } catch (e: any) { setLabelMsg(`Erro: ${e?.message ?? e}`); }
   }
 
   return (
@@ -60,11 +69,25 @@ export function Estoque() {
         </button>
       </div>
 
-      <div className="mt-2 flex items-center gap-3">
+      <div className="mt-2 flex flex-wrap items-center gap-3">
         <button onClick={backfill} className="text-xs text-muted-foreground underline hover:text-foreground">
           Gerar/sincronizar códigos do catálogo
         </button>
         {backfillMsg && <span className="text-xs text-muted-foreground">{backfillMsg}</span>}
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/30 p-4">
+        <Tag size={16} className="text-muted-foreground" />
+        <span className="text-sm font-medium">Arquivo de etiquetas (fornecedor)</span>
+        <button onClick={() => baixarEtiquetas("csv")}
+          className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted">
+          Baixar CSV
+        </button>
+        <button onClick={() => baixarEtiquetas("zpl")}
+          className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted">
+          Baixar ZPL (Zebra)
+        </button>
+        {labelMsg && <span className="text-xs text-muted-foreground">{labelMsg}</span>}
       </div>
 
       {err && <p className="mt-4 text-sm text-red-600">{err}</p>}

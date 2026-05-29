@@ -12,7 +12,7 @@ const baseInput: NfeInput = {
     address: { zip: "01310-100", address: "Av Paulista", number: "1000", neighborhood: "Bela Vista", city: "São Paulo", state: "SP" },
   },
   items: [
-    { description: "Vestido Floral", sku: "VF-M-AZ", quantity: 2, unitPriceBRL: 199.9, ncm: "61046200", cfop: "5102" },
+    { description: "Vestido Floral", sku: "VF-M-AZ", quantity: 2, unitPriceBRL: 199.9, ncm: "61046200", cfop: "5102", barcode: "2000000000015" },
     { description: "Bolsa", sku: "BOLSA-1", quantity: 1, unitPriceBRL: 120 },
   ],
   totalBRL: 519.8,
@@ -26,7 +26,8 @@ test("buildCplugNfePayload: cliente + itens (code=sku) + total + referência", (
   assert.equal(p.customer.city, "São Paulo");
   assert.equal(p.customer.zip_code, "01310-100");
   assert.equal(p.items.length, 2);
-  assert.deepEqual(p.items[0], { description: "Vestido Floral", code: "VF-M-AZ", quantity: 2, unit_price: 199.9, ncm: "61046200", cfop: "5102" });
+  assert.deepEqual(p.items[0], { description: "Vestido Floral", code: "VF-M-AZ", ean: "2000000000015", quantity: 2, unit_price: 199.9, ncm: "61046200", cfop: "5102" });
+  assert.equal(p.items[1].ean, undefined);  // sem barcode → sem cEAN
   assert.equal(p.items[1].ncm, undefined); // opcional ausente
   assert.equal(p.total, 519.8);
 });

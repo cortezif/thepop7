@@ -116,7 +116,7 @@ export interface FiscalConnector {
 export type NfeInput = {
   orderId: string;
   customer: { name: string; document: string; email?: string; address: Record<string, string> };
-  items: Array<{ description: string; sku: string; quantity: number; unitPriceBRL: number; ncm?: string; cfop?: string }>;
+  items: Array<{ description: string; sku: string; quantity: number; unitPriceBRL: number; ncm?: string; cfop?: string; barcode?: string }>;
   totalBRL: number;
 };
 

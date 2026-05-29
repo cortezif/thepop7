@@ -44,6 +44,25 @@ async function post<T>(path: string, body: Record<string, unknown>): Promise<T> 
   return res.json();
 }
 
+/** Baixa o arquivo único de etiquetas (CSV ou ZPL) do catálogo. */
+export async function downloadLabels(format: "csv" | "zpl") {
+  const res = await fetch(`/api/stock/labels?format=${format}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ tenantSlug: tenantSlug() }),
+  });
+  if (res.status === 401) { on401(); throw new Error("não autenticado"); }
+  if (!res.ok) throw new Error(`etiquetas → ${res.status}`);
+  const missing = res.headers.get("x-labels-missing");
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = `etiquetas.${format}`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  return { missing: Number(missing ?? 0) };
+}
+
 /** Baixa o CSV de pedidos com o header de auth (link <a> não manda token). */
 export async function downloadOrdersCsv() {
   const res = await fetch(`/api/orders/export.csv?tenantSlug=${tenantSlug()}`, { headers: authHeaders() });

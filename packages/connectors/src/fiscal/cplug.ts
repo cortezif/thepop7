@@ -48,6 +48,7 @@ export function buildCplugNfePayload(input: NfeInput): Record<string, unknown> {
     items: input.items.map((it) => ({
       description: it.description,
       code: it.sku,
+      ean: it.barcode || undefined,       // cEAN/cEANTrib na NF-e (GTIN)
       quantity: it.quantity,
       unit_price: it.unitPriceBRL,
       ncm: it.ncm ?? undefined,
