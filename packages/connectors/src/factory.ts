@@ -8,6 +8,7 @@ import { MockPayment }   from "./payment/mock-payment.js";
 import { MockFiscal }    from "./fiscal/mock-fiscal.js";
 import { MockMessaging } from "./messaging/mock-messaging.js";
 import { BlingErp }      from "./erp/bling.js";
+import { TrayErp }       from "./erp/tray.js";
 import { MelhorEnvio }   from "./logistics/melhor-envio.js";
 import { MercadoPago }   from "./payment/mercado-pago.js";
 import { PlugNotas }     from "./fiscal/plug-notas.js";
@@ -21,9 +22,17 @@ const log = (msg: string) => console.warn(msg);
 // um outage do provedor degrada o serviço (resposta mock) em vez de derrubar
 // o fluxo de venda/pós-venda (ADR-022). Em dev (mocks), connector único.
 
+// Provedor de ERP/catálogo selecionável por loja (ADR-004). A loja usa Tray;
+// Bling segue suportado. `ERP_PROVIDER=tray|bling` (default: tray). Em ambos os
+// casos o mock é o último recurso no failover (ADR-022).
+export function erpProvider(): "tray" | "bling" {
+  return (process.env.ERP_PROVIDER ?? "tray").toLowerCase() === "bling" ? "bling" : "tray";
+}
+
 export function getErpConnector(): ErpConnector {
   if (useMocks()) return new MockErp();
-  return createFailover<ErpConnector>([new BlingErp(), new MockErp()], { label: "erp", log });
+  const primary: ErpConnector = erpProvider() === "bling" ? new BlingErp() : new TrayErp();
+  return createFailover<ErpConnector>([primary, new MockErp()], { label: `erp:${erpProvider()}`, log });
 }
 export function getLogisticsConnector(): LogisticsConnector {
   if (useMocks()) return new MockLogistics();

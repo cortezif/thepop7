@@ -3,6 +3,7 @@ export * from "./factory.js";
 export * from "./failover.js";
 
 export * from "./erp/bling.js";
+export * from "./erp/tray.js";
 export * from "./erp/mock-erp.js";
 
 export * from "./logistics/melhor-envio.js";
