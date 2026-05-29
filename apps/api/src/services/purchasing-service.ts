@@ -56,31 +56,37 @@ export async function openPurchaseRequest(tenantId: string, input: {
   const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
   if (!tenant) throw new Error("tenant não encontrado");
 
-  return withTenant(tenantId, async (tx) => {
+  // Cria a requisição + escolhe fornecedores na transação (rápido, sem LLM).
+  const { requestId, suppliers } = await withTenant(tenantId, async (tx) => {
     const request = await tx.purchaseRequest.create({
       data: { tenantId, items: input.items as any, reason: input.reason, status: "open" },
     });
-
     await tx.domainEvent.create({
       data: { tenantId, type: "purchase.requested", aggregateType: "purchase_request", aggregateId: request.id, payload: { items: input.items } as any, actor: "agent" },
     });
-
-    // Gera a mensagem de cotação (uma genérica + por fornecedor se informado)
     const suppliers = input.supplierIds?.length
       ? await tx.supplier.findMany({ where: { id: { in: input.supplierIds } } })
       : await tx.supplier.findMany({ take: 3 });
+    return { requestId: request.id, suppliers };
+  });
 
-    const messages: Array<{ supplierId: string; supplierName: string; message: string }> = [];
-    for (const s of suppliers) {
+  // Gera as mensagens de cotação FORA da transação (efeito de IA, pode levar
+  // segundos). Gracioso: se a Bia/LLM cair, a requisição já está salva — devolve
+  // a mensagem como indisponível em vez de abortar a criação (ADR-022).
+  const messages: Array<{ supplierId: string; supplierName: string; message: string; aiUnavailable?: boolean }> = [];
+  for (const s of suppliers) {
+    try {
       const msg = await composeQuoteRequest(
         input.items.map((i) => ({ description: i.description, quantity: i.quantity })),
         { storeName: tenant.name, supplierName: s.name, channel: s.contactEmail ? "email" : "whatsapp" }
       );
       messages.push({ supplierId: s.id, supplierName: s.name, message: msg });
+    } catch {
+      messages.push({ supplierId: s.id, supplierName: s.name, message: "", aiUnavailable: true });
     }
+  }
 
-    return { requestId: request.id, messages };
-  });
+  return { requestId, messages };
 }
 
 /** Recebe a resposta do fornecedor, parseia e grava a cotação. */
