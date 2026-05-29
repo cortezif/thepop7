@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { Package, Truck, Sparkles, Plus, Download } from "lucide-react";
+import { Package, Truck, Sparkles, Plus, Download, Barcode, Check, X } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
-import { api, downloadOrdersCsv, type Order } from "../lib/api";
+import { api, downloadOrdersCsv, type Order, type PickingItem, type PackResult } from "../lib/api";
 import { cn, formatBRL } from "../lib/utils";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -27,6 +27,7 @@ export function Pedidos() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [liaMsg, setLiaMsg] = useState<Record<string, string>>({});
+  const [picking, setPicking] = useState<string | null>(null);
 
   function load() {
     api.listOrders().then(setOrders).catch((e) => setError(String(e)));
@@ -186,7 +187,15 @@ export function Pedidos() {
                       <Sparkles size={13} /> {busy === `${o.id}:${s}` ? "…" : `Lia ${s.toUpperCase()}`}
                     </button>
                   ))}
+                  <button
+                    onClick={() => setPicking(picking === o.id ? null : o.id)}
+                    className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
+                  >
+                    <Barcode size={14} /> Conferir envio
+                  </button>
                 </div>
+
+                {picking === o.id && <PickingPanel orderId={o.id} />}
 
                 {liaMsg[o.id] && (
                   <div className="mt-3 rounded-md border border-primary/30 bg-primary/5 p-3 text-sm">
@@ -201,6 +210,96 @@ export function Pedidos() {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Conferência de envio por scan: bipa os itens e reconcilia contra o pedido. */
+function PickingPanel({ orderId }: { orderId: string }) {
+  const [items, setItems] = useState<PickingItem[]>([]);
+  const [scanned, setScanned] = useState<string[]>([]);
+  const [input, setInput] = useState("");
+  const [result, setResult] = useState<PackResult | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.getPicking(orderId).then((l) => setItems(l.items)).catch((e) => setErr(String(e)));
+  }, [orderId]);
+
+  function addScan() {
+    const code = input.trim();
+    if (!code) return;
+    setScanned((s) => [...s, code]);
+    setInput("");
+    setResult(null);
+  }
+
+  async function conferir() {
+    setErr(null);
+    try { setResult(await api.packOrder(orderId, scanned)); }
+    catch (e: any) { setErr(String(e?.message ?? e)); }
+  }
+
+  // contagem bipada por código (pré-visualização antes de conferir)
+  const scanCount = scanned.reduce<Record<string, number>>((m, c) => { m[c] = (m[c] ?? 0) + 1; return m; }, {});
+
+  return (
+    <div className="mt-3 rounded-md border border-border bg-muted/30 p-4">
+      <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+        <Barcode size={13} /> Conferência de envio
+      </p>
+
+      <div className="flex gap-2">
+        <input
+          autoFocus
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && addScan()}
+          placeholder="Bipe o código de barras do item…"
+          className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm"
+        />
+        <button onClick={conferir} disabled={scanned.length === 0}
+          className="rounded-md bg-foreground px-4 py-1.5 text-sm font-medium text-background disabled:opacity-50">
+          Conferir ({scanned.length})
+        </button>
+      </div>
+
+      <ul className="mt-3 space-y-1 text-sm">
+        {items.map((it) => {
+          const got = scanCount[it.barcode ?? ""] ?? 0;
+          const line = result?.items.find((r) => r.variantSku === it.variantSku);
+          const conferred = line ? line.conferred : Math.min(got, it.quantity);
+          const ok = conferred >= it.quantity;
+          return (
+            <li key={it.variantSku} className="flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                {ok ? <Check size={14} className="text-emerald-600" /> : <X size={14} className="text-muted-foreground" />}
+                <span>{it.description}</span>
+                <span className="text-xs text-muted-foreground">{it.barcode ?? "sem código"}</span>
+              </span>
+              <span className={cn("text-xs", ok ? "text-emerald-600" : "text-muted-foreground")}>
+                {conferred}/{it.quantity}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+
+      {result && (
+        <div className="mt-3 text-sm">
+          {result.complete ? (
+            <p className="flex items-center gap-1.5 font-medium text-emerald-700"><Check size={14} /> Envio conferido — tudo certo.</p>
+          ) : (
+            <p className="flex items-center gap-1.5 font-medium text-red-600"><X size={14} /> Divergência na conferência.</p>
+          )}
+          {result.extras.length > 0 && (
+            <p className="mt-1 text-xs text-red-600">
+              Códigos fora do pedido: {result.extras.map((e) => `${e.barcode} (${e.count})`).join(", ")}
+            </p>
+          )}
+        </div>
+      )}
+      {err && <p className="mt-2 text-xs text-red-600">{err}</p>}
     </div>
   );
 }

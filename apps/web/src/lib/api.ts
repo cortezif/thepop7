@@ -200,6 +200,17 @@ export const api = {
   // Estoque / código de barras (F1/F2)
   backfillBarcodes: () => post<BackfillResult>(`/catalog/barcodes/backfill`, {}),
   stockTrace: (code: string) => get<StockTrace>(`/stock/trace?code=${encodeURIComponent(code)}`),
+  // Picking / conferência de envio (F3)
+  getPicking: (orderId: string) => get<PickingList>(`/orders/${orderId}/picking`),
+  packOrder: (orderId: string, scanned: string[]) => post<PackResult>(`/orders/${orderId}/pack`, { scanned }),
+};
+
+export type PickingItem = { variantSku: string; description: string; quantity: number; barcode: string | null };
+export type PickingList = { orderId: string; items: PickingItem[] };
+export type PackResult = {
+  ok: boolean; complete: boolean;
+  items: Array<{ variantSku: string; barcode: string; expected: number; conferred: number; missing: number }>;
+  extras: Array<{ barcode: string; count: number }>;
 };
 
 export type BackfillResult = { produtos: number; variantes: number; jaTinham: number; gerados: number; lookupSincronizado: number };
