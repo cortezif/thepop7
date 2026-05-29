@@ -13,6 +13,7 @@ export type FinancialOrder = {
   totalBRL: Num;
   subtotalBRL: Num;
   shippingBRL: Num;
+  shippingCostBRL?: Num;
   paymentMethod: string | null;
   items: Array<{ quantity: number; product: { costBRL: Num } }>;
 };
@@ -22,26 +23,35 @@ export type FinancialsSummary = {
   grossRevenueBRL: number;
   subtotalBRL: number;
   shippingBRL: number;
+  shippingCostBRL: number;
+  shippingResultBRL: number;
   cogsBRL: number;
   gatewayFeesBRL: number;
   netMarginBRL: number;
   netMarginPct: number;
   ordersMissingCost: number;
+  ordersMissingShippingCost: number;
 };
 
 /**
- * Margem real sobre pedidos já realizados: receita − COGS − taxa de gateway.
- * Frete é pass-through (cobrado ≈ custo da transportadora) → cancela na margem
- * líquida, que fica subtotal − COGS − gateway. Pedidos com item sem custo
- * cadastrado entram com COGS 0 e são sinalizados (margem superestimada).
+ * Margem real sobre pedidos já realizados: receita − COGS − taxa de gateway +
+ * resultado de frete. O resultado de frete = cobrado − pago à transportadora
+ * (`shippingCostBRL`); quando o custo não foi informado, assume pass-through
+ * (custo = cobrado → resultado 0) e sinaliza. Pedidos com item sem custo entram
+ * com COGS 0 e são sinalizados (margem superestimada).
  */
 export function summarizeFinancials(orders: FinancialOrder[], fees: Record<string, number> = DEFAULT_GATEWAY_FEES): FinancialsSummary {
-  let grossRevenue = 0, subtotal = 0, shipping = 0, cogs = 0, gateway = 0, ordersMissingCost = 0;
+  let grossRevenue = 0, subtotal = 0, shipping = 0, shippingCost = 0, cogs = 0, gateway = 0;
+  let ordersMissingCost = 0, ordersMissingShippingCost = 0;
 
   for (const o of orders) {
     grossRevenue += n(o.totalBRL);
     subtotal += n(o.subtotalBRL);
-    shipping += n(o.shippingBRL);
+    const charged = n(o.shippingBRL);
+    shipping += charged;
+    // custo de frete: usa o informado; senão pass-through (custo = cobrado).
+    if (o.shippingCostBRL == null) { shippingCost += charged; ordersMissingShippingCost++; }
+    else shippingCost += n(o.shippingCostBRL);
     const rate = fees[o.paymentMethod ?? "pix"] ?? fees.pix ?? 0;
     gateway += n(o.totalBRL) * rate;
     let orderHasMissing = false;
@@ -52,7 +62,8 @@ export function summarizeFinancials(orders: FinancialOrder[], fees: Record<strin
     if (orderHasMissing) ordersMissingCost++;
   }
 
-  const netMargin = subtotal - cogs - gateway;
+  const shippingResult = shipping - shippingCost;
+  const netMargin = subtotal - cogs - gateway + shippingResult;
   const netMarginPct = subtotal > 0 ? (netMargin / subtotal) * 100 : 0;
 
   return {
@@ -60,11 +71,14 @@ export function summarizeFinancials(orders: FinancialOrder[], fees: Record<strin
     grossRevenueBRL: round2(grossRevenue),
     subtotalBRL: round2(subtotal),
     shippingBRL: round2(shipping),
+    shippingCostBRL: round2(shippingCost),
+    shippingResultBRL: round2(shippingResult),
     cogsBRL: round2(cogs),
     gatewayFeesBRL: round2(gateway),
     netMarginBRL: round2(netMargin),
     netMarginPct: Number(netMarginPct.toFixed(1)),
     ordersMissingCost,
+    ordersMissingShippingCost,
   };
 }
 

@@ -65,6 +65,40 @@ test("summarizeFinancials: aceita Decimal-like (toString) e soma vários pedidos
   assert.equal(r.cogsBRL, 142);
 });
 
+test("summarizeFinancials: frete sem custo informado = pass-through (resultado 0) + sinaliza", () => {
+  const r = summarizeFinancials([
+    order({ totalBRL: 119.9, subtotalBRL: 100, shippingBRL: 19.9, paymentMethod: "pix",
+      items: [{ quantity: 1, product: { costBRL: 40 } }] }),
+  ]);
+  assert.equal(r.shippingCostBRL, 19.9);   // assume custo = cobrado
+  assert.equal(r.shippingResultBRL, 0);
+  assert.equal(r.ordersMissingShippingCost, 1);
+  // margem = 100 − 40 − gateway(119.9*0.0099=1.19) + 0 = 58.81
+  assert.equal(r.netMarginBRL, 58.81);
+});
+
+test("summarizeFinancials: frete cobrado > pago → resultado entra na margem", () => {
+  const r = summarizeFinancials([
+    order({ totalBRL: 119.9, subtotalBRL: 100, shippingBRL: 19.9, shippingCostBRL: 12, paymentMethod: "pix",
+      items: [{ quantity: 1, product: { costBRL: 40 } }] }),
+  ]);
+  assert.equal(r.shippingCostBRL, 12);
+  assert.equal(r.shippingResultBRL, 7.9);       // 19.90 − 12
+  assert.equal(r.ordersMissingShippingCost, 0);
+  // margem = 100 − 40 − 1.19 + 7.90 = 66.71
+  assert.equal(r.netMarginBRL, 66.71);
+});
+
+test("summarizeFinancials: frete subsidiado (pago > cobrado) → resultado negativo", () => {
+  const r = summarizeFinancials([
+    order({ totalBRL: 100, subtotalBRL: 100, shippingBRL: 0, shippingCostBRL: 15, paymentMethod: "pix",
+      items: [{ quantity: 1, product: { costBRL: 0 } }] }),
+  ]);
+  assert.equal(r.shippingResultBRL, -15);
+  // margem = 100 − 0 − 0.99 − 15 = 84.01
+  assert.equal(r.netMarginBRL, 84.01);
+});
+
 test("buildFunnel: contagens viram etapas + % da etapa anterior", () => {
   const f = buildFunnel({ conversations: 5, ordersCreated: 1, ordersPaid: 1, ordersDelivered: 1, ordersCanceled: 0 });
   assert.deepEqual(f.stages.map((s) => s.count), [5, 1, 1, 1]);

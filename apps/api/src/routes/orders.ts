@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
-import { getPrisma } from "@thepop/db";
+import { getPrisma, withTenant } from "@thepop/db";
 import { z } from "zod";
 import { listOrders, createSampleOrder, exportOrdersCSV, approveOrder, receiveReturn } from "../services/order-service.js";
 import { getPickingList, confirmPicking } from "../services/picking-service.js";
@@ -50,6 +50,20 @@ export const orderRoutes: FastifyPluginAsync = async (app) => {
     const r = await receiveReturn(id, (req.params as any).returnId);
     if (!r.ok) return reply.code(400).send(r);
     return r;
+  });
+
+  // POST /orders/:id/shipping-cost — registra o custo real do frete (ADR-017)
+  app.post("/:id/shipping-cost", async (req, reply) => {
+    const body = z.object({ tenantSlug: z.string(), costBRL: z.number().min(0) }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+    const id = await tid(body.data.tenantSlug);
+    if (!id) return reply.code(404).send({ error: "tenant not found" });
+    return withTenant(id, async (tx) => {
+      const order = await tx.order.findFirst({ where: { id: (req.params as any).id, tenantId: id } });
+      if (!order) return reply.code(404).send({ error: "pedido não encontrado" });
+      await tx.order.update({ where: { id: order.id }, data: { shippingCostBRL: body.data.costBRL } });
+      return { ok: true, shippingCostBRL: body.data.costBRL };
+    });
   });
 
   // POST /orders/:id/issue-nfe — (re)emite a NF-e manualmente (idempotente)

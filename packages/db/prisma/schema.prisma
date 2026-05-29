@@ -449,6 +449,9 @@ model Order {
   // Valores
   subtotalBRL Decimal  @db.Decimal(10, 2) @default(0)
   shippingBRL Decimal  @db.Decimal(10, 2) @default(0)
+  // Custo real do frete pago à transportadora (ADR-017). null = ainda não
+  // informado → tratado como pass-through (resultado de frete 0) no financeiro.
+  shippingCostBRL Decimal? @db.Decimal(10, 2)
   totalBRL    Decimal  @db.Decimal(10, 2) @default(0)
 
   // Pagamento

@@ -61,7 +61,7 @@ export function Dashboard() {
             </span>
           </div>
           <p className="mb-4 text-xs text-muted-foreground">
-            Receita de produtos − custo (COGS) − taxa de gateway. Frete tratado como pass-through.
+            Receita de produtos − custo (COGS) − taxa de gateway + resultado de frete (cobrado − pago à transportadora).
           </p>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -74,16 +74,22 @@ export function Dashboard() {
             <MarginRow label="Receita de produtos (subtotal)" value={m.financials.subtotalBRL} />
             <MarginRow label="− Custo dos produtos (COGS)" value={-m.financials.cogsBRL} />
             <MarginRow label="− Taxa de gateway" value={-m.financials.gatewayFeesBRL} />
+            <MarginRow label="± Resultado de frete" value={m.financials.shippingResultBRL} />
             <div className="my-1 border-t border-border" />
             <MarginRow label="= Margem líquida" value={m.financials.netMarginBRL} bold />
             <p className="pt-1 text-xs text-muted-foreground">
-              Frete cobrado {formatBRL(m.financials.shippingBRL)} (pass-through, não entra na margem).
+              Frete cobrado {formatBRL(m.financials.shippingBRL)} − pago {formatBRL(m.financials.shippingCostBRL)} = {formatBRL(m.financials.shippingResultBRL)}.
             </p>
           </div>
 
           {m.financials.ordersMissingCost > 0 && (
             <p className="mt-3 rounded bg-amber-50 px-3 py-2 text-xs text-amber-700">
               {m.financials.ordersMissingCost} pedido(s) têm itens sem custo cadastrado — a margem está superestimada. Cadastre o custo no catálogo.
+            </p>
+          )}
+          {m.financials.ordersMissingShippingCost > 0 && (
+            <p className="mt-2 rounded bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+              {m.financials.ordersMissingShippingCost} pedido(s) sem custo de frete informado — tratados como pass-through. Registre a fatura da transportadora no pedido.
             </p>
           )}
         </div>

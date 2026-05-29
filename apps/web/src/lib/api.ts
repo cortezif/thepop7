@@ -354,9 +354,12 @@ export type Financials = {
   grossRevenueBRL: number;
   subtotalBRL: number;
   shippingBRL: number;
+  shippingCostBRL: number;
+  shippingResultBRL: number;
   cogsBRL: number;
   gatewayFeesBRL: number;
   netMarginBRL: number;
   netMarginPct: number;
   ordersMissingCost: number;
+  ordersMissingShippingCost: number;
 };

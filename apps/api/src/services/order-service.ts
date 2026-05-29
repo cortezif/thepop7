@@ -418,27 +418,32 @@ export async function exportOrdersCSV(tenantId: string, gatewayFeesOverride?: Re
     });
 
     const header = [
-      "pedido_id", "data", "cliente", "status", "pagamento", "itens",
-      "subtotal_BRL", "frete_BRL", "total_BRL", "cogs_BRL", "taxa_gateway_BRL", "margem_liquida_BRL", "margem_pct",
+      "pedido_id", "data", "nfe_numero", "cliente", "status", "pagamento", "itens",
+      "subtotal_BRL", "frete_cobrado_BRL", "frete_pago_BRL", "frete_resultado_BRL",
+      "total_BRL", "cogs_BRL", "taxa_gateway_BRL", "margem_liquida_BRL", "margem_pct",
     ];
 
     const rows = orders.map((o) => {
       const subtotal = Number(o.subtotalBRL);
       const shipping = Number(o.shippingBRL);
+      const shipCost = o.shippingCostBRL == null ? shipping : Number(o.shippingCostBRL); // null = pass-through
+      const shipResult = shipping - shipCost;
       const total = Number(o.totalBRL);
       const cogs = o.items.reduce((s, it) => s + Number(it.product.costBRL ?? 0) * it.quantity, 0);
       const gateway = total * (fees[o.paymentMethod ?? "pix"] ?? fees.pix!);
-      const margin = subtotal - cogs - gateway;
+      const margin = subtotal - cogs - gateway + shipResult;
       const marginPct = subtotal > 0 ? (margin / subtotal) * 100 : 0;
       const itens = o.items.map((it) => `${it.quantity}x ${it.product.name} (${it.variantSku})`).join(" | ");
       return [
         o.id,
         o.createdAt.toISOString().slice(0, 10),
+        o.nfeNumber ?? "",
         o.contact.name ?? decryptPII(o.contact.phone) ?? "Cliente",
         o.status,
         o.paymentMethod ?? "",
         itens,
-        brl(subtotal), brl(shipping), brl(total), brl(cogs), brl(gateway), brl(margin), brl(marginPct),
+        brl(subtotal), brl(shipping), brl(shipCost), brl(shipResult),
+        brl(total), brl(cogs), brl(gateway), brl(margin), brl(marginPct),
       ];
     });
 
