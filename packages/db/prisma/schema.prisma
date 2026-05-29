@@ -303,6 +303,12 @@ model Product {
   // embedding    Unsupported("vector(1024)")?
   embeddedAt   DateTime?
 
+  // Atacado B2B (ADR-024): lojista opta por expor o produto na rede de atacado,
+  // com preço de atacado e quantidade mínima próprios.
+  wholesaleEnabled  Boolean  @default(false)
+  wholesalePriceBRL Decimal? @db.Decimal(10, 2)
+  wholesaleMinQty   Int      @default(1)
+
   active       Boolean @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -721,4 +727,41 @@ model AuditLog {
   @@unique([tenantId, seq])
   @@index([tenantId, createdAt])
   @@map("audit_logs")
+}
+
+// ============================================================
+// Rede de atacado B2B (ADR-024 — MCP Server). Marketplace cross-tenant:
+// catálogos de várias lojas expostos a compradores (lojas/agentes). Estas
+// tabelas NÃO têm RLS por tenant (acesso é da rede, não do operador da loja);
+// o servidor MCP controla o acesso na sua própria camada de auth.
+// ============================================================
+model WholesaleQuote {
+  id             String   @id @default(cuid())
+  sellerTenantId String   // loja dona do catálogo
+  buyerRef       String   // identificador do comprador (loja/agente)
+  items          Json     // [{ productId, name, sku, qty, unitWholesaleBRL }]
+  totalBRL       Decimal  @db.Decimal(12, 2)
+  status         String   @default("open") // open | ordered | expired
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+
+  @@index([sellerTenantId])
+  @@index([buyerRef])
+  @@map("wholesale_quotes")
+}
+
+model WholesaleOrder {
+  id             String   @id @default(cuid())
+  quoteId        String   @unique
+  sellerTenantId String
+  buyerRef       String
+  totalBRL       Decimal  @db.Decimal(12, 2)
+  status         String   @default("placed") // placed | confirmed | shipped | delivered | canceled
+  trackingCode   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([sellerTenantId])
+  @@index([buyerRef])
+  @@map("wholesale_orders")
 }
