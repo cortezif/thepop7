@@ -1,5 +1,21 @@
 import type { ContactProfileUpdate, ProductSummary } from "@thepop/shared";
 
+// Resultado da busca visual (cliente envia foto -> produtos parecidos)
+export type VisualSearchResult = {
+  // Atributos que a IA "leu" na foto da cliente (transparência/auditoria)
+  atributosDetectados?: {
+    styles: string[];
+    occasions: string[];
+    neckline: string;
+    length: string;
+    sleeveType: string;
+    sheer: boolean;
+    confidence: number;
+  };
+  produtos: ProductSummary[];
+  erro?: string;
+};
+
 // Configuração do agente para um tenant
 export type AgentConfig = {
   tenantId: string;
@@ -42,6 +58,12 @@ export interface AgentToolImpl {
     semTransparencia?: boolean;
     precoMax?: number;
   }): Promise<ProductSummary[]>;
+
+  // Busca visual: analisa a(s) foto(s) enviada(s) pela cliente nesta mensagem
+  // e devolve produtos parecidos. Opcional — implementada só no fluxo real
+  // (mocks de eval/dry-run não recebem foto). Quando ausente, o agent
+  // responde que não há foto para analisar.
+  buscarPorFoto?(opts?: { precoMax?: number; tamanho?: string }): Promise<VisualSearchResult>;
 
   mostrarMidia(produtoId: string, tipo?: "foto" | "video"): Promise<{ enviado: boolean; descricao: string }>;
 

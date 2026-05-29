@@ -11,8 +11,13 @@ const incomingMsgSchema = z.object({
     igHandle: z.string().optional(),
     name:     z.string().optional(),
   }),
-  text: z.string().min(1),
-});
+  text: z.string().default(""),
+  // Fotos da cliente (busca visual). Aceita até 5 URLs acessíveis ao Claude vision.
+  photoUrls: z.array(z.string().url()).max(5).optional(),
+}).refine(
+  (d) => d.text.trim().length > 0 || (d.photoUrls?.length ?? 0) > 0,
+  { message: "Informe 'text' ou 'photoUrls' (ao menos um)." },
+);
 
 const dryRunSchema = z.object({
   text: z.string().min(1),

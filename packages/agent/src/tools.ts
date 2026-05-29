@@ -24,6 +24,23 @@ export const TOOL_DEFS: Anthropic.Messages.Tool[] = [
     },
   },
   {
+    name: "buscar_por_foto",
+    description:
+      "Analisa a(s) FOTO(S) que a cliente acabou de enviar nesta mensagem e " +
+      "encontra produtos PARECIDOS no catálogo (busca visual). Use sempre que a " +
+      "cliente mandar uma imagem de uma peça e quiser algo igual/parecido. " +
+      "A tool extrai estilo, ocasião, decote, comprimento e manga da foto e " +
+      "retorna os produtos mais semelhantes da loja. Não exige argumentos: ela " +
+      "já recebe as fotos da mensagem atual. Se não houver foto, retorna erro.",
+    input_schema: {
+      type: "object",
+      properties: {
+        precoMax: { type: "number", description: "Opcional: limita o preço máximo em BRL." },
+        tamanho: { type: "string", description: "Opcional: PP, P, M, G, GG (se a cliente disse o tamanho)." },
+      },
+    },
+  },
+  {
     name: "mostrar_midia",
     description: "Envia uma foto ou vídeo do produto direto na conversa.",
     input_schema: {

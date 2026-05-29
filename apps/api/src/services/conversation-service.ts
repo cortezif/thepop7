@@ -1,9 +1,9 @@
-import { runAgentTurn, summarizeConversation, DEFAULT_CASCADE, type AgentConfig, type ConversationContext, type AgentToolImpl } from "@thepop/agent";
+import { runAgentTurn, summarizeConversation, extractProductAttributes, DEFAULT_CASCADE, type AgentConfig, type ConversationContext, type AgentToolImpl } from "@thepop/agent";
 import { getPrisma, withTenant } from "@thepop/db";
 import { getErpConnector, getLogisticsConnector } from "@thepop/connectors";
 import type { ContactProfileUpdate, ProductSummary } from "@thepop/shared";
 import type { FastifyBaseLogger } from "fastify";
-import { searchProducts, type CustomerProfile } from "./product-search.js";
+import { searchProducts, type CustomerProfile, type ProductFilter } from "./product-search.js";
 import { createOrder, cancelOrder, startReturn, getOrderStatus } from "./order-service.js";
 import { resolveContact } from "./identity-service.js";
 import { parseNpsScore, recordNps } from "./nps.js";
@@ -13,6 +13,9 @@ type IncomingDTO = {
   channel:    "whatsapp" | "instagram" | "manual";
   contact:    { phone?: string; igHandle?: string; name?: string };
   text:       string;
+  // Fotos enviadas pela cliente nesta mensagem (URLs acessíveis ao Claude vision).
+  // Habilita a busca visual via tool buscar_por_foto.
+  photoUrls?: string[];
 };
 
 export async function handleIncomingMessage(dto: IncomingDTO, log: FastifyBaseLogger) {
@@ -40,8 +43,16 @@ export async function handleIncomingMessage(dto: IncomingDTO, log: FastifyBaseLo
       });
     }
 
+    const hasPhotos = (dto.photoUrls?.length ?? 0) > 0;
     await tx.message.create({
-      data: { conversationId: conversation.id, direction: "in", type: "text", content: dto.text },
+      data: {
+        conversationId: conversation.id,
+        direction: "in",
+        type: hasPhotos ? "image" : "text",
+        content: dto.text?.trim()
+          ? dto.text
+          : (hasPhotos ? `[cliente enviou ${dto.photoUrls!.length} foto(s)]` : ""),
+      },
     });
     await tx.conversation.update({
       where: { id: conversation.id },
@@ -164,8 +175,16 @@ export async function handleIncomingMessage(dto: IncomingDTO, log: FastifyBaseLo
     avoid: contact.avoid,
     usualSize: contact.usualSize ?? undefined,
     favoriteColors: contact.favoriteColors,
-  }, { autoApproveMaxBRL: Number(tenant.autoApproveMaxBRL) });
-  const turn = await runAgentTurn(cfg, ctx, dto.text, tools, cascadeOverride);
+  }, { autoApproveMaxBRL: Number(tenant.autoApproveMaxBRL), photoUrls: dto.photoUrls });
+
+  // Se a cliente mandou foto, avisa o agente p/ chamar a busca visual (ele é text-only).
+  let agentMessage = dto.text ?? "";
+  if ((dto.photoUrls?.length ?? 0) > 0) {
+    const note = `[A cliente enviou ${dto.photoUrls!.length} foto(s) de uma peça de roupa nesta mensagem. ` +
+      `Use a tool buscar_por_foto para analisar a imagem e encontrar produtos parecidos no nosso catálogo, depois apresente as opções de forma natural.]`;
+    agentMessage = agentMessage.trim() ? `${agentMessage}\n\n${note}` : note;
+  }
+  const turn = await runAgentTurn(cfg, ctx, agentMessage, tools, cascadeOverride);
 
   // FASE 3 (transação curta): persiste a resposta.
   if (turn.replyText) {
@@ -316,12 +335,13 @@ export async function suggestReply(tenantSlug: string, conversationId: string, l
  * Tudo o que o agente "decide fazer" passa por aqui — então este é o
  * lugar pra colocar guardrails (limites, regras de negócio, auditoria).
  */
-function buildAgentTools(tenantId: string, contactId: string, conversationId: string, log: FastifyBaseLogger, customerProfile: CustomerProfile = {}, opts: { readOnly?: boolean; autoApproveMaxBRL?: number } = {}): AgentToolImpl {
+function buildAgentTools(tenantId: string, contactId: string, conversationId: string, log: FastifyBaseLogger, customerProfile: CustomerProfile = {}, opts: { readOnly?: boolean; autoApproveMaxBRL?: number; photoUrls?: string[] } = {}): AgentToolImpl {
   const erp       = getErpConnector();
   const logistics = getLogisticsConnector();
   const prisma    = getPrisma();
   const readOnly  = opts.readOnly ?? false;
   const autoApproveMaxBRL = opts.autoApproveMaxBRL;
+  const photoUrls = opts.photoUrls ?? [];
 
   return {
     async buscarProduto(query) {
@@ -347,6 +367,60 @@ function buildAgentTools(tenantId: string, contactId: string, conversationId: st
       }));
       log.info({ query, count: results.length, reason: hits[0]?.matchReason }, "tool:buscar_produto");
       return results;
+    },
+
+    async buscarPorFoto(o = {}) {
+      if (photoUrls.length === 0) {
+        return { produtos: [], erro: "Nenhuma foto foi enviada pela cliente nesta mensagem." };
+      }
+      // 1. Claude vision "lê" a peça da foto -> atributos estruturados (reusa o extractor do catálogo).
+      const extraction = await extractProductAttributes({
+        productName: "peça enviada pela cliente",
+        photoUrls,
+      });
+      if (!extraction.ok) {
+        log.warn({ error: extraction.error }, "tool:buscar_por_foto — extração falhou");
+        return { produtos: [], erro: `Não consegui analisar a foto: ${extraction.error}` };
+      }
+      const a = extraction.attributes;
+
+      // 2. Monta intent textual + filtros leves p/ a busca semântica/atributos existente.
+      //    NÃO impõe semDecote/semTransparencia como filtro duro: queremos PARECIDOS,
+      //    não excluir — estilo/ocasião já direcionam o ranqueamento por similaridade.
+      const intent = [
+        ...a.styles,
+        ...a.occasions,
+        `decote ${a.neckline}`,
+        `comprimento ${a.length}`,
+        `manga ${a.sleeveType}`,
+        a.sheer ? "transparência" : "",
+      ].filter(Boolean).join(" ");
+      const filters: ProductFilter = {
+        estilo: a.styles,
+        ocasiao: a.occasions,
+        ...(o.precoMax ? { precoMax: o.precoMax } : {}),
+        ...(o.tamanho ? { tamanho: o.tamanho } : {}),
+      };
+
+      const hits = await searchProducts(tenantId, intent, filters, 5, customerProfile);
+      const produtos: ProductSummary[] = hits.map((h) => ({
+        id: h.externalId,
+        name: h.name,
+        priceBRL: h.priceBRL,
+        variants: h.variants,
+        mainPhoto: h.mainPhoto,
+        styles: h.styles,
+        occasions: h.occasions,
+        measurements: h.measurements,
+      }));
+      log.info({ atributos: a, count: produtos.length }, "tool:buscar_por_foto");
+      return {
+        atributosDetectados: {
+          styles: a.styles, occasions: a.occasions, neckline: a.neckline,
+          length: a.length, sleeveType: a.sleeveType, sheer: a.sheer, confidence: a.confidence,
+        },
+        produtos,
+      };
     },
 
     async mostrarMidia(produtoId, tipo = "foto") {

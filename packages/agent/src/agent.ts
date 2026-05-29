@@ -122,6 +122,9 @@ async function executeTool(name: string, input: unknown, tools: AgentToolImpl): 
   try {
     switch (name) {
       case "buscar_produto":       return await tools.buscarProduto(i);
+      case "buscar_por_foto":
+        if (!tools.buscarPorFoto) return { erro: "Busca por foto indisponível neste canal." };
+        return await tools.buscarPorFoto({ precoMax: i.precoMax, tamanho: i.tamanho });
       case "mostrar_midia":        return await tools.mostrarMidia(i.produtoId, i.tipo);
       case "verificar_estoque":    return await tools.verificarEstoque(i.sku);
       case "consultar_frete":      return await tools.consultarFrete(i.cep, i.sku);
