@@ -33,40 +33,38 @@ export async function runPostSaleStage(tenantId: string, orderId: string, stage:
   const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
   if (!tenant) throw new Error("tenant não encontrado");
 
-  return withTenant(tenantId, async (tx) => {
-    const order = await tx.order.findUnique({
+  // 1) Lê o pedido (tx curta de leitura).
+  const order = await withTenant(tenantId, async (tx) =>
+    tx.order.findUnique({
       where: { id: orderId },
-      include: {
-        contact: true,
-        items: { include: { product: { select: { name: true } } } },
-      },
-    });
-    if (!order) throw new Error("pedido não encontrado");
+      include: { contact: true, items: { include: { product: { select: { name: true } } } } },
+    }),
+  );
+  if (!order) throw new Error("pedido não encontrado");
 
-    // Enforcement de opt-out (LGPD): se o cliente optou por não receber
-    // esta categoria, não envia e registra o skip.
-    const optCategory = STAGE_OPTOUT[stage];
-    if (optCategory && (order.contact.optOuts ?? []).includes(optCategory)) {
-      return { stage, skipped: true as const, reason: `cliente optou por não receber "${optCategory}"` };
-    }
+  // 2) Enforcement de opt-out (LGPD): não envia esta categoria se o cliente optou por sair.
+  const optCategory = STAGE_OPTOUT[stage];
+  if (optCategory && (order.contact.optOuts ?? []).includes(optCategory)) {
+    return { stage, skipped: true as const, reason: `cliente optou por não receber "${optCategory}"` };
+  }
 
-    const productNames = order.items.map((i) => i.product.name);
-    const deadline = order.deliveredAt ? returnDeadline(order.deliveredAt) : undefined;
+  // 3) Gera a mensagem (LLM) FORA da transação — não segura conexão por segundos (ADR-022).
+  const productNames = order.items.map((i) => i.product.name);
+  const deadline = order.deliveredAt ? returnDeadline(order.deliveredAt) : undefined;
+  const generated = await generatePostSaleMessage(stage, {
+    personaName: "Lia",
+    storeName: tenant.name,
+    customerName: order.contact.name ?? undefined,
+    productNames,
+    deliveredTo: order.deliveredTo ?? undefined,
+    returnDeadline: deadline?.toLocaleDateString("pt-BR"),
+    tone: tenant.agentTone ?? undefined,
+  });
+  // Anexa a NF-e no D+1 (documento fiscal → determinístico, não depende do LLM).
+  const messageText = generated.text + nfeSuffix(stage, order.nfeNumber, order.nfePdfUrl);
 
-    const generated = await generatePostSaleMessage(stage, {
-      personaName: "Lia",
-      storeName: tenant.name,
-      customerName: order.contact.name ?? undefined,
-      productNames,
-      deliveredTo: order.deliveredTo ?? undefined,
-      returnDeadline: deadline?.toLocaleDateString("pt-BR"),
-      tone: tenant.agentTone ?? undefined,
-    });
-
-    // Anexa a NF-e no D+1 (documento fiscal → determinístico, não depende do LLM).
-    const messageText = generated.text + nfeSuffix(stage, order.nfeNumber, order.nfePdfUrl);
-
-    // Localiza/cria conversa ativa do contato pra anexar a mensagem
+  // 4) Persiste (tx curta de escrita): conversa + mensagem + evento.
+  const conversationId = await withTenant(tenantId, async (tx) => {
     let conversation = await tx.conversation.findFirst({
       where: { contactId: order.contactId, status: { in: ["active", "handed_off"] } },
       orderBy: { lastMessageAt: "desc" },
@@ -76,36 +74,26 @@ export async function runPostSaleStage(tenantId: string, orderId: string, stage:
         data: { tenantId, contactId: order.contactId, channel: order.contact.preferredChannel === "instagram" ? "instagram" : "whatsapp" },
       });
     }
-
     await tx.message.create({
       data: {
-        conversationId: conversation.id,
-        direction: "out",
-        type: "text",
-        content: messageText,
+        conversationId: conversation.id, direction: "out", type: "text", content: messageText,
         llmModel: process.env.CLAUDE_MODEL_FAST ?? "claude-haiku-4-5-20251001",
-        llmInputTokens: generated.usage.inputTokens,
-        llmOutputTokens: generated.usage.outputTokens,
+        llmInputTokens: generated.usage.inputTokens, llmOutputTokens: generated.usage.outputTokens,
       },
     });
     await tx.conversation.update({ where: { id: conversation.id }, data: { lastMessageAt: new Date() } });
-
     await tx.domainEvent.create({
       data: {
         tenantId,
         type: EVENTS[`POSTSALE_${stage.toUpperCase()}` as keyof typeof EVENTS] ?? `postsale.${stage}`,
-        aggregateType: "order",
-        aggregateId: orderId,
-        payload: { stage } as any,
-        actor: "agent",
+        aggregateType: "order", aggregateId: orderId, payload: { stage } as any, actor: "agent",
       },
     });
-
-    // Envia no canal (mock em dev)
-    await getMessagingConnector().send({
-      tenantId, conversationId: conversation.id, type: "text", text: messageText,
-    });
-
-    return { stage, message: messageText, conversationId: conversation.id };
+    return conversation.id;
   });
+
+  // 5) Envia no canal FORA da transação (efeito externo).
+  await getMessagingConnector().send({ tenantId, conversationId, type: "text", text: messageText });
+
+  return { stage, message: messageText, conversationId };
 }

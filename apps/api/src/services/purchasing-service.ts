@@ -95,15 +95,29 @@ export async function recordQuote(tenantId: string, input: {
   supplierId: string;
   supplierMessage: string;
 }) {
+  const prisma = getPrisma();
+  const request = await prisma.purchaseRequest.findFirst({ where: { id: input.requestId, tenantId } });
+  if (!request) throw new Error("requisição não encontrada");
+
+  // Parse (LLM) FORA da transação: não segura conexão por segundos (ADR-022).
+  const itemsRequested = ((request.items as any[]) ?? []).map((i) => `${i.quantity}x ${i.description}`).join(", ");
+  const parsed = await parseSupplierQuote(input.supplierMessage, { itemsRequested });
+
+  if (!parsed.ok) {
+    // Não perde a resposta do fornecedor: registra evento auditável/recuperável.
+    await withTenant(tenantId, async (tx) => {
+      await tx.domainEvent.create({
+        data: {
+          tenantId, type: "quote.parse_failed", aggregateType: "purchase_request", aggregateId: input.requestId,
+          payload: { supplierId: input.supplierId, rawMessage: input.supplierMessage, error: parsed.error } as any, actor: "agent",
+        },
+      });
+    });
+    return { ok: false, error: parsed.error };
+  }
+
+  const q = parsed.quote;
   return withTenant(tenantId, async (tx) => {
-    const request = await tx.purchaseRequest.findUnique({ where: { id: input.requestId } });
-    if (!request) throw new Error("requisição não encontrada");
-
-    const itemsRequested = ((request.items as any[]) ?? []).map((i) => `${i.quantity}x ${i.description}`).join(", ");
-    const parsed = await parseSupplierQuote(input.supplierMessage, { itemsRequested });
-    if (!parsed.ok) return { ok: false, error: parsed.error };
-
-    const q = parsed.quote;
     const quote = await tx.quote.create({
       data: {
         tenantId,
