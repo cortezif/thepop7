@@ -211,6 +211,8 @@ export type Order = {
   deliveredAt: string | null;
   deliveredTo: string | null;
   createdAt: string;
+  nfeNumber?: string | null;
+  nfePdfUrl?: string | null;
   returnable: boolean;
   pendingApproval?: boolean;
   items: Array<{ name: string; variantSku: string; quantity: number }>;

@@ -6,6 +6,7 @@ import {
 } from "@thepop/shared";
 import { summarizeFinancials, buildFunnel, DEFAULT_GATEWAY_FEES } from "./financials.js";
 import { enqueuePostSale } from "../lib/post-sale-queue.js";
+import { issueNfeForOrder } from "./fiscal-service.js";
 
 /**
  * Cria pedido a partir de itens + endereço, gera cobrança PIX e devolve
@@ -150,6 +151,13 @@ export async function transitionOrder(tenantId: string, orderId: string, to: Ord
     return { ok: true, status: to };
   });
 
+  // NFe ao pagar (ADR-023/CPlug): emite a nota fiscal fora da transação.
+  // Idempotente (não reemite) e gracioso (falha não desfaz o pagamento).
+  if (to === "paid") {
+    const nfe = await issueNfeForOrder(tenantId, orderId);
+    (result as any).nfe = nfe;
+  }
+
   // ADR-010: ao entregar, agenda os marcos proativos da Lia (D+1/D+7/D+14/D+30)
   // como jobs delayed no BullMQ. Fora da transação (efeito externo); idempotente
   // por jobId; gracioso se Redis estiver fora (não desfaz a entrega).
@@ -268,6 +276,8 @@ export async function listOrders(tenantId: string) {
       deliveredAt: o.deliveredAt,
       deliveredTo: o.deliveredTo,
       createdAt: o.createdAt,
+      nfeNumber: o.nfeNumber,
+      nfePdfUrl: o.nfePdfUrl,
       returnable: canRequestReturn(o.status as OrderStatus, o.deliveredAt),
       pendingApproval: !!((o.metadata as Record<string, unknown> | null)?.pendingApproval),
       items: o.items.map((i) => ({ name: i.product.name, variantSku: i.variantSku, quantity: i.quantity })),

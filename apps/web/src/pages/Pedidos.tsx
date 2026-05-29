@@ -125,6 +125,17 @@ export function Pedidos() {
                   <span className="ml-2 font-semibold text-foreground">{formatBRL(o.totalBRL)}</span>
                 </div>
 
+                {o.nfeNumber && (
+                  <div className="mt-2 text-xs text-emerald-700">
+                    NF-e {o.nfeNumber}
+                    {o.nfePdfUrl && (
+                      <a href={o.nfePdfUrl} target="_blank" rel="noreferrer" className="ml-2 underline">
+                        DANFE (PDF)
+                      </a>
+                    )}
+                  </div>
+                )}
+
                 {o.pendingApproval && (
                   <div className="mt-3 flex items-center justify-between rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
                     <span className="text-xs text-amber-700">
