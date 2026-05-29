@@ -5,6 +5,7 @@ import {
   returnDeadline, EVENTS, type OrderStatus,
 } from "@thepop/shared";
 import { summarizeFinancials, buildFunnel, DEFAULT_GATEWAY_FEES } from "./financials.js";
+import { enqueuePostSale } from "../lib/post-sale-queue.js";
 
 /**
  * Cria pedido a partir de itens + endereço, gera cobrança PIX e devolve
@@ -124,7 +125,7 @@ export async function approveOrder(tenantId: string, orderId: string) {
 /** Transição genérica validada pela máquina de estados. */
 export async function transitionOrder(tenantId: string, orderId: string, to: OrderStatus, meta?: Record<string, unknown>) {
   const prisma = getPrisma();
-  return withTenant(tenantId, async (tx) => {
+  const result = await withTenant(tenantId, async (tx) => {
     const order = await tx.order.findUnique({ where: { id: orderId } });
     if (!order) throw new Error("pedido não encontrado");
     if (!canTransitionOrder(order.status as OrderStatus, to)) {
@@ -148,6 +149,19 @@ export async function transitionOrder(tenantId: string, orderId: string, to: Ord
     });
     return { ok: true, status: to };
   });
+
+  // ADR-010: ao entregar, agenda os marcos proativos da Lia (D+1/D+7/D+14/D+30)
+  // como jobs delayed no BullMQ. Fora da transação (efeito externo); idempotente
+  // por jobId; gracioso se Redis estiver fora (não desfaz a entrega).
+  if (to === "delivered") {
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } });
+    if (tenant) {
+      const { scheduled } = await enqueuePostSale(tenant.slug, orderId);
+      (result as any).postSaleScheduled = scheduled;
+    }
+  }
+
+  return result;
 }
 
 /**
