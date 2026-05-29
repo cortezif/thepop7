@@ -1,4 +1,8 @@
 import Fastify from "fastify";
+import fastifyStatic from "@fastify/static";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
 import { healthRoutes }       from "./routes/health.js";
 import { conversationRoutes } from "./routes/conversation.js";
 import { webhookRoutes }      from "./routes/webhooks.js";
@@ -16,6 +20,13 @@ import { requireAuth } from "./auth.js";
 
 export function buildApp() {
   const app = Fastify({
+    // Serviço único (Railway): o painel chama /api/* na mesma origem. Tiramos o
+    // prefixo /api ANTES do roteamento, então as rotas (/auth, /metrics…) batem.
+    rewriteUrl(req) {
+      const u = req.url || "/";
+      if (u === "/api") return "/";
+      return u.startsWith("/api/") ? u.slice(4) : u;
+    },
     logger: {
       level: process.env.LOG_LEVEL ?? "info",
       // LGPD (ADR-013): redige dados pessoais dos logs. Cobre os formatos que
@@ -60,6 +71,17 @@ export function buildApp() {
     secure.register(purchasingRoutes,         { prefix: "/purchasing" });
     secure.register(lgpdRoutes,               { prefix: "/lgpd" });
   });
+
+  // Painel estático (produção/serviço único): serve o build do web + fallback SPA.
+  // Em dev o build não existe → o Vite serve o painel; aqui não registra nada.
+  const webDist = resolve(dirname(fileURLToPath(import.meta.url)), "../../web/dist");
+  if (existsSync(webDist)) {
+    app.register(fastifyStatic, { root: webDist });
+    app.setNotFoundHandler((req, reply) => {
+      if (req.method === "GET") return reply.sendFile("index.html"); // rotas do SPA
+      reply.code(404).send({ error: "not found" });
+    });
+  }
 
   return app;
 }

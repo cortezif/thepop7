@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.27.0",
+    "@fastify/static": "^7.0.4",
     "@thepop/agent": "*",
     "@thepop/connectors": "*",
     "@thepop/db": "*",

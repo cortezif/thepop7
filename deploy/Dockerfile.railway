@@ -1,0 +1,18 @@
+# Serviço ÚNICO para Railway: API (Fastify) servindo também o painel (build do Vite).
+# Mesma origem → o painel chama /api/* sem CORS. HTTPS e domínio são do Railway.
+FROM node:22-slim
+
+RUN apt-get update && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY . .
+
+RUN npm ci
+RUN npm --workspace @thepop/web run build      # gera apps/web/dist (o app.ts serve)
+RUN npm --workspace @thepop/db run generate    # Prisma Client
+
+ENV NODE_ENV=production
+# Railway injeta PORT automaticamente; o app escuta nela.
+
+RUN chmod +x deploy/railway-start.sh
+CMD ["./deploy/railway-start.sh"]
