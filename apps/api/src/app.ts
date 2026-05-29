@@ -17,6 +17,7 @@ import { purchasingRoutes } from "./routes/purchasing.js";
 import { lgpdRoutes } from "./routes/lgpd.js";
 import { authRoutes } from "./routes/auth.js";
 import { integrationRoutes } from "./routes/integrations.js";
+import { stockRoutes } from "./routes/stock.js";
 import { requireAuth } from "./auth.js";
 
 export function buildApp() {
@@ -72,6 +73,7 @@ export function buildApp() {
     secure.register(purchasingRoutes,         { prefix: "/purchasing" });
     secure.register(lgpdRoutes,               { prefix: "/lgpd" });
     secure.register(integrationRoutes,        { prefix: "/integrations" });
+    secure.register(stockRoutes,              { prefix: "/stock" });
   });
 
   // Painel estático (produção/serviço único): serve o build do web + fallback SPA.

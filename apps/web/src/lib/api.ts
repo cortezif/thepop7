@@ -178,6 +178,20 @@ export const api = {
     get<{ url: string }>(`/integrations/tray/authorize?apiAddress=${encodeURIComponent(apiAddress)}`),
   trayRefresh: () => post<{ ok: boolean }>(`/integrations/tray/refresh`, {}),
   trayDisconnect: () => post<{ ok: boolean }>(`/integrations/tray/disconnect`, {}),
+  // Estoque / código de barras (F1/F2)
+  backfillBarcodes: () => post<BackfillResult>(`/catalog/barcodes/backfill`, {}),
+  stockTrace: (code: string) => get<StockTrace>(`/stock/trace?code=${encodeURIComponent(code)}`),
+};
+
+export type BackfillResult = { produtos: number; variantes: number; jaTinham: number; gerados: number; lookupSincronizado: number };
+
+export type StockMovement = {
+  id: string; type: "purchase_in" | "sale_out" | "return_in" | "adjust_in" | "adjust_out";
+  quantity: number; refType: string | null; refId: string | null; note: string | null; actor: string; at: string;
+};
+export type StockTrace = {
+  barcode: string; productName: string; variantSku: string;
+  saldoRazao: number; porTipo: Record<string, number>; movimentos: StockMovement[];
 };
 
 export type TrayStatus = {

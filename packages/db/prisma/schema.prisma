@@ -71,8 +71,43 @@ model Tenant {
   npsResponses     NpsResponse[]
   integrations     Integration[]
   productBarcodes  ProductBarcode[]
+  stockMovements   StockMovement[]
 
   @@map("tenants")
+}
+
+// Razão de movimentação de estoque (ADR-009/barcode F2). Espelho/auditoria local
+// do canal (a verdade do saldo é Tray/CPlug). Toda entrada/saída é um lançamento
+// identificado por código de barras. `quantity` sempre positivo; o sinal vem do `type`.
+enum StockMovementType {
+  purchase_in  // recebimento de fornecedor
+  sale_out     // venda (baixa)
+  return_in    // devolução do comprador (reentra)
+  adjust_in    // ajuste/balanço pra cima
+  adjust_out   // perda/quebra/ajuste pra baixo
+}
+
+model StockMovement {
+  id         String  @id @default(cuid())
+  tenantId   String
+  tenant     Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  barcode    String
+  productId  String
+  variantSku String
+  type       StockMovementType
+  quantity   Int
+  refType    String?  // "order" | "return" | "purchase_request" | "manual"
+  refId      String?
+  note       String?
+  actor      String   @default("system") // system | operator | agent
+
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, barcode])
+  @@index([tenantId, productId, variantSku])
+  @@index([tenantId, createdAt])
+  @@map("stock_movements")
 }
 
 // Código de barras por variante (ADR-004/estoque). Lookup O(1) scan→produto+variante

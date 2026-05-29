@@ -7,6 +7,7 @@ import {
 import { summarizeFinancials, buildFunnel, DEFAULT_GATEWAY_FEES } from "./financials.js";
 import { enqueuePostSale } from "../lib/post-sale-queue.js";
 import { issueNfeForOrder } from "./fiscal-service.js";
+import { recordMovement } from "./stock-movement-service.js";
 
 /**
  * Cria pedido a partir de itens + endereço, gera cobrança PIX e devolve
@@ -194,6 +195,11 @@ async function consumeStockForOrder(tx: Prisma.TransactionClient, tenantId: stri
     if (changed) {
       await tx.product.update({ where: { id: product.id }, data: { variants: variants as any } });
     }
+    // Razão de movimentação (barcode F2): registra a saída por venda.
+    await recordMovement(tenantId, {
+      productId: it.productId, variantSku: it.variantSku, type: "sale_out",
+      quantity: it.quantity, refType: "order", refId: orderId, actor: "system",
+    }, tx);
   }
   // Marca reservas ativas do contato (dos SKUs do pedido) como convertidas.
   const skus = items.map((i) => i.variantSku);
@@ -241,6 +247,42 @@ export async function startReturn(tenantId: string, orderId: string, reason: str
       data: { tenantId, type: EVENTS.RETURN_REQUESTED, aggregateType: "order", aggregateId: orderId, payload: { returnId: ret.id, reason }, actor: "agent" },
     });
     return { ok: true, returnId: ret.id };
+  });
+}
+
+/**
+ * Recebe uma devolução: marca a `Return` como recebida, reentra o estoque local
+ * dos itens do pedido e registra `return_in` no razão (barcode F2). MVP = devolução
+ * total do pedido (partial = futuro). Idempotente: não reprocessa se já recebida.
+ */
+export async function receiveReturn(tenantId: string, returnId: string) {
+  return withTenant(tenantId, async (tx) => {
+    const ret = await tx.return.findUnique({ where: { id: returnId }, include: { order: { include: { items: true } } } });
+    if (!ret) return { ok: false as const, reason: "devolução não encontrada" };
+    if (ret.order.tenantId !== tenantId) return { ok: false as const, reason: "devolução de outro tenant" };
+    if (ret.receivedAt) return { ok: false as const, reason: "devolução já recebida", skipped: true as const };
+
+    await tx.return.update({ where: { id: returnId }, data: { status: "received", receivedAt: new Date() } });
+
+    for (const it of ret.order.items) {
+      // reentra no estoque local (espelho); a verdade do saldo é Tray/CPlug
+      const product = await tx.product.findUnique({ where: { id: it.productId } });
+      if (product) {
+        const variants = (product.variants as Array<{ sku: string; stock: number; [k: string]: unknown }>) ?? [];
+        let changed = false;
+        for (const v of variants) if (v.sku === it.variantSku) { v.stock = (Number(v.stock) || 0) + it.quantity; changed = true; }
+        if (changed) await tx.product.update({ where: { id: product.id }, data: { variants: variants as any } });
+      }
+      await recordMovement(tenantId, {
+        productId: it.productId, variantSku: it.variantSku, type: "return_in",
+        quantity: it.quantity, refType: "return", refId: returnId, actor: "operator",
+      }, tx);
+    }
+
+    await tx.domainEvent.create({
+      data: { tenantId, type: "return.received", aggregateType: "order", aggregateId: ret.orderId, payload: { returnId } as any, actor: "operator" },
+    });
+    return { ok: true as const, returnId };
   });
 }
 

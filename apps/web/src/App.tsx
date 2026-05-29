@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Outlet, NavLink } from "react-router-dom";
-import { LayoutDashboard, MessageSquare, Package, ShoppingCart, ClipboardList, Settings as SettingsIcon, LogOut } from "lucide-react";
+import { LayoutDashboard, MessageSquare, Package, ShoppingCart, ClipboardList, Settings as SettingsIcon, LogOut, Barcode } from "lucide-react";
 import { cn } from "./lib/utils";
 import { auth } from "./lib/api";
 import { Login } from "./pages/Login";
@@ -10,6 +10,7 @@ const NAV = [
   { to: "/inbox",    label: "Atendimento",  Icon: MessageSquare },
   { to: "/catalog",  label: "Catálogo",     Icon: Package },
   { to: "/pedidos",  label: "Pedidos",      Icon: ClipboardList },
+  { to: "/estoque",  label: "Estoque",      Icon: Barcode },
   { to: "/compras",  label: "Compras",      Icon: ShoppingCart },
   { to: "/settings", label: "Configurações", Icon: SettingsIcon },
 ];

@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { getPrisma } from "@thepop/db";
 import { z } from "zod";
-import { listOrders, createSampleOrder, exportOrdersCSV, approveOrder } from "../services/order-service.js";
+import { listOrders, createSampleOrder, exportOrdersCSV, approveOrder, receiveReturn } from "../services/order-service.js";
 
 async function tid(slug: string) {
   const t = await getPrisma().tenant.findUnique({ where: { slug } });
@@ -37,6 +37,15 @@ export const orderRoutes: FastifyPluginAsync = async (app) => {
     const t = await getPrisma().tenant.findUnique({ where: { slug: body.data.tenantSlug } });
     if (!t) return reply.code(404).send({ error: "tenant not found" });
     const r = await approveOrder(t.id, id);
+    if (!r.ok) return reply.code(400).send(r);
+    return r;
+  });
+
+  // POST /orders/returns/:returnId/receive — recebe devolução (return_in no razão)
+  app.post("/returns/:returnId/receive", async (req, reply) => {
+    const id = await tid((req.body as any)?.tenantSlug);
+    if (!id) return reply.code(404).send({ error: "tenant not found" });
+    const r = await receiveReturn(id, (req.params as any).returnId);
     if (!r.ok) return reply.code(400).send(r);
     return r;
   });
