@@ -12,6 +12,15 @@ const STAGE_OPTOUT: Partial<Record<PostSaleStage, string>> = {
 };
 
 /**
+ * Sufixo determinístico com a NF-e, anexado no D+1 (documento fiscal não pode
+ * depender do LLM). Vazio fora do D+1 ou se a nota não foi emitida. Função pura.
+ */
+export function nfeSuffix(stage: PostSaleStage, nfeNumber?: string | null, nfePdfUrl?: string | null): string {
+  if (stage !== "d1" || !nfeNumber) return "";
+  return `\n\n🧾 Sua nota fiscal (NF-e ${nfeNumber}) já está emitida` + (nfePdfUrl ? `: ${nfePdfUrl}` : ".");
+}
+
+/**
  * Dispara um marco de pós-venda (Lia) para um pedido entregue.
  * Gera a mensagem proativa, persiste na conversa do contato e envia no canal.
  *
@@ -54,6 +63,9 @@ export async function runPostSaleStage(tenantId: string, orderId: string, stage:
       tone: tenant.agentTone ?? undefined,
     });
 
+    // Anexa a NF-e no D+1 (documento fiscal → determinístico, não depende do LLM).
+    const messageText = generated.text + nfeSuffix(stage, order.nfeNumber, order.nfePdfUrl);
+
     // Localiza/cria conversa ativa do contato pra anexar a mensagem
     let conversation = await tx.conversation.findFirst({
       where: { contactId: order.contactId, status: { in: ["active", "handed_off"] } },
@@ -70,7 +82,7 @@ export async function runPostSaleStage(tenantId: string, orderId: string, stage:
         conversationId: conversation.id,
         direction: "out",
         type: "text",
-        content: generated.text,
+        content: messageText,
         llmModel: process.env.CLAUDE_MODEL_FAST ?? "claude-haiku-4-5-20251001",
         llmInputTokens: generated.usage.inputTokens,
         llmOutputTokens: generated.usage.outputTokens,
@@ -91,9 +103,9 @@ export async function runPostSaleStage(tenantId: string, orderId: string, stage:
 
     // Envia no canal (mock em dev)
     await getMessagingConnector().send({
-      tenantId, conversationId: conversation.id, type: "text", text: generated.text,
+      tenantId, conversationId: conversation.id, type: "text", text: messageText,
     });
 
-    return { stage, message: generated.text, conversationId: conversation.id };
+    return { stage, message: messageText, conversationId: conversation.id };
   });
 }
