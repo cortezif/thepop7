@@ -9,6 +9,7 @@ const prisma = getPrisma();
 const app = buildApp();
 const slug = `itest-cat-${Date.now()}`;
 let token = "";
+let tenantId = "";
 
 before(async () => {
   await app.ready();
@@ -17,6 +18,16 @@ before(async () => {
     payload: { storeName: "Cat Loja", slug, name: "Op", email: `op@${slug}.com`, password: "senha123" },
   });
   token = r.json().token;
+  const t = await prisma.tenant.findUnique({ where: { slug } });
+  tenantId = t!.id;
+  // Simula um produto vindo do ERP (como o sync faria com a Tray real conectada).
+  await prisma.product.create({
+    data: {
+      tenantId, externalId: "ERP-TEST-1", source: "erp", name: "Produto ERP",
+      priceBRL: 100 as any, variants: [{ sku: "ERP-1-U", stock: 3 }] as any,
+      media: {} as any, styles: [], occasions: [],
+    },
+  });
 });
 after(async () => {
   await prisma.tenant.deleteMany({ where: { slug } }).catch(() => {});
@@ -27,13 +38,15 @@ const hdr = () => ({ authorization: `Bearer ${token}` });
 
 let manualId = "";
 
-test("sync do ERP popula produtos source=erp", async () => {
-  const r = await app.inject({ method: "POST", url: "/catalog/sync", headers: hdr(), payload: { tenantSlug: slug } });
-  assert.equal(r.statusCode, 200);
-  assert.ok(r.json().upserted >= 1, "sincronizou ao menos 1 do mock ERP");
+test("lista mostra o produto erp (vindo do banco)", async () => {
   const list = await app.inject({ method: "GET", url: `/catalog/products?tenantSlug=${slug}`, headers: hdr() });
   const erp = list.json().filter((p: any) => p.source === "erp");
   assert.ok(erp.length >= 1, "lista tem produtos erp");
+});
+
+test("sync sem Tray conectada → 400 (não injeta mock)", async () => {
+  const r = await app.inject({ method: "POST", url: "/catalog/sync", headers: hdr(), payload: { tenantSlug: slug } });
+  assert.equal(r.statusCode, 400);
 });
 
 test("cria produto manual", async () => {
@@ -68,16 +81,12 @@ test("editar produto ERP é bloqueado (409)", async () => {
   assert.equal(r.statusCode, 409);
 });
 
-test("remove (soft delete) manual e some da lista; novo sync não o ressuscita", async () => {
+test("remove (soft delete) manual e some da lista; erp permanece", async () => {
   const del = await app.inject({ method: "DELETE", url: `/catalog/products/${manualId}?tenantSlug=${slug}`, headers: hdr() });
   assert.equal(del.statusCode, 200);
-  const list1 = await app.inject({ method: "GET", url: `/catalog/products?tenantSlug=${slug}`, headers: hdr() });
-  assert.ok(!list1.json().some((p: any) => p.id === manualId), "manual removido não aparece");
-  // sync de novo não toca nos manuais nem reativa
-  await app.inject({ method: "POST", url: "/catalog/sync", headers: hdr(), payload: { tenantSlug: slug } });
-  const list2 = await app.inject({ method: "GET", url: `/catalog/products?tenantSlug=${slug}`, headers: hdr() });
-  assert.ok(!list2.json().some((p: any) => p.id === manualId), "continua removido após sync");
-  assert.ok(list2.json().some((p: any) => p.source === "erp"), "erp continua presente");
+  const list = await app.inject({ method: "GET", url: `/catalog/products?tenantSlug=${slug}`, headers: hdr() });
+  assert.ok(!list.json().some((p: any) => p.id === manualId), "manual removido não aparece");
+  assert.ok(list.json().some((p: any) => p.source === "erp"), "erp continua presente (coexistência)");
 });
 
 test("sem token → 401", async () => {

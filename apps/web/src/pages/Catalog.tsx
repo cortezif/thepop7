@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Store, Shirt, ChevronDown, ChevronUp, Boxes, Plus, Pencil, Trash2, RefreshCw, X } from "lucide-react";
+import { Store, Shirt, Cake, PawPrint, Pill, Package, ChevronDown, ChevronUp, Boxes, Plus, Pencil, Trash2, RefreshCw, X, type LucideIcon } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { formatBRL } from "../lib/utils";
 import { api, type WholesaleProductRow, type CatalogProduct, type ProductVariant } from "../lib/api";
@@ -8,6 +8,17 @@ import { Page, Card, Button, Badge, EmptyState, Skeleton, inputClass } from "../
 type Product = CatalogProduct;
 
 type MarginInfo = { brl: number; pct: number; tone: "success" | "neutral" | "warning" };
+
+// Exemplos/ícone do catálogo conforme o segmento da loja (ADR-029).
+type SegMeta = { Icon: LucideIcon; namePh: string; colorPh: string; sizePh: string; emptyDesc: string };
+const SEGMENT_META: Record<string, SegMeta> = {
+  moda:     { Icon: Shirt,    namePh: "Vestido Floral Manga 3/4", colorPh: "cor",     sizePh: "tam",     emptyDesc: "Cadastre suas peças ou conecte seu ERP para vê-las aqui." },
+  bolos:    { Icon: Cake,     namePh: "Bolo de Chocolate 1kg",    colorPh: "sabor",   sizePh: "tamanho", emptyDesc: "Cadastre seus bolos e doces ou conecte seu ERP para vê-los aqui." },
+  farmacia: { Icon: Pill,     namePh: "Dipirona 500mg 10cp",      colorPh: "marca",   sizePh: "dosagem", emptyDesc: "Cadastre seus itens ou conecte seu ERP para vê-los aqui." },
+  pet:      { Icon: PawPrint, namePh: "Ração Premium Adulto 10kg", colorPh: "sabor",   sizePh: "peso",    emptyDesc: "Cadastre seus produtos ou conecte seu ERP para vê-los aqui." },
+  generico: { Icon: Package,  namePh: "Nome do produto",          colorPh: "variação", sizePh: "opção",  emptyDesc: "Cadastre seus produtos ou conecte seu ERP para vê-los aqui." },
+};
+const segMeta = (segment?: string): SegMeta => SEGMENT_META[(segment ?? "").toLowerCase()] ?? SEGMENT_META.generico;
 
 function marginInfo(price: number, cost?: number): MarginInfo | null {
   if (cost == null) return null;
@@ -22,7 +33,9 @@ export function Catalog() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isFashion, setIsFashion] = useState(true); // segmento do tenant (ADR-029)
+  const [segment, setSegment] = useState<string>(""); // segmento do tenant (ADR-029)
+  const isFashion = segment.toLowerCase() === "moda";
+  const meta = segMeta(segment);
   const [editing, setEditing] = useState<Product | "new" | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -36,7 +49,7 @@ export function Catalog() {
   }
   useEffect(() => {
     load();
-    api.getConfig().then((c) => setIsFashion((c.segment ?? "moda").toLowerCase() === "moda")).catch(() => {});
+    api.getConfig().then((c) => setSegment(c.segment ?? "")).catch(() => {});
   }, []);
 
   async function remove(p: Product) {
@@ -72,6 +85,7 @@ export function Catalog() {
       {editing && (
         <ProductForm
           initial={editing === "new" ? null : editing}
+          meta={meta}
           onCancel={() => setEditing(null)}
           onSaved={() => { setEditing(null); load(); }}
         />
@@ -101,9 +115,9 @@ export function Catalog() {
       {!loading && !error && products.length === 0 && (
         <div className="mt-8">
           <EmptyState
-            icon={Shirt}
-            title="Nenhuma peça no catálogo"
-            description="Os produtos sincronizados do seu ERP aparecem aqui assim que a integração estiver ativa."
+            icon={meta.Icon}
+            title="Catálogo vazio"
+            description={meta.emptyDesc}
           />
         </div>
       )}
@@ -119,7 +133,7 @@ export function Catalog() {
                 {/* Foto — herói visual */}
                 <div className="relative aspect-[3/4] overflow-hidden rounded-t-xl bg-gradient-to-br from-muted to-accent-soft">
                   <div className="flex h-full w-full items-center justify-center text-primary/30 transition-transform duration-500 group-hover:scale-105">
-                    <Shirt size={56} strokeWidth={1} />
+                    <meta.Icon size={56} strokeWidth={1} />
                   </div>
                   <div className="absolute left-3 top-3">
                     {m ? (
@@ -218,7 +232,7 @@ export function Catalog() {
 }
 
 /** Formulário de criar/editar produto manual. */
-function ProductForm({ initial, onSaved, onCancel }: { initial: Product | null; onSaved: () => void; onCancel: () => void }) {
+function ProductForm({ initial, meta, onSaved, onCancel }: { initial: Product | null; meta: SegMeta; onSaved: () => void; onCancel: () => void }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [price, setPrice] = useState(initial?.priceBRL != null ? String(initial.priceBRL) : "");
   const [cost, setCost] = useState(initial?.costBRL != null ? String(initial.costBRL) : "");
@@ -269,7 +283,7 @@ function ProductForm({ initial, onSaved, onCancel }: { initial: Product | null; 
 
       <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <label className="sm:col-span-2 text-sm font-medium">Nome
-          <input value={name} onChange={(e) => setName(e.target.value)} className={`${inputClass} mt-1`} placeholder="Vestido Floral Manga 3/4" />
+          <input value={name} onChange={(e) => setName(e.target.value)} className={`${inputClass} mt-1`} placeholder={meta.namePh} />
         </label>
         <label className="text-sm font-medium">Preço (R$)
           <input type="number" min={0} step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} className={`${inputClass} mt-1`} placeholder="289.00" />
@@ -284,15 +298,15 @@ function ProductForm({ initial, onSaved, onCancel }: { initial: Product | null; 
 
       <div className="mt-5">
         <div className="flex items-center justify-between">
-          <p className="text-sm font-medium">Variantes (SKU, cor, tamanho, estoque)</p>
+          <p className="text-sm font-medium">Variantes (SKU, {meta.colorPh}, {meta.sizePh}, estoque)</p>
           <button onClick={addVariant} className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"><Plus size={13} /> adicionar</button>
         </div>
         <div className="mt-2 space-y-2">
           {variants.map((v, i) => (
             <div key={i} className="flex flex-wrap items-center gap-2">
               <input value={v.sku} onChange={(e) => setVariant(i, { sku: e.target.value })} className={`${inputClass} w-40 px-2.5 py-1.5`} placeholder="SKU *" />
-              <input value={v.color ?? ""} onChange={(e) => setVariant(i, { color: e.target.value })} className={`${inputClass} w-28 px-2.5 py-1.5`} placeholder="cor" />
-              <input value={v.size ?? ""} onChange={(e) => setVariant(i, { size: e.target.value })} className={`${inputClass} w-20 px-2.5 py-1.5`} placeholder="tam" />
+              <input value={v.color ?? ""} onChange={(e) => setVariant(i, { color: e.target.value })} className={`${inputClass} w-28 px-2.5 py-1.5`} placeholder={meta.colorPh} />
+              <input value={v.size ?? ""} onChange={(e) => setVariant(i, { size: e.target.value })} className={`${inputClass} w-24 px-2.5 py-1.5`} placeholder={meta.sizePh} />
               <input type="number" min={0} value={v.stock} onChange={(e) => setVariant(i, { stock: Number(e.target.value) })} className={`${inputClass} w-24 px-2.5 py-1.5`} placeholder="estoque" />
               <button onClick={() => removeVariant(i)} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted" title="remover variante"><Trash2 size={14} /></button>
             </div>
