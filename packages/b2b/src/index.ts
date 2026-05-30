@@ -225,6 +225,48 @@ export async function placeWholesaleOrder(quoteId: string, buyerRef: string) {
   return { ok: true as const, orderId: order.id, status: order.status, totalBRL: total, commissionPct, commissionBRL, sellerNetBRL };
 }
 
+/**
+ * Resumo de receita da plataforma (ADR-024) — cross-tenant, nível-plataforma.
+ * GMV (volume transacionado), comissão total, por status, por vendedor e os
+ * pedidos recentes. Consumido pelo painel platform-admin.
+ */
+export async function platformCommissionSummary() {
+  const prisma = getPrisma();
+  const orders = await prisma.wholesaleOrder.findMany({ orderBy: { createdAt: "desc" } });
+
+  let gmvBRL = 0, commissionBRL = 0;
+  const byStatus: Record<string, number> = {};
+  const bySellerAgg = new Map<string, { gmvBRL: number; commissionBRL: number; orders: number }>();
+  for (const o of orders) {
+    const total = Number(o.totalBRL), comm = Number(o.commissionBRL);
+    gmvBRL += total; commissionBRL += comm;
+    byStatus[o.status] = (byStatus[o.status] ?? 0) + 1;
+    const cur = bySellerAgg.get(o.sellerTenantId) ?? { gmvBRL: 0, commissionBRL: 0, orders: 0 };
+    cur.gmvBRL += total; cur.commissionBRL += comm; cur.orders += 1;
+    bySellerAgg.set(o.sellerTenantId, cur);
+  }
+
+  // nomes dos vendedores
+  const sellerIds = [...bySellerAgg.keys()];
+  const tenants = sellerIds.length ? await prisma.tenant.findMany({ where: { id: { in: sellerIds } }, select: { id: true, name: true } }) : [];
+  const nameById = new Map(tenants.map((t) => [t.id, t.name]));
+
+  return {
+    orders: orders.length,
+    gmvBRL: round2(gmvBRL),
+    commissionBRL: round2(commissionBRL),
+    byStatus,
+    bySeller: [...bySellerAgg.entries()].map(([id, v]) => ({
+      sellerTenantId: id, sellerName: nameById.get(id) ?? id,
+      orders: v.orders, gmvBRL: round2(v.gmvBRL), commissionBRL: round2(v.commissionBRL),
+    })).sort((a, b) => b.commissionBRL - a.commissionBRL),
+    recent: orders.slice(0, 20).map((o) => ({
+      orderId: o.id, sellerName: nameById.get(o.sellerTenantId) ?? o.sellerTenantId, buyerRef: o.buyerRef,
+      status: o.status, totalBRL: Number(o.totalBRL), commissionBRL: Number(o.commissionBRL), createdAt: o.createdAt.toISOString(),
+    })),
+  };
+}
+
 export async function trackWholesaleOrder(orderId: string, buyerRef: string) {
   const order = await getPrisma().wholesaleOrder.findUnique({ where: { id: orderId } });
   if (!order || order.buyerRef !== buyerRef) return null;

@@ -9,6 +9,7 @@ import { Compras } from "./pages/Compras";
 import { Pedidos } from "./pages/Pedidos";
 import { Estoque } from "./pages/Estoque";
 import { Settings } from "./pages/Settings";
+import { Plataforma } from "./pages/Plataforma";
 import "./styles/globals.css";
 
 createRoot(document.getElementById("root")!).render(
@@ -24,6 +25,7 @@ createRoot(document.getElementById("root")!).render(
           <Route path="/estoque"  element={<Estoque />} />
           <Route path="/settings" element={<Settings />} />
         </Route>
+        <Route path="/plataforma" element={<Plataforma />} />
       </Routes>
     </BrowserRouter>
   </StrictMode>

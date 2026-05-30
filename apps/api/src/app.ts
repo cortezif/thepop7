@@ -18,6 +18,7 @@ import { lgpdRoutes } from "./routes/lgpd.js";
 import { authRoutes } from "./routes/auth.js";
 import { integrationRoutes } from "./routes/integrations.js";
 import { stockRoutes } from "./routes/stock.js";
+import { platformRoutes } from "./routes/platform.js";
 import { requireAuth } from "./auth.js";
 
 export function buildApp() {
@@ -59,6 +60,7 @@ export function buildApp() {
   app.register(authRoutes,         { prefix: "/auth" });
   app.register(conversationRoutes, { prefix: "/conversations" }); // /incoming = mensagem da cliente
   app.register(webhookRoutes,      { prefix: "/webhooks" });      // Meta/MP/Melhor Envio
+  app.register(platformRoutes,     { prefix: "/platform" });       // painel da plataforma (chave própria, ADR-024)
 
   // Rotas PROTEGIDAS (painel do operador): exigem JWT válido (F2).
   app.register(async (secure) => {
