@@ -1,9 +1,11 @@
 # ADR — Plataforma de Atendimento Conversacional Omnichannel com IA
 
-**Projeto:** The Pop 7 → Produto SaaS para varejo de moda
-**Versão:** 1.0
-**Data:** 2026-05-27
+**Projeto:** Hub Advisor → Produto SaaS multi-segmento (atendimento social com IA + comércio + suprimentos)
+**Versão:** 1.3
+**Data:** 2026-05-30
 **Status:** Proposto
+
+> **Nota de fundação (v1.3, 2026-05-30):** o produto foi renomeado para **Hub Advisor** e ampliado de "varejo de moda" para **qualquer tipo de loja/segmento**. Foi incorporada a função de **Mercadológica / Rede de Fornecedores** (fornecedores se cadastram ofertando preços; a loja roda pesquisa de preços e envia cotações inclusive para fornecedores não cadastrados). Ver **ADR-029**, que funda essa nova direção. Menções a "The Pop 7" e "varejo de moda" ao longo deste documento devem ser lidas sob a ótica do novo posicionamento.
 
 ---
 
@@ -796,6 +798,73 @@ Nenhum concorrente (ManyChat, ChatGuru, Olist, Take Blip, agências) consegue is
 - Validação Meta Marketing API + Conversions API + Catalog: tem requisitos formais (Business verification estendida, possivelmente Tech Provider partnership). Quem inicia esse processo? Quanto tempo?
 - Geração de imagem: provedor padrão? Limites de direitos autorais (fotos de modelo, ambientes)?
 - Para Click-to-WhatsApp Ads: integração com nossa conta WhatsApp Cloud já está homologada para receber clicks de ads? Verificar.
+
+---
+
+## ADR-029 — Fundação Hub Advisor: produto multi-segmento + Mercadológica (rede de fornecedores e pesquisa de preços)
+
+**Status:** Aceito *(decisão de fundação — reposiciona o produto; supersede o escopo "varejo de moda" da v1.0; implementação faseada)*
+
+**Contexto.** O produto nasceu mirando varejo de moda feminina ("The Pop 7"), mas o núcleo construído — atendimento conversacional omnichannel com IA, venda consultiva, estoque, compras, pós-venda, mídia paga e rede B2B — **não tem nada de específico de moda**. É infraestrutura de comércio autônomo que serve farmácia, papelaria, autopeças, materiais de construção, mercearia, pet shop, qualquer loja. Manter a marca e o discurso presos a um nicho limita o mercado endereçável sem nenhum ganho técnico. Em paralelo, identificamos uma lacuna de alto valor na ponta de **suprimentos**: hoje o lojista cota preço com fornecedores de forma manual, dispersa (WhatsApp solto, e-mail, telefone), sem comparar de forma estruturada nem registrar a pesquisa. Já temos um padrão maduro e testado dessa função no app irmão **`C:\ple`** (módulo "Mercadológica" — pesquisa de preços com convites por token, captura inbound por e-mail/formulário, extração de proposta por IA e consolidação estatística). Vamos **portar e adaptar esse padrão** para o varejo privado.
+
+**Decisão.**
+
+### 1. Identidade do produto: **Hub Advisor**
+
+Renomear o produto de "The Pop 7" para **Hub Advisor** e reposicioná-lo como **plataforma multi-segmento** ("recebe todo tipo de loja"). "The Pop 7" passa a ser apenas **uma loja** (um tenant) dentro da plataforma, como qualquer outra (ex.: "Lisianto"). O posicionamento permanece: **hub autônomo que atua em todas as pontas do negócio** — só que agnóstico de vertical.
+
+### 2. Núcleo preservado
+
+Tudo o que já existe continua e é a função primordial: **atendimento pelas redes sociais via robô de IA** (WhatsApp, Instagram, Facebook Messenger e canais futuros — ver ADR-001/015), **venda consultiva**, **controle de estoque**, **compras**, **pós-venda**, **fiscal/logística/pagamento**, **mídia paga** (ADR-028) e **rede B2B** (ADR-024). Nenhuma capacidade é removida; o catálogo enriquecido (ADR-006) e o perfil do cliente (ADR-007) deixam de ser modelados em termos de "moda" (medidas, modéstia) e passam a ter **atributos por segmento configuráveis por tenant**.
+
+### 3. Nova função: **Mercadológica / Rede de Fornecedores** (portada de `C:\ple`)
+
+Função de **pesquisa de preços estruturada**, no estilo da pesquisa mercadológica de licitação, adaptada ao comércio privado. Duas faces:
+
+**a) Cadastro e oferta de preços (lado do fornecedor).**
+- Fornecedores se **cadastram** (self-service ou cadastrados pela loja): nome, CNPJ/CPF, e-mail, telefone, UF/município, categorias que atende.
+- Cada fornecedor mantém uma **tabela de preços / catálogo de oferta** (itens × preço × validade × condições). É a "vitrine de preços" que a loja consulta.
+- Flag **`compartilhavel`** (opt-in): fornecedor aceita aparecer no **pool regional cross-tenant** — várias lojas se beneficiam do mesmo cadastro (efeito de rede, alinhado a ADR-024).
+
+**b) Pesquisa de preços / RFQ (lado da loja).**
+- A loja inicia uma **pesquisa (campanha de cotação)** para um item/lista, definindo **prazo** e **método de estimativa** (média / mediana / menor preço).
+- Seleciona **fornecedores cadastrados** e/ou informa **fornecedores NÃO cadastrados** (e-mail/WhatsApp ad-hoc). Para estes, o sistema **envia o pedido de cotação** com um **link público tokenizado** — o fornecedor responde sem precisar de conta.
+- **Captura de respostas (inbound) multicanal**, espelhando o padrão do `C:\ple`:
+  - **E-mail** com *plus-addressing* (`cotacao+<token>@dominio`) → roteado a um handler que casa o token ao convite.
+  - **Formulário web público** em `/cotacao/<token>`.
+  - **WhatsApp** (Meta Cloud API, ADR-001) — o fornecedor responde no chat e a IA captura.
+- **Extração por IA** (Claude, padrão do extrator de `C:\ple`): de e-mail livre, PDF, planilha ou imagem, extrai **valor + detalhes** (validade, prazo de entrega, frete CIF/FOB, condição de pagamento, marca/modelo). Cai para regex de moeda quando trivial, IA quando ambíguo.
+- **Consolidação e mapa comparativo**: calcula média, mediana, menor/maior, desvio-padrão, coeficiente de variação; descarta outliers (inexequível / excessivamente elevado) por fator configurável; aplica o método escolhido e devolve a **estimativa**. Gera o **mapa de preços** (planilha comparativa fornecedor × item) — o coração da mercadológica.
+- **Cobrança automática (reenvio)**: convites sem resposta após o prazo são reenviados até N tentativas (cron), depois marcados "sem resposta".
+- **Aprovação humana opcional**: cotações capturadas por IA/inbound entram **pendentes** para revisão antes de entrar na consolidação (auditável; reprovação é soft-delete com motivo).
+- **Painel de monitoramento**: campanhas por status, convites por estado, vencidos, resumo por campanha.
+- **Diferença de contexto vs. `C:\ple`**: aqui é varejo **privado**, então **removemos a camada de conformidade pública** (IN SEGES 65/2021, selos CEIS/CNEP/SICAF, gov.br). A validação de fornecedor fica opcional e simples (situação cadastral CNPJ via BrasilAPI). O **motor de consolidação, convites tokenizados, captura inbound e extração por IA são portados praticamente como estão**.
+
+### 4. Posicionamento frente aos ADRs de fornecedor já existentes
+
+- **ADR-021 (Bia — automação do ciclo com fornecedores):** negociação/reposição **proativa** com fornecedores conhecidos (ponto de pedido → cotação → fechamento). Continua.
+- **ADR-024 (MCP B2B):** catálogo agregado exposto a terceiros (rede de **atacado**, loja-vende-para-loja). Continua.
+- **ADR-029 (Mercadológica — NOVO):** **pesquisa de preços estruturada e marketplace de fornecedores** (fornecedor oferta preço; loja faz "licitação privada" comparando ofertas, inclusive de não cadastrados). É a função de **suprimentos sob demanda**, complementar à reposição automática da Bia.
+- **Persona:** fica sob o domínio de **suprimentos da Bia** (ADR-026), como módulo "Mercadológica" — sem criar nova persona, evitando sprawl.
+
+### 5. Rebrand técnico (escopo, execução faseada)
+
+`@thepop/*` → `@hubadvisor/*` (≈86 imports, 10 pacotes); chaves de storage `thepop7_*` → `hubadvisor_*`; evento DOM `thepop7:unauthorized`; slug default; textos de UI e docs; e-mails de exemplo. **Não é bloqueante** — é refactor mecânico que pode rodar numa janela dedicada; o branding visível ao usuário (nome da loja) já é dinâmico por tenant (ver redesign recente), então o rebrand de pacotes é higiene interna.
+
+**Consequências.**
+- Positivas: mercado endereçável muito maior (qualquer varejo, não só moda); a Mercadológica é uma função de **alto valor percebido e baixo custo de aquisição** (fornecedor entra de graça, vira efeito de rede); reaproveita padrão **já validado** em produção no `C:\ple` (risco técnico baixo); fecha o ciclo de suprimentos junto com ADR-021/024.
+- Negativas: rebrand técnico toca muitos arquivos (risco de regressão se feito sem cuidado); a Mercadológica adiciona superfície nova (captura inbound de e-mail, formulário público tokenizado, fila de aprovação) com seus próprios vetores de abuso/spam; "qualquer segmento" exige tornar configurável o que hoje é específico de moda (catálogo/perfil) — trabalho de generalização.
+
+**Mitigações.**
+- Rebrand em **PR isolado e mecânico** (busca-substituição + build verde), separado de features.
+- Mercadológica reaproveita o esquema de **token único por convite** + **rate-limit** no formulário público; aprovação humana por default para inbound até ganhar confiança.
+- Generalização do catálogo/perfil via **atributos por segmento** (JSON configurável por tenant) — não quebra os tenants de moda existentes.
+
+**Perguntas abertas.**
+- Provedor de e-mail transacional + inbound routing (no `C:\ple` é Resend + Cloudflare Email Routing) — adotar o mesmo? Domínio de recebimento de cotações?
+- Armazenamento de anexos de proposta (no `C:\ple` é Cloudflare R2) — reusar ou usar storage já previsto na stack?
+- Monetização da rede de fornecedores: gratuito para fornecedor sempre? Cobrar destaque/lead? (alinhar com ADR-024).
+- Ordem de execução: Mercadológica como Fase 2.x antes ou depois do rebrand técnico completo?
 
 ---
 
