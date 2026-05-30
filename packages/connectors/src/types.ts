@@ -73,6 +73,69 @@ export type TrackingStatus = {
 };
 
 // ============================================================
+// COURIER / ENTREGA SOB DEMANDA (ADR-030 — entregador on-demand)
+// Modelo distinto da LogisticsConnector (encomenda/transportadora): aqui a
+// entrega é uma corrida com coordenadas, modal (moto/carro) e ETA em minutos.
+// Implementações: Lalamove (metrô, com sandbox), Open Delivery/ABRASEL
+// (Pedidos10 etc. — interior), e MockCourier (dev sem credencial).
+// ============================================================
+export interface CourierConnector {
+  quoteCourier(input: CourierQuoteInput): Promise<CourierQuote>;
+  dispatch(input: CourierDispatchInput): Promise<CourierDispatch>;
+  getStatus(deliveryId: string): Promise<CourierStatus>;
+}
+
+export type GeoPoint = { lat: number; lng: number; address?: string };
+export type CourierModal = "moto" | "carro";
+
+export type CourierQuoteInput = {
+  pickup: GeoPoint;
+  dropoff: GeoPoint;
+  modal?: CourierModal;     // default: decidido pelo provider/loja (volume)
+  itemsValueBRL?: number;   // valor declarado (seguro)
+  remarks?: string;
+};
+
+export type CourierQuote = {
+  provider: string;
+  quotationId?: string;     // alguns providers exigem na hora do dispatch
+  priceBRL: number;
+  modal: CourierModal;
+  etaMinutes?: number;
+  distanceKm?: number;
+  expiresAt?: string;       // ISO; cotações expiram (ex.: Lalamove 5 min)
+  raw?: unknown;
+};
+
+export type CourierContact = { name: string; phone: string };
+export type CourierDispatchInput = {
+  quote?: CourierQuote;     // reaproveita a cotação quando o provider exige
+  pickup: GeoPoint;
+  dropoff: GeoPoint;
+  modal?: CourierModal;
+  sender: CourierContact;
+  recipient: CourierContact;
+  orderRef?: string;        // id do nosso pedido
+  remarks?: string;
+};
+
+export type CourierDispatch = {
+  provider: string;
+  deliveryId: string;
+  status: string;
+  priceBRL?: number;
+  trackingUrl?: string;
+};
+
+export type CourierStatus = {
+  status: string;           // normalizado: pending|assigned|picked_up|on_the_way|delivered|canceled|unknown
+  rawStatus?: string;
+  driver?: { name?: string; phone?: string; plate?: string };
+  location?: GeoPoint;
+  updatedAt?: string;
+};
+
+// ============================================================
 // PAGAMENTO
 // ============================================================
 export interface PaymentConnector {

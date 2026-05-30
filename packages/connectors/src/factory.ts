@@ -1,6 +1,6 @@
 import type {
   ErpConnector, LogisticsConnector, PaymentConnector,
-  FiscalConnector, MessagingConnector
+  FiscalConnector, MessagingConnector, CourierConnector
 } from "./types.js";
 import { MockErp }            from "./erp/mock-erp.js";
 import { MockLogistics }      from "./logistics/mock-logistics.js";
@@ -10,6 +10,9 @@ import { MockMessaging }      from "./messaging/mock-messaging.js";
 import { BlingErp }           from "./erp/bling.js";
 import { TrayErp }            from "./erp/tray.js";
 import { MelhorEnvio }        from "./logistics/melhor-envio.js";
+import { LalamoveCourier }    from "./courier/lalamove.js";
+import { OpenDeliveryCourier } from "./courier/open-delivery.js";
+import { MockCourier }        from "./courier/mock-courier.js";
 import { MercadoPago }        from "./payment/mercado-pago.js";
 import { PlugNotas }          from "./fiscal/plug-notas.js";
 import { CplugFiscal }        from "./fiscal/cplug.js";
@@ -60,6 +63,40 @@ export function getLogisticsConnector(accessToken?: string): LogisticsConnector 
     [new MelhorEnvio(token), new MockLogistics()],
     { label: "logistics:melhor-envio", log }
   );
+}
+
+// ── COURIER / entrega sob demanda (ADR-030) ──────────────────────────────────
+export function courierProvider(): "lalamove" | "opendelivery" {
+  return (process.env.COURIER_PROVIDER ?? "lalamove").toLowerCase() === "opendelivery" ? "opendelivery" : "lalamove";
+}
+
+export function getCourierConnector(): CourierConnector {
+  if (forceMocks()) return new MockCourier();
+  const provider = courierProvider();
+  if (provider === "opendelivery") {
+    const configured = !!process.env.OPENDELIVERY_CLIENT_ID && !!process.env.OPENDELIVERY_BASE_URL;
+    if (!configured) return new MockCourier();
+    return createFailover<CourierConnector>([new OpenDeliveryCourier(), new MockCourier()], { label: "courier:opendelivery", log });
+  }
+  const configured = !!process.env.LALAMOVE_API_KEY && !!process.env.LALAMOVE_API_SECRET;
+  if (!configured) return new MockCourier();
+  return createFailover<CourierConnector>([new LalamoveCourier(), new MockCourier()], { label: "courier:lalamove", log });
+}
+
+/** Constrói o courier para um tenant (credencial por loja, do onboarding). */
+export function buildCourierForTenant(opts: {
+  provider?: "lalamove" | "opendelivery";
+  lalamoveCreds?: { apiKey: string; apiSecret: string; market?: string } | null;
+  openDeliveryCreds?: { clientId: string; clientSecret: string; baseUrl: string } | null;
+}): CourierConnector {
+  if (forceMocks()) return new MockCourier();
+  const provider = opts.provider ?? courierProvider();
+  if (provider === "opendelivery") {
+    if (!opts.openDeliveryCreds) return new MockCourier();
+    return createFailover<CourierConnector>([new OpenDeliveryCourier(opts.openDeliveryCreds), new MockCourier()], { label: "courier:opendelivery", log });
+  }
+  if (!opts.lalamoveCreds) return new MockCourier();
+  return createFailover<CourierConnector>([new LalamoveCourier(opts.lalamoveCreds), new MockCourier()], { label: "courier:lalamove", log });
 }
 
 export function getPaymentConnector(accessToken?: string): PaymentConnector {
