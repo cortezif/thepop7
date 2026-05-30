@@ -9,26 +9,47 @@ import {
 } from "../services/integration-service.js";
 
 export const authRoutes: FastifyPluginAsync = async (app) => {
-  // POST /auth/login — { tenantSlug, email, password } → { token, user }
+  // POST /auth/login — { email, password, tenantSlug? } → { token, user }
+  // Login por e-mail: o e-mail é único POR loja (@@unique([tenantId, email])),
+  // então o mesmo e-mail pode existir em várias lojas. Resolvemos a loja
+  // automaticamente; só pedimos seleção quando e-mail+senha batem em mais de
+  // uma. `tenantSlug` é opcional — usado quando o usuário escolhe no seletor.
   app.post("/login", async (req, reply) => {
     const body = z.object({
-      tenantSlug: z.string(),
       email: z.string(),
       password: z.string(),
+      tenantSlug: z.string().optional(),
     }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
 
     const prisma = getPrisma();
-    const tenant = await prisma.tenant.findUnique({ where: { slug: body.data.tenantSlug } });
-    if (!tenant) return reply.code(401).send({ error: "credenciais inválidas" });
+    const email = body.data.email.toLowerCase().trim();
 
-    const user = await prisma.user.findFirst({
-      where: { tenantId: tenant.id, email: body.data.email.toLowerCase().trim() },
+    // Candidatos: usuários com esse e-mail (em uma ou mais lojas). Se o seletor
+    // mandou um slug, restringimos a essa loja.
+    const candidates = await prisma.user.findMany({
+      where: {
+        email,
+        ...(body.data.tenantSlug ? { tenant: { slug: body.data.tenantSlug.toLowerCase() } } : {}),
+      },
+      include: { tenant: true },
     });
-    if (!user || !verifyPassword(body.data.password, user.passwordHash)) {
-      return reply.code(401).send({ error: "credenciais inválidas" });
+
+    // Só consideramos lojas onde a SENHA também bate (não vazamos em quais
+    // lojas o e-mail existe sem credencial válida).
+    const matched = candidates.filter((u) => verifyPassword(body.data.password, u.passwordHash));
+    if (matched.length === 0) return reply.code(401).send({ error: "credenciais inválidas" });
+
+    // E-mail+senha válidos em mais de uma loja → pedir seleção.
+    if (matched.length > 1) {
+      return {
+        needsTenantSelection: true,
+        tenants: matched.map((u) => ({ slug: u.tenant.slug, name: u.tenant.name })),
+      };
     }
 
+    const user = matched[0]!;
+    const tenant = user.tenant;
     const token = signJwt({ sub: user.id, email: user.email, role: user.role, tenantId: tenant.id, tenantSlug: tenant.slug });
     return {
       token, tenantSlug: tenant.slug,

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { login, signup, tenantSlug } from "../lib/api";
+import { login, signup } from "../lib/api";
 
 export function Login({ onLogin }: { onLogin: () => void }) {
   const [mode, setMode] = useState<"login" | "signup">("login");
@@ -7,9 +7,10 @@ export function Login({ onLogin }: { onLogin: () => void }) {
   const [error, setError] = useState<string | null>(null);
 
   // login
-  const [slug, setSlug] = useState(tenantSlug());
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  // seletor de loja (só quando o mesmo e-mail+senha existe em várias lojas)
+  const [chooseTenants, setChooseTenants] = useState<Array<{ slug: string; name: string }> | null>(null);
 
   // signup
   const [storeName, setStoreName] = useState("");
@@ -23,11 +24,25 @@ export function Login({ onLogin }: { onLogin: () => void }) {
     setBusy(true); setError(null);
     try {
       if (mode === "login") {
-        await login(email.trim(), password, slug);
+        const r = await login(email.trim(), password);
+        if (r.kind === "choose") { setChooseTenants(r.tenants); return; }
       } else {
         await signup({ storeName: storeName.trim(), slug: suSlug.trim().toLowerCase(), name: name.trim(), email: suEmail.trim(), password: suPass });
       }
       onLogin();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Usuário escolheu a loja no seletor → reenvia o login já com o slug.
+  async function pickTenant(slug: string) {
+    setBusy(true); setError(null);
+    try {
+      const r = await login(email.trim(), password, slug);
+      if (r.kind === "ok") onLogin();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -103,58 +118,75 @@ export function Login({ onLogin }: { onLogin: () => void }) {
             </p>
           </div>
 
-          {mode === "login" ? (
-            <div className="space-y-4">
-              <div>
-                <label className={label}>Loja (identificador)</label>
-                <input value={slug} onChange={(e) => setSlug(e.target.value)} className={input} placeholder="ex: lisianto" />
-              </div>
-              <div>
-                <label className={label}>E-mail</label>
-                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" className={input} placeholder="voce@sualoja.com.br" />
-              </div>
-              <div>
-                <label className={label}>Senha</label>
-                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" className={input} placeholder="••••••••" />
-              </div>
+          {chooseTenants ? (
+            // Seletor de loja: e-mail+senha válidos em mais de uma loja.
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">Você tem acesso a mais de uma loja. Escolha qual acessar:</p>
+              {chooseTenants.map((t) => (
+                <button key={t.slug} type="button" disabled={busy} onClick={() => pickTenant(t.slug)}
+                  className="flex w-full items-center justify-between rounded-lg border border-border bg-background px-3.5 py-3 text-left text-sm transition-colors hover:border-primary hover:bg-accent-soft disabled:opacity-50">
+                  <span className="font-medium text-foreground">{t.name}</span>
+                  <span className="text-xs text-muted-foreground">/{t.slug}</span>
+                </button>
+              ))}
+              {error && <p className="mt-2 rounded-md bg-accent-soft px-3 py-2 text-sm text-primary-strong">{error}</p>}
+              <button type="button" onClick={() => { setChooseTenants(null); setError(null); }}
+                className="mt-2 w-full text-center text-xs text-muted-foreground transition-colors hover:text-foreground">
+                ← Voltar
+              </button>
             </div>
           ) : (
-            <div className="space-y-4">
-              <div>
-                <label className={label}>Nome da loja</label>
-                <input value={storeName} onChange={(e) => setStoreName(e.target.value)} className={input} placeholder="Boutique da Ana" />
-              </div>
-              <div>
-                <label className={label}>Identificador (slug)</label>
-                <input value={suSlug} onChange={(e) => setSuSlug(e.target.value)} className={input} placeholder="boutique-da-ana" />
-              </div>
-              <div>
-                <label className={label}>Seu nome</label>
-                <input value={name} onChange={(e) => setName(e.target.value)} className={input} />
-              </div>
-              <div>
-                <label className={label}>E-mail</label>
-                <input type="email" value={suEmail} onChange={(e) => setSuEmail(e.target.value)} className={input} />
-              </div>
-              <div>
-                <label className={label}>Senha (mín. 6)</label>
-                <input type="password" value={suPass} onChange={(e) => setSuPass(e.target.value)} className={input} />
-              </div>
-            </div>
+            <>
+              {mode === "login" ? (
+                <div className="space-y-4">
+                  <div>
+                    <label className={label}>E-mail</label>
+                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" className={input} placeholder="voce@sualoja.com.br" />
+                  </div>
+                  <div>
+                    <label className={label}>Senha</label>
+                    <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" className={input} placeholder="••••••••" />
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <label className={label}>Nome da loja</label>
+                    <input value={storeName} onChange={(e) => setStoreName(e.target.value)} className={input} placeholder="Boutique da Ana" />
+                  </div>
+                  <div>
+                    <label className={label}>Identificador (slug)</label>
+                    <input value={suSlug} onChange={(e) => setSuSlug(e.target.value)} className={input} placeholder="boutique-da-ana" />
+                  </div>
+                  <div>
+                    <label className={label}>Seu nome</label>
+                    <input value={name} onChange={(e) => setName(e.target.value)} className={input} />
+                  </div>
+                  <div>
+                    <label className={label}>E-mail</label>
+                    <input type="email" value={suEmail} onChange={(e) => setSuEmail(e.target.value)} className={input} />
+                  </div>
+                  <div>
+                    <label className={label}>Senha (mín. 6)</label>
+                    <input type="password" value={suPass} onChange={(e) => setSuPass(e.target.value)} className={input} />
+                  </div>
+                </div>
+              )}
+
+              {error && <p className="mt-4 rounded-md bg-accent-soft px-3 py-2 text-sm text-primary-strong">{error}</p>}
+
+              <button type="submit" disabled={busy}
+                className="mt-6 w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-soft transition-opacity hover:opacity-90 disabled:opacity-50">
+                {busy ? "…" : mode === "login" ? "Entrar" : "Criar loja e entrar"}
+              </button>
+
+              <button type="button"
+                onClick={() => { setMode(mode === "login" ? "signup" : "login"); setError(null); }}
+                className="mt-4 w-full text-center text-xs text-muted-foreground transition-colors hover:text-foreground">
+                {mode === "login" ? "Não tem conta? Criar loja" : "Já tem conta? Entrar"}
+              </button>
+            </>
           )}
-
-          {error && <p className="mt-4 rounded-md bg-accent-soft px-3 py-2 text-sm text-primary-strong">{error}</p>}
-
-          <button type="submit" disabled={busy}
-            className="mt-6 w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-soft transition-opacity hover:opacity-90 disabled:opacity-50">
-            {busy ? "…" : mode === "login" ? "Entrar" : "Criar loja e entrar"}
-          </button>
-
-          <button type="button"
-            onClick={() => { setMode(mode === "login" ? "signup" : "login"); setError(null); }}
-            className="mt-4 w-full text-center text-xs text-muted-foreground transition-colors hover:text-foreground">
-            {mode === "login" ? "Não tem conta? Criar loja" : "Já tem conta? Entrar"}
-          </button>
         </form>
       </div>
     </div>

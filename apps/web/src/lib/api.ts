@@ -92,18 +92,29 @@ type AuthResult = {
   user: { id: string; name: string; email: string; role: string };
 };
 
-/** Login: guarda token + tenant da sessão. `slug` = identificador da loja. */
-export async function login(email: string, password: string, slug: string) {
+export type LoginResult =
+  | { kind: "ok"; user: AuthResult["user"] }
+  | { kind: "choose"; tenants: Array<{ slug: string; name: string }> };
+
+/**
+ * Login por e-mail. Resolve a loja automaticamente; só quando o mesmo
+ * e-mail+senha existe em mais de uma loja retorna `kind: "choose"` para o
+ * usuário selecionar (reenviar com `slug`).
+ */
+export async function login(email: string, password: string, slug?: string): Promise<LoginResult> {
   const res = await fetch(`/api/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tenantSlug: slug.trim().toLowerCase(), email, password }),
+    body: JSON.stringify({ email: email.trim(), password, ...(slug ? { tenantSlug: slug.trim().toLowerCase() } : {}) }),
   });
-  if (!res.ok) throw new Error("E-mail, senha ou loja inválidos");
-  const data = (await res.json()) as AuthResult;
+  if (!res.ok) throw new Error("E-mail ou senha inválidos");
+  const data = (await res.json()) as
+    | AuthResult
+    | { needsTenantSelection: true; tenants: Array<{ slug: string; name: string }> };
+  if ("needsTenantSelection" in data) return { kind: "choose", tenants: data.tenants };
   auth.set(data.token); setTenant(data.tenantSlug);
   if (data.tenant?.name) setBrand(data.tenant.name);
-  return data.user;
+  return { kind: "ok", user: data.user };
 }
 
 /** Revalida o token e re-hidrata a marca (ex.: após refresh da página). */
