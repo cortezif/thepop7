@@ -7,7 +7,7 @@ import {
   getMpStatus, refreshMp, disconnectMp, buildMpUrl,
   getMeStatus, refreshMe, disconnectMe, buildMeUrl,
   getBlingStatus, refreshBling, disconnectBling, buildBlingUrl,
-  getOmieStatus,
+  getOmieStatus, getVhsysStatus,
   getLalamoveStatus, getOpenDeliveryStatus,
   getWhatsAppStatus, getInstagramStatus, getCplugStatus, getAnthropicStatus,
   getProviderConfig, isAppConfigured, saveProviderConfig, getMaskedConfig, PROVIDER_FIELDS,
@@ -175,6 +175,11 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
     const t = await resolveTenant((req.query as any).tenantSlug);
     if (!t) return reply.code(404).send({ error: "tenant not found" });
     return getOmieStatus(t.id);
+  });
+  app.get("/vhsys", async (req, reply) => {
+    const t = await resolveTenant((req.query as any).tenantSlug);
+    if (!t) return reply.code(404).send({ error: "tenant not found" });
+    return getVhsysStatus(t.id);
   });
   app.get("/lalamove", async (req, reply) => {
     const t = await resolveTenant((req.query as any).tenantSlug);

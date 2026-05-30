@@ -57,6 +57,10 @@ export const PROVIDER_FIELDS: Record<string, CredField[]> = {
     { key: "appKey", label: "App Key", secret: true, env: "OMIE_APP_KEY", required: true },
     { key: "appSecret", label: "App Secret", secret: true, env: "OMIE_APP_SECRET", required: true },
   ],
+  vhsys: [
+    { key: "accessToken", label: "Access Token", secret: true, env: "VHSYS_ACCESS_TOKEN", required: true },
+    { key: "secretToken", label: "Secret Access Token", secret: true, env: "VHSYS_SECRET_TOKEN", required: true },
+  ],
   mercadopago: [
     { key: "appId", label: "App ID", secret: false, env: "MERCADOPAGO_APP_ID", required: true },
     { key: "appSecret", label: "App Secret", secret: true, env: "MERCADOPAGO_APP_SECRET", required: true },
@@ -626,6 +630,24 @@ export async function getOmieCreds(tenantId: string): Promise<{ appKey: string; 
   const cfg = await getProviderConfig(tenantId, "omie");
   if (!cfg.appKey || !cfg.appSecret) return null;
   return { appKey: cfg.appKey, appSecret: cfg.appSecret };
+}
+
+// ── VHSYS (ERP — REST v2, par de chaves nos headers; sem OAuth) ──────────────
+export async function getVhsysStatus(tenantId: string) {
+  const configured = await isAppConfigured(tenantId, "vhsys");
+  return {
+    provider: "vhsys" as const,
+    connected: configured,
+    status: configured ? "connected" : "disconnected",
+    appConfigured: configured,
+    note: configured ? "VHSYS configurada (ERP). Requer ERP_PROVIDER=vhsys." : "Informe Access Token e Secret Access Token da VHSYS.",
+  };
+}
+
+export async function getVhsysCreds(tenantId: string): Promise<{ accessToken: string; secretToken: string } | null> {
+  const cfg = await getProviderConfig(tenantId, "vhsys");
+  if (!cfg.accessToken || !cfg.secretToken) return null;
+  return { accessToken: cfg.accessToken, secretToken: cfg.secretToken };
 }
 
 /** Credenciais de courier do tenant (banco→env), p/ buildCourierForTenant. */

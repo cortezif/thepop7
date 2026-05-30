@@ -5,6 +5,7 @@ export * from "./failover.js";
 export * from "./erp/bling.js";
 export * from "./erp/bling-auth.js";
 export * from "./erp/omie.js";
+export * from "./erp/vhsys.js";
 export * from "./erp/tray.js";
 export * from "./erp/tray-auth.js";
 export * from "./erp/mock-erp.js";

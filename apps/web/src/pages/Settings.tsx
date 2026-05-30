@@ -16,6 +16,7 @@ export function Settings() {
       <TrayIntegration />
       <BlingIntegration />
       <OmieIntegration />
+      <VhsysIntegration />
       <MercadoPagoIntegration />
       <MelhorEnvioIntegration />
       <WhatsAppStatus />
@@ -386,6 +387,18 @@ function OmieIntegration() {
       description="ERP de gestão (produtos, estoque, pedidos). Informe App Key e App Secret. Requer ERP_PROVIDER=omie."
       provider="omie"
       loadFn={() => api.integrationStatus("omie")}
+    />
+  );
+}
+
+function VhsysIntegration() {
+  return (
+    <EnvIntegration
+      icon={<Store className="h-5 w-5 text-muted-foreground" />}
+      title="VHSYS (ERP)"
+      description="ERP de gestão (produtos, estoque, pedidos). Informe Access Token e Secret Access Token. Requer ERP_PROVIDER=vhsys."
+      provider="vhsys"
+      loadFn={() => api.integrationStatus("vhsys")}
     />
   );
 }
