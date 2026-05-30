@@ -349,6 +349,7 @@ export const api = {
   deleteBom: (id: string) => del<{ ok: boolean }>(`/manufacturing/boms/${id}`),
   // Produção (Fase 2)
   listBatches: () => get<ProductionBatch[]>(`/manufacturing/production`),
+  productionAgenda: () => get<AgendaItem[]>(`/manufacturing/production/agenda`),
   previewProduction: (bomId: string, quantity: number) =>
     post<ProductionPlan>(`/manufacturing/production/preview`, { bomId, quantity }),
   createBatch: (payload: { bomId: string; quantity: number; addToStock?: boolean; note?: string | null }) =>
@@ -389,6 +390,10 @@ export type ProductionBatch = {
   quantity: number; addedToStock: boolean; unitCost: number; totalCost: number;
   consumed: Array<{ name: string; baseUnit: string; quantity: number }>;
   note: string | null; createdAt: string;
+};
+export type AgendaItem = {
+  orderId: string; contactName: string; productName: string; variantSku: string;
+  quantity: number; orderDate: string; leadTimeDays: number | null; dueDate: string; status: string;
 };
 
 export type RawMaterial = {

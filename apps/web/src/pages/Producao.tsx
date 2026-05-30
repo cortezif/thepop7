@@ -1,17 +1,19 @@
 import { useEffect, useState } from "react";
-import { Factory, Play, AlertTriangle, CheckCircle2, History, PackageCheck } from "lucide-react";
+import { Factory, Play, AlertTriangle, CheckCircle2, History, PackageCheck, CalendarClock } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { Page, Card, CardHeader, Button, Badge, EmptyState, Skeleton, inputClass } from "../components/ui";
-import { api, type Bom, type ProductionPlan, type ProductionBatch } from "../lib/api";
+import { api, type Bom, type ProductionPlan, type ProductionBatch, type AgendaItem } from "../lib/api";
 import { formatBRL } from "../lib/utils";
 
 export function Producao() {
   const [boms, setBoms] = useState<Bom[] | null>(null);
   const [batches, setBatches] = useState<ProductionBatch[] | null>(null);
+  const [agenda, setAgenda] = useState<AgendaItem[] | null>(null);
 
   async function loadBatches() { setBatches(await api.listBatches().catch(() => [])); }
   useEffect(() => {
     api.listBoms().then(setBoms).catch(() => setBoms([]));
+    api.productionAgenda().then(setAgenda).catch(() => setAgenda([]));
     loadBatches();
   }, []);
 
@@ -20,14 +22,64 @@ export function Producao() {
       <PageHeader
         eyebrow="FABRICAÇÃO"
         title="Produção"
-        subtitle="Registre a fabricação de um lote. Os insumos da ficha técnica são baixados do estoque; pronta-entrega ainda soma o produto acabado à vitrine."
+        subtitle="Encomendas a produzir + registro de lotes. Os insumos da ficha técnica são baixados do estoque; pronta-entrega soma o produto acabado à vitrine."
       />
+
+      <div className="mb-6">
+        <AgendaEncomendas agenda={agenda} />
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_1fr]">
         <ProductionForm boms={boms} onDone={() => { loadBatches(); api.listBoms().then(setBoms).catch(() => {}); }} />
         <RecentBatches batches={batches} />
       </div>
     </Page>
+  );
+}
+
+// ── Agenda de encomendas (produtos sob encomenda em pedidos abertos) ──────────
+function AgendaEncomendas({ agenda }: { agenda: AgendaItem[] | null }) {
+  if (agenda === null) return <Skeleton className="h-32 w-full" />;
+  const today = new Date().toISOString().slice(0, 10);
+  const fmtDate = (iso: string) => new Date(iso + "T00:00:00").toLocaleDateString("pt-BR");
+  return (
+    <Card>
+      <CardHeader icon={CalendarClock} title="Encomendas a produzir" subtitle="Pedidos abertos com produtos sob encomenda, ordenados pela data-alvo." />
+      {agenda.length === 0 ? (
+        <p className="mt-4 text-sm text-muted-foreground">Nenhuma encomenda pendente.</p>
+      ) : (
+        <table className="mt-4 w-full text-sm">
+          <thead>
+            <tr className="border-b border-border text-left text-xs uppercase tracking-wider text-muted-foreground">
+              <th className="py-2 pr-3 font-medium">Produzir até</th>
+              <th className="py-2 pr-3 font-medium">Produto</th>
+              <th className="py-2 pr-3 text-center font-medium">Qtd</th>
+              <th className="py-2 pr-3 font-medium">Cliente</th>
+              <th className="py-2 font-medium">Pedido</th>
+            </tr>
+          </thead>
+          <tbody>
+            {agenda.map((a, i) => {
+              const overdue = a.dueDate < today;
+              const isToday = a.dueDate === today;
+              return (
+                <tr key={`${a.orderId}-${a.variantSku}-${i}`} className="border-b border-border/60 last:border-0">
+                  <td className="py-2.5 pr-3">
+                    <Badge tone={overdue ? "danger" : isToday ? "warning" : "neutral"}>
+                      {fmtDate(a.dueDate)}{overdue ? " · atrasado" : isToday ? " · hoje" : ""}
+                    </Badge>
+                  </td>
+                  <td className="py-2.5 pr-3 font-medium text-foreground">{a.productName}</td>
+                  <td className="py-2.5 pr-3 text-center">{a.quantity}</td>
+                  <td className="py-2.5 pr-3 text-muted-foreground">{a.contactName}</td>
+                  <td className="py-2.5 text-xs text-muted-foreground">{new Date(a.orderDate).toLocaleDateString("pt-BR")} · {a.status}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </Card>
   );
 }
 

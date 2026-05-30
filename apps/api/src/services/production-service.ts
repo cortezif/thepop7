@@ -148,6 +148,53 @@ export async function createBatch(
   });
 }
 
+// ── Agenda de encomendas (ADR-030) ──────────────────────────────────────────
+// Pedidos com produtos SOB ENCOMENDA ainda não entregues, com a data-alvo.
+
+/** Data-alvo "produzir/entregar até" = data do pedido + prazo (dias). Pura. */
+export function computeDueDate(orderCreatedAt: string | Date, leadTimeDays: number | null | undefined): string {
+  const base = new Date(orderCreatedAt);
+  const due = new Date(base.getTime() + (Number(leadTimeDays) || 0) * 86_400_000);
+  return due.toISOString().slice(0, 10);
+}
+
+export type AgendaItem = {
+  orderId: string; contactName: string; productName: string; variantSku: string;
+  quantity: number; orderDate: string; leadTimeDays: number | null; dueDate: string; status: string;
+};
+
+const OPEN_STATUSES = ["created", "paid", "picking", "shipped", "in_transit", "out_for_delivery"];
+
+export async function productionAgenda(tenantId: string): Promise<AgendaItem[]> {
+  const orders = await getPrisma().order.findMany({
+    where: { tenantId, status: { in: OPEN_STATUSES as any } },
+    include: {
+      items: { include: { product: { select: { name: true, madeToOrder: true, leadTimeDays: true } } } },
+      contact: { select: { name: true } },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+  const rows: AgendaItem[] = [];
+  for (const o of orders) {
+    for (const it of o.items) {
+      if (!it.product?.madeToOrder) continue;
+      rows.push({
+        orderId: o.id,
+        contactName: o.contact?.name ?? "Cliente",
+        productName: it.product.name,
+        variantSku: it.variantSku,
+        quantity: it.quantity,
+        orderDate: o.createdAt.toISOString(),
+        leadTimeDays: it.product.leadTimeDays ?? null,
+        dueDate: computeDueDate(o.createdAt, it.product.leadTimeDays),
+        status: o.status,
+      });
+    }
+  }
+  rows.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  return rows;
+}
+
 export async function listBatches(tenantId: string, limit = 50) {
   const rows = await getPrisma().productionBatch.findMany({
     where: { tenantId },
