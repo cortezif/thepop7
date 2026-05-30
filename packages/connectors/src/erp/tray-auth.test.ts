@@ -32,14 +32,25 @@ test("parseTrayDate: formato Tray e inválidos", () => {
   assert.equal(parseTrayDate(undefined), undefined);
 });
 
-test("buildTrayAuthorizeUrl: monta URL de autorização (sem barra dupla)", () => {
+test("buildTrayAuthorizeUrl: usa {dominio}/auth.php (remove /web_api)", () => {
   const url = buildTrayAuthorizeUrl({
     apiAddress: "https://loja.commercesuite.com.br/web_api/",
     consumerKey: "CK",
     callbackUrl: "https://app.thepop7/api/auth/tray/callback",
   });
-  assert.match(url, /^https:\/\/loja\.commercesuite\.com\.br\/web_api\/auth\?/);
+  // Autorização é em /auth.php no domínio da loja — NÃO em /web_api/auth.
+  assert.match(url, /^https:\/\/loja\.commercesuite\.com\.br\/auth\.php\?/);
+  assert.ok(!url.includes("/web_api/"), "não deve conter /web_api/");
   assert.match(url, /consumer_key=CK/);
   assert.match(url, /response_type=code/);
   assert.match(url, /callback=https%3A%2F%2Fapp\.thepop7/);
+});
+
+test("buildTrayAuthorizeUrl: funciona com domínio próprio (sem barra final)", () => {
+  const url = buildTrayAuthorizeUrl({
+    apiAddress: "https://www.thepop7.com.br/web_api",
+    consumerKey: "02409974414",
+    callbackUrl: "https://hub.adviser.api.br/api/auth/tray/callback?state=thepop7",
+  });
+  assert.match(url, /^https:\/\/www\.thepop7\.com\.br\/auth\.php\?/);
 });

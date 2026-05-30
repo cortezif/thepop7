@@ -49,14 +49,19 @@ export function parseTrayTokenResponse(raw: Record<string, unknown>): TrayTokens
 /**
  * URL que o lojista abre pra autorizar o app (passo 1). Após autorizar, a Tray
  * redireciona pro nosso `callbackUrl` com `code` + `api_address`.
+ *
+ * IMPORTANTE: a autorização (que gera o `code`) é em `{dominio_da_loja}/auth.php`
+ * — NÃO em `{api}/web_api/auth` (esse é o endpoint de token/refresh; chamá-lo no
+ * GET retorna "The field refresh_token is required"). Por isso removemos o
+ * sufixo `/web_api` do apiAddress para chegar no domínio da loja.
  */
 export function buildTrayAuthorizeUrl(opts: {
-  apiAddress: string;       // web_api da loja
+  apiAddress: string;       // web_api da loja (ex.: https://loja.com.br/web_api)
   consumerKey: string;
   callbackUrl: string;
 }): string {
-  const base = opts.apiAddress.replace(/\/$/, "");
-  const u = new URL(`${base}/auth`);
+  const storeBase = opts.apiAddress.replace(/\/$/, "").replace(/\/web_api$/i, "");
+  const u = new URL(`${storeBase}/auth.php`);
   u.searchParams.set("response_type", "code");
   u.searchParams.set("consumer_key", opts.consumerKey);
   u.searchParams.set("callback", opts.callbackUrl);
