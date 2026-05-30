@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Power, Users, GitMerge, Store, CreditCard, Truck, MessageCircle, Instagram, FileText, Bot, Tag } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
-import { api, type DuplicateGroup, type TrayStatus, type IntegrationStatus, type SegmentPreset } from "../lib/api";
+import { api, type DuplicateGroup, type TrayStatus, type IntegrationStatus, type SegmentPreset, type IntegrationConfig } from "../lib/api";
 import { inputClass } from "../components/ui";
 import { cn } from "../lib/utils";
 
@@ -24,7 +24,91 @@ export function Settings() {
   );
 }
 
-// ── Componente genérico de status (env-var only) ─────────────────────────────
+// ── Formulário de credenciais por loja (grava em Integration.appConfig) ───────
+
+function CredentialsForm({ provider, onSaved }: { provider: string; onSaved?: () => void }) {
+  const [cfg, setCfg] = useState<IntegrationConfig | null>(null);
+  const [vals, setVals] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+
+  function load() { api.integrationConfig(provider).then(setCfg).catch(() => {}); }
+  useEffect(() => { load(); }, []);
+
+  async function save() {
+    const typed = Object.fromEntries(Object.entries(vals).filter(([, v]) => v.trim() !== ""));
+    if (Object.keys(typed).length === 0) { setMsg("Preencha ao menos um campo para salvar."); return; }
+    setBusy(true); setMsg(null);
+    try {
+      const updated = await api.saveIntegrationConfig(provider, typed);
+      setCfg(updated); setVals({}); setMsg("Credenciais salvas ✓"); onSaved?.();
+    } catch (e: any) { setMsg(String(e?.message ?? e)); }
+    finally { setBusy(false); }
+  }
+
+  async function clearAll() {
+    setBusy(true); setMsg(null);
+    try {
+      const cleared = Object.fromEntries((cfg?.fields ?? []).map((f) => [f.key, ""]));
+      const updated = await api.saveIntegrationConfig(provider, cleared);
+      setCfg(updated); setVals({}); setMsg("Credenciais removidas (voltou ao padrão do servidor)."); onSaved?.();
+    } catch (e: any) { setMsg(String(e?.message ?? e)); }
+    finally { setBusy(false); }
+  }
+
+  if (!cfg) return null;
+  const filled = cfg.fields.filter((f) => f.set).length;
+
+  return (
+    <div className="mt-4 rounded-md border border-border/70 bg-muted/30 p-4">
+      <button type="button" onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between text-sm font-medium text-foreground">
+        <span>Credenciais {open ? "▴" : "▾"}</span>
+        <span className="text-xs font-normal text-muted-foreground">{filled}/{cfg.fields.length} preenchidas</span>
+      </button>
+      {open && (
+        <div className="mt-3 space-y-3">
+          {cfg.fields.map((f) => (
+            <div key={f.key}>
+              <label className="flex items-center justify-between text-xs font-medium text-foreground">
+                <span>{f.label}{f.required && <span className="text-red-500"> *</span>}</span>
+                <span className="text-[10px] font-normal text-muted-foreground">
+                  {f.source === "db" ? "salvo nesta loja" : f.source === "env" ? "via ambiente do servidor" : "não definido"}
+                </span>
+              </label>
+              <input
+                type={f.secret ? "password" : "text"}
+                value={vals[f.key] ?? ""}
+                onChange={(e) => setVals((v) => ({ ...v, [f.key]: e.target.value }))}
+                placeholder={f.set ? f.preview : "—"}
+                autoComplete="off"
+                className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary" />
+            </div>
+          ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={save} disabled={busy}
+              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">
+              {busy ? "Salvando…" : "Salvar credenciais"}
+            </button>
+            {cfg.fields.some((f) => f.source === "db") && (
+              <button type="button" onClick={clearAll} disabled={busy}
+                className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50">
+                Limpar
+              </button>
+            )}
+            {msg && <span className="text-xs text-muted-foreground">{msg}</span>}
+          </div>
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
+            Segredos são guardados cifrados e nunca exibidos em claro (só os últimos 4 dígitos). Deixe um campo em branco para mantê-lo.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Componente genérico de status (token, por loja) ──────────────────────────
 
 function EnvIntegration({
   icon, title, description, provider, loadFn,
@@ -37,7 +121,8 @@ function EnvIntegration({
 }) {
   const [st, setSt] = useState<IntegrationStatus | null>(null);
 
-  useEffect(() => { loadFn().then(setSt).catch(() => {}); }, []);
+  function load() { loadFn().then(setSt).catch(() => {}); }
+  useEffect(() => { load(); }, []);
 
   const connected = st?.connected ?? false;
 
@@ -59,6 +144,7 @@ function EnvIntegration({
           {st.note}
         </p>
       )}
+      <CredentialsForm provider={provider} onSaved={load} />
     </section>
   );
 }
@@ -143,7 +229,7 @@ function OAuthIntegration({
 
       {st && appConfigured === false && !envToken && (
         <p className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          {st.note ?? `Configure as credenciais do app ${title} no servidor para habilitar o OAuth.`}
+          Informe as credenciais do app {title} abaixo para habilitar o OAuth.
         </p>
       )}
 
@@ -168,6 +254,8 @@ function OAuthIntegration({
           </button>
         </div>
       )}
+
+      <CredentialsForm provider={provider} onSaved={load} />
 
       {msg && <p className="mt-3 text-sm text-emerald-700">{msg}</p>}
       {err && <p className="mt-3 text-sm text-red-600">{err}</p>}
@@ -233,7 +321,7 @@ function TrayIntegration() {
       <p className="mt-1 text-sm text-muted-foreground">A loja usa Tray. Conecte para sincronizar produtos, estoque e pedidos.</p>
       {st && !st.appConfigured && (
         <p className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          Defina <code>TRAY_CONSUMER_KEY</code> e <code>TRAY_CONSUMER_SECRET</code> no servidor para habilitar a conexão.
+          Informe a Consumer Key e a Consumer Secret da Tray abaixo para habilitar a conexão.
         </p>
       )}
       {connected ? (
@@ -261,6 +349,8 @@ function TrayIntegration() {
           </button>
         </div>
       )}
+      <CredentialsForm provider="tray" onSaved={load} />
+
       {msg && <p className="mt-3 text-sm text-emerald-700">{msg}</p>}
       {err && <p className="mt-3 text-sm text-red-600">{err}</p>}
       {st?.lastError && !err && <p className="mt-2 text-xs text-red-500">Último erro: {st.lastError}</p>}

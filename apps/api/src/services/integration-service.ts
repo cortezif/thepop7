@@ -3,7 +3,6 @@ import {
   exchangeTrayCode, refreshTrayToken, type TrayTokens,
   exchangeMpCode, refreshMpToken, buildMpAuthorizeUrl,
   exchangeMeCode, refreshMeToken, buildMeAuthorizeUrl,
-  whatsappConfigured, instagramConfigured,
 } from "@hubadvisor/connectors";
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -38,13 +37,126 @@ function safeStatus(row: Awaited<ReturnType<typeof getIntegration>>) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// Credenciais de app POR LOJA (cifradas em Integration.appConfig).
+// Resolução: valor do banco tem prioridade; cai para a env var como fallback.
+// ──────────────────────────────────────────────────────────────────────────────
+
+export type CredField = { key: string; label: string; secret: boolean; env?: string; required?: boolean; placeholder?: string };
+
+export const PROVIDER_FIELDS: Record<string, CredField[]> = {
+  tray: [
+    { key: "consumerKey", label: "Consumer Key", secret: true, env: "TRAY_CONSUMER_KEY", required: true },
+    { key: "consumerSecret", label: "Consumer Secret", secret: true, env: "TRAY_CONSUMER_SECRET", required: true },
+  ],
+  mercadopago: [
+    { key: "appId", label: "App ID", secret: false, env: "MERCADOPAGO_APP_ID", required: true },
+    { key: "appSecret", label: "App Secret", secret: true, env: "MERCADOPAGO_APP_SECRET", required: true },
+    { key: "accessToken", label: "Access Token (opcional — conexão direta, dispensa OAuth)", secret: true, env: "MERCADOPAGO_ACCESS_TOKEN" },
+  ],
+  "melhor-envio": [
+    { key: "clientId", label: "Client ID", secret: false, env: "MELHORENVIO_CLIENT_ID", required: true },
+    { key: "clientSecret", label: "Client Secret", secret: true, env: "MELHORENVIO_CLIENT_SECRET", required: true },
+    { key: "accessToken", label: "Access Token (opcional)", secret: true, env: "MELHORENVIO_ACCESS_TOKEN" },
+  ],
+  whatsapp: [
+    { key: "phoneNumberId", label: "Phone Number ID", secret: false, env: "WHATSAPP_PHONE_NUMBER_ID", required: true },
+    { key: "accessToken", label: "Access Token", secret: true, env: "WHATSAPP_ACCESS_TOKEN", required: true },
+    { key: "verifyToken", label: "Webhook Verify Token", secret: true, env: "META_WEBHOOK_VERIFY_TOKEN" },
+  ],
+  instagram: [
+    { key: "accessToken", label: "Access Token", secret: true, env: "INSTAGRAM_ACCESS_TOKEN", required: true },
+  ],
+  cplug: [
+    { key: "apiUrl", label: "API URL", secret: false, env: "CPLUG_API_URL", required: true },
+    { key: "clientId", label: "Client ID", secret: false, env: "CPLUG_CLIENT_ID", required: true },
+    { key: "clientSecret", label: "Client Secret", secret: true, env: "CPLUG_CLIENT_SECRET", required: true },
+    { key: "storeUser", label: "Usuário da loja", secret: false, env: "CPLUG_STORE_USER", required: true },
+    { key: "storePassword", label: "Senha da loja", secret: true, env: "CPLUG_STORE_PASSWORD", required: true },
+  ],
+  anthropic: [
+    { key: "apiKey", label: "API Key", secret: true, env: "ANTHROPIC_API_KEY", required: true },
+  ],
+};
+
+function readDbConfig(row: Awaited<ReturnType<typeof getIntegration>>): Record<string, string> {
+  const raw = decryptPII(row?.appConfig ?? null);
+  if (!raw) return {};
+  try { return JSON.parse(raw) as Record<string, string>; } catch { return {}; }
+}
+
+/** Config mesclada (banco → env) de um provider, já decifrada. */
+export async function getProviderConfig(tenantId: string, provider: string): Promise<Record<string, string>> {
+  const fields = PROVIDER_FIELDS[provider];
+  if (!fields) return {};
+  const db = readDbConfig(await getIntegration(tenantId, provider));
+  const out: Record<string, string> = {};
+  for (const f of fields) {
+    const v = db[f.key] ?? (f.env ? process.env[f.env] : undefined);
+    if (v) out[f.key] = v;
+  }
+  return out;
+}
+
+/** True se todos os campos `required` do provider estão presentes (banco ou env). */
+export async function isAppConfigured(tenantId: string, provider: string): Promise<boolean> {
+  const fields = PROVIDER_FIELDS[provider];
+  if (!fields) return false;
+  const cfg = await getProviderConfig(tenantId, provider);
+  return fields.filter((f) => f.required).every((f) => !!cfg[f.key]);
+}
+
+/** Grava credenciais (merge). Valor vazio/null remove a chave (volta ao fallback de env). */
+export async function saveProviderConfig(tenantId: string, provider: string, values: Record<string, string | null | undefined>) {
+  const fields = PROVIDER_FIELDS[provider];
+  if (!fields) throw new Error(`provider desconhecido: ${provider}`);
+  const allowed = new Set(fields.map((f) => f.key));
+  const row = await getIntegration(tenantId, provider);
+  const current = readDbConfig(row);
+  for (const [k, v] of Object.entries(values)) {
+    if (!allowed.has(k)) continue;
+    const trimmed = typeof v === "string" ? v.trim() : v;
+    if (trimmed === "" || trimmed == null) delete current[k];
+    else current[k] = trimmed;
+  }
+  const enc = Object.keys(current).length ? encryptPII(JSON.stringify(current)) : null;
+  await withTenant(tenantId, async (tx) => {
+    await tx.integration.upsert({
+      where: { tenantId_provider: { tenantId, provider } },
+      create: { tenantId, provider, status: "disconnected", appConfig: enc },
+      update: { appConfig: enc },
+    });
+  });
+  return { ok: true as const };
+}
+
+/** Visão segura p/ o painel: quais campos estão setados, valor mascarado e origem. */
+export async function getMaskedConfig(tenantId: string, provider: string) {
+  const fields = PROVIDER_FIELDS[provider];
+  if (!fields) throw new Error(`provider desconhecido: ${provider}`);
+  const db = readDbConfig(await getIntegration(tenantId, provider));
+  return {
+    provider,
+    fields: fields.map((f) => {
+      const inDb = !!db[f.key];
+      const envVal = f.env ? process.env[f.env] : undefined;
+      const source = inDb ? "db" : envVal ? "env" : "none";
+      const value = inDb ? db[f.key]! : envVal ?? "";
+      const preview = !value ? "" : f.secret ? `••••${value.slice(-4)}` : value;
+      return { key: f.key, label: f.label, secret: f.secret, required: !!f.required, source, set: source !== "none", preview };
+    }),
+    appConfigured: await isAppConfigured(tenantId, provider),
+  };
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // TRAY
 // ──────────────────────────────────────────────────────────────────────────────
 
-function trayAppCreds() {
+async function trayAppCreds(tenantId: string) {
+  const cfg = await getProviderConfig(tenantId, "tray");
   return {
-    consumerKey: process.env.TRAY_CONSUMER_KEY ?? "",
-    consumerSecret: process.env.TRAY_CONSUMER_SECRET ?? "",
+    consumerKey: cfg.consumerKey ?? "",
+    consumerSecret: cfg.consumerSecret ?? "",
   };
 }
 
@@ -70,8 +182,8 @@ async function persistTrayTokens(tenantId: string, tokens: TrayTokens) {
 }
 
 export async function connectTrayFromCallback(tenantId: string, code: string, apiAddress: string) {
-  const { consumerKey, consumerSecret } = trayAppCreds();
-  if (!consumerKey || !consumerSecret) throw new Error("TRAY_CONSUMER_KEY/SECRET não configurados");
+  const { consumerKey, consumerSecret } = await trayAppCreds(tenantId);
+  if (!consumerKey || !consumerSecret) throw new Error("Credenciais Tray (Consumer Key/Secret) não configuradas");
   const tokens = await exchangeTrayCode({ apiAddress, consumerKey, consumerSecret, code });
   await persistTrayTokens(tenantId, tokens);
   return { ok: true as const, storeId: tokens.storeId ?? null };
@@ -108,7 +220,6 @@ export async function disconnectTray(tenantId: string) {
 
 export async function getTrayStatus(tenantId: string): Promise<TrayStatus> {
   const row = await getIntegration(tenantId, "tray");
-  const { consumerKey, consumerSecret } = trayAppCreds();
   const connected = !!row && row.status === "connected" && !!row.accessToken;
   return {
     provider: "tray", connected, status: row?.status ?? "disconnected",
@@ -116,7 +227,7 @@ export async function getTrayStatus(tenantId: string): Promise<TrayStatus> {
     connectedAt: row?.connectedAt?.toISOString() ?? null,
     accessExpiresAt: row?.accessExpiresAt?.toISOString() ?? null,
     refreshExpiresAt: row?.refreshExpiresAt?.toISOString() ?? null,
-    appConfigured: !!consumerKey && !!consumerSecret,
+    appConfigured: await isAppConfigured(tenantId, "tray"),
     lastError: row?.lastError ?? null,
   };
 }
@@ -131,16 +242,14 @@ export type MpStatus = {
   appConfigured: boolean; envToken: boolean; lastError: string | null;
 };
 
-export function mpAppConfigured() {
-  return !!(process.env.MERCADOPAGO_APP_ID && process.env.MERCADOPAGO_APP_SECRET);
-}
-
-export function buildMpUrl(redirectUri: string, state: string) {
-  return buildMpAuthorizeUrl(redirectUri, state);
+export async function buildMpUrl(tenantId: string, redirectUri: string, state: string) {
+  const cfg = await getProviderConfig(tenantId, "mercadopago");
+  return buildMpAuthorizeUrl(redirectUri, state, cfg.appId);
 }
 
 export async function connectMpFromCallback(tenantId: string, code: string, redirectUri: string) {
-  const tokens = await exchangeMpCode({ code, redirectUri });
+  const cfg = await getProviderConfig(tenantId, "mercadopago");
+  const tokens = await exchangeMpCode({ code, redirectUri, creds: { appId: cfg.appId, appSecret: cfg.appSecret } });
   await upsertIntegration(tenantId, "mercadopago", {
     status: "connected",
     storeId: tokens.userId,
@@ -158,7 +267,8 @@ export async function refreshMp(tenantId: string) {
   const refreshToken = decryptPII(row?.refreshToken);
   if (!refreshToken) throw new Error("Mercado Pago não conectado");
   try {
-    const tokens = await refreshMpToken(refreshToken);
+    const cfg = await getProviderConfig(tenantId, "mercadopago");
+    const tokens = await refreshMpToken(refreshToken, { appId: cfg.appId, appSecret: cfg.appSecret });
     await withTenant(tenantId, async (tx) => {
       await tx.integration.update({
         where: { tenantId_provider: { tenantId, provider: "mercadopago" } },
@@ -195,24 +305,26 @@ export async function disconnectMp(tenantId: string) {
 
 export async function getMpStatus(tenantId: string): Promise<MpStatus> {
   const row = await getIntegration(tenantId, "mercadopago");
-  const connected = (!!row && row.status === "connected" && !!row.accessToken)
-    || !!process.env.MERCADOPAGO_ACCESS_TOKEN;
+  const cfg = await getProviderConfig(tenantId, "mercadopago");
+  const hasDirectToken = !!cfg.accessToken;
+  const connected = (!!row && row.status === "connected" && !!row.accessToken) || hasDirectToken;
   return {
     provider: "mercadopago", connected,
-    status: row?.status ?? (process.env.MERCADOPAGO_ACCESS_TOKEN ? "connected" : "disconnected"),
+    status: row?.status ?? (hasDirectToken ? "connected" : "disconnected"),
     userId: row?.storeId ?? null,
     connectedAt: row?.connectedAt?.toISOString() ?? null,
-    appConfigured: mpAppConfigured(),
-    envToken: !!process.env.MERCADOPAGO_ACCESS_TOKEN,
+    appConfigured: await isAppConfigured(tenantId, "mercadopago"),
+    envToken: hasDirectToken,
     lastError: row?.lastError ?? null,
   };
 }
 
-/** Retorna o access_token decifrado do tenant (ou o env var global). */
+/** Retorna o access_token decifrado do tenant (OAuth), ou o token direto (banco/env). */
 export async function getMpAccessToken(tenantId: string): Promise<string | null> {
   const row = await getIntegration(tenantId, "mercadopago");
   if (row?.status === "connected" && row.accessToken) return decryptPII(row.accessToken);
-  return process.env.MERCADOPAGO_ACCESS_TOKEN ?? null;
+  const cfg = await getProviderConfig(tenantId, "mercadopago");
+  return cfg.accessToken ?? null;
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -224,16 +336,14 @@ export type MeStatus = {
   connectedAt: string | null; appConfigured: boolean; envToken: boolean; lastError: string | null;
 };
 
-export function meAppConfigured() {
-  return !!(process.env.MELHORENVIO_CLIENT_ID && process.env.MELHORENVIO_CLIENT_SECRET);
-}
-
-export function buildMeUrl(redirectUri: string, state: string) {
-  return buildMeAuthorizeUrl(redirectUri, state);
+export async function buildMeUrl(tenantId: string, redirectUri: string, state: string) {
+  const cfg = await getProviderConfig(tenantId, "melhor-envio");
+  return buildMeAuthorizeUrl(redirectUri, state, cfg.clientId);
 }
 
 export async function connectMeFromCallback(tenantId: string, code: string, redirectUri: string) {
-  const tokens = await exchangeMeCode({ code, redirectUri });
+  const cfg = await getProviderConfig(tenantId, "melhor-envio");
+  const tokens = await exchangeMeCode({ code, redirectUri, creds: { clientId: cfg.clientId, clientSecret: cfg.clientSecret } });
   await upsertIntegration(tenantId, "melhor-envio", {
     status: "connected",
     accessToken: encryptPII(tokens.accessToken),
@@ -250,7 +360,8 @@ export async function refreshMe(tenantId: string) {
   const refreshToken = decryptPII(row?.refreshToken);
   if (!refreshToken) throw new Error("Melhor Envio não conectado");
   try {
-    const tokens = await refreshMeToken(refreshToken);
+    const cfg = await getProviderConfig(tenantId, "melhor-envio");
+    const tokens = await refreshMeToken(refreshToken, { clientId: cfg.clientId, clientSecret: cfg.clientSecret });
     await withTenant(tenantId, async (tx) => {
       await tx.integration.update({
         where: { tenantId_provider: { tenantId, provider: "melhor-envio" } },
@@ -287,14 +398,15 @@ export async function disconnectMe(tenantId: string) {
 
 export async function getMeStatus(tenantId: string): Promise<MeStatus> {
   const row = await getIntegration(tenantId, "melhor-envio");
-  const connected = (!!row && row.status === "connected" && !!row.accessToken)
-    || !!process.env.MELHORENVIO_ACCESS_TOKEN;
+  const cfg = await getProviderConfig(tenantId, "melhor-envio");
+  const hasDirectToken = !!cfg.accessToken;
+  const connected = (!!row && row.status === "connected" && !!row.accessToken) || hasDirectToken;
   return {
     provider: "melhor-envio", connected,
-    status: row?.status ?? (process.env.MELHORENVIO_ACCESS_TOKEN ? "connected" : "disconnected"),
+    status: row?.status ?? (hasDirectToken ? "connected" : "disconnected"),
     connectedAt: row?.connectedAt?.toISOString() ?? null,
-    appConfigured: meAppConfigured(),
-    envToken: !!process.env.MELHORENVIO_ACCESS_TOKEN,
+    appConfigured: await isAppConfigured(tenantId, "melhor-envio"),
+    envToken: hasDirectToken,
     lastError: row?.lastError ?? null,
   };
 }
@@ -302,36 +414,41 @@ export async function getMeStatus(tenantId: string): Promise<MeStatus> {
 export async function getMeAccessToken(tenantId: string): Promise<string | null> {
   const row = await getIntegration(tenantId, "melhor-envio");
   if (row?.status === "connected" && row.accessToken) return decryptPII(row.accessToken);
-  return process.env.MELHORENVIO_ACCESS_TOKEN ?? null;
+  const cfg = await getProviderConfig(tenantId, "melhor-envio");
+  return cfg.accessToken ?? null;
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
 // WHATSAPP / INSTAGRAM (env-var only — sem OAuth próprio)
 // ──────────────────────────────────────────────────────────────────────────────
 
-export function getWhatsAppStatus() {
-  const configured = whatsappConfigured();
+export async function getWhatsAppStatus(tenantId: string) {
+  const cfg = await getProviderConfig(tenantId, "whatsapp");
+  const configured = !!cfg.phoneNumberId && !!cfg.accessToken;
   return {
     provider: "whatsapp" as const,
     connected: configured,
     status: configured ? "connected" : "disconnected",
-    phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID ?? null,
-    verifyTokenSet: !!process.env.META_WEBHOOK_VERIFY_TOKEN,
+    phoneNumberId: cfg.phoneNumberId ?? null,
+    verifyTokenSet: !!cfg.verifyToken,
+    appConfigured: configured,
     note: configured
       ? "Credenciais configuradas. Webhook Meta deve apontar para /api/webhooks/meta"
-      : "Configure WHATSAPP_PHONE_NUMBER_ID e WHATSAPP_ACCESS_TOKEN no servidor",
+      : "Informe Phone Number ID e Access Token do WhatsApp Cloud.",
   };
 }
 
-export function getInstagramStatus() {
-  const configured = instagramConfigured();
+export async function getInstagramStatus(tenantId: string) {
+  const cfg = await getProviderConfig(tenantId, "instagram");
+  const configured = !!cfg.accessToken;
   return {
     provider: "instagram" as const,
     connected: configured,
     status: configured ? "connected" : "disconnected",
+    appConfigured: configured,
     note: configured
       ? "Credenciais configuradas. Webhook Meta deve apontar para /api/webhooks/meta"
-      : "Configure INSTAGRAM_ACCESS_TOKEN no servidor",
+      : "Informe o Access Token do Instagram.",
   };
 }
 
@@ -339,21 +456,16 @@ export function getInstagramStatus() {
 // CPLUG (fiscal — env-var only)
 // ──────────────────────────────────────────────────────────────────────────────
 
-export function getCplugStatus() {
-  const configured = !!(
-    process.env.CPLUG_API_URL &&
-    process.env.CPLUG_CLIENT_ID &&
-    process.env.CPLUG_CLIENT_SECRET &&
-    process.env.CPLUG_STORE_USER &&
-    process.env.CPLUG_STORE_PASSWORD
-  );
+export async function getCplugStatus(tenantId: string) {
+  const configured = await isAppConfigured(tenantId, "cplug");
   return {
     provider: "cplug" as const,
     connected: configured,
     status: configured ? "connected" : "disconnected",
+    appConfigured: configured,
     note: configured
       ? "Credenciais CPlug configuradas. NFe habilitada."
-      : "Configure CPLUG_API_URL, CPLUG_CLIENT_ID, CPLUG_CLIENT_SECRET, CPLUG_STORE_USER e CPLUG_STORE_PASSWORD",
+      : "Informe API URL, Client ID/Secret e usuário/senha da loja CPlug.",
   };
 }
 
@@ -361,12 +473,13 @@ export function getCplugStatus() {
 // ANTHROPIC
 // ──────────────────────────────────────────────────────────────────────────────
 
-export function getAnthropicStatus() {
-  const configured = !!process.env.ANTHROPIC_API_KEY;
+export async function getAnthropicStatus(tenantId: string) {
+  const configured = await isAppConfigured(tenantId, "anthropic");
   return {
     provider: "anthropic" as const,
     connected: configured,
     status: configured ? "connected" : "disconnected",
-    note: configured ? "API Key configurada. Maya/Bia/Lia operacionais." : "Configure ANTHROPIC_API_KEY no servidor",
+    appConfigured: configured,
+    note: configured ? "API Key configurada. Maya/Bia/Lia operacionais." : "Informe a API Key da Anthropic.",
   };
 }

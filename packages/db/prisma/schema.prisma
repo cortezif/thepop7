@@ -178,6 +178,7 @@ model Integration {
   storeId       String?
   accessToken   String?  // cifrado
   refreshToken  String?  // cifrado
+  appConfig     String?  // cifrado: JSON com credenciais de app por loja (consumer key/secret, client id/secret, tokens diretos…)
   accessExpiresAt  DateTime?
   refreshExpiresAt DateTime?
   lastError     String?

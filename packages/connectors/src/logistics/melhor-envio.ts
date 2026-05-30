@@ -95,18 +95,24 @@ export class MelhorEnvio implements LogisticsConnector {
   }
 }
 
+/** Credenciais do app Melhor Envio. Param tem prioridade sobre env. */
+export type MeAppCreds = { clientId?: string; clientSecret?: string };
+const meId = (c?: MeAppCreds) => c?.clientId ?? process.env.MELHORENVIO_CLIENT_ID ?? "";
+const meSecret = (c?: MeAppCreds) => c?.clientSecret ?? process.env.MELHORENVIO_CLIENT_SECRET ?? "";
+
 /** Troca o code OAuth por tokens Melhor Envio. */
 export async function exchangeMeCode(opts: {
   code: string;
   redirectUri: string;
+  creds?: MeAppCreds;
 }): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> {
   const res = await fetch("https://melhorenvio.com.br/oauth/token", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       grant_type: "authorization_code",
-      client_id: process.env.MELHORENVIO_CLIENT_ID ?? "",
-      client_secret: process.env.MELHORENVIO_CLIENT_SECRET ?? "",
+      client_id: meId(opts.creds),
+      client_secret: meSecret(opts.creds),
       code: opts.code,
       redirect_uri: opts.redirectUri,
     }),
@@ -119,14 +125,14 @@ export async function exchangeMeCode(opts: {
   return { accessToken: data.access_token, refreshToken: data.refresh_token, expiresIn: data.expires_in ?? 2592000 };
 }
 
-export async function refreshMeToken(refreshToken: string): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> {
+export async function refreshMeToken(refreshToken: string, creds?: MeAppCreds): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> {
   const res = await fetch("https://melhorenvio.com.br/oauth/token", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       grant_type: "refresh_token",
-      client_id: process.env.MELHORENVIO_CLIENT_ID ?? "",
-      client_secret: process.env.MELHORENVIO_CLIENT_SECRET ?? "",
+      client_id: meId(creds),
+      client_secret: meSecret(creds),
       refresh_token: refreshToken,
     }),
   });
@@ -135,10 +141,10 @@ export async function refreshMeToken(refreshToken: string): Promise<{ accessToke
   return { accessToken: data.access_token, refreshToken: data.refresh_token, expiresIn: data.expires_in ?? 2592000 };
 }
 
-export function buildMeAuthorizeUrl(redirectUri: string, state: string): string {
+export function buildMeAuthorizeUrl(redirectUri: string, state: string, clientId?: string): string {
   const params = new URLSearchParams({
     response_type: "code",
-    client_id: process.env.MELHORENVIO_CLIENT_ID ?? "",
+    client_id: clientId ?? process.env.MELHORENVIO_CLIENT_ID ?? "",
     redirect_uri: redirectUri,
     scope: "cart-read cart-write shipping-calculate shipping-generate shipping-tracking orders-read orders-create",
     state,

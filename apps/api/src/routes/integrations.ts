@@ -4,9 +4,10 @@ import { getPrisma } from "@hubadvisor/db";
 import { buildTrayAuthorizeUrl } from "@hubadvisor/connectors";
 import {
   getTrayStatus, refreshTray, disconnectTray,
-  getMpStatus, refreshMp, disconnectMp, buildMpUrl, mpAppConfigured,
-  getMeStatus, refreshMe, disconnectMe, buildMeUrl, meAppConfigured,
+  getMpStatus, refreshMp, disconnectMp, buildMpUrl,
+  getMeStatus, refreshMe, disconnectMe, buildMeUrl,
   getWhatsAppStatus, getInstagramStatus, getCplugStatus, getAnthropicStatus,
+  getProviderConfig, isAppConfigured, saveProviderConfig, getMaskedConfig, PROVIDER_FIELDS,
 } from "../services/integration-service.js";
 
 async function resolveTenant(slug: string) {
@@ -32,8 +33,9 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
     if (!q.success) return reply.code(400).send({ error: q.error.flatten() });
     const tenant = await resolveTenant(q.data.tenantSlug);
     if (!tenant) return reply.code(404).send({ error: "tenant not found" });
-    const consumerKey = process.env.TRAY_CONSUMER_KEY ?? "";
-    if (!consumerKey) return reply.code(400).send({ error: "TRAY_CONSUMER_KEY não configurado" });
+    const cfg = await getProviderConfig(tenant.id, "tray");
+    const consumerKey = cfg.consumerKey ?? "";
+    if (!consumerKey) return reply.code(400).send({ error: "Credenciais Tray não configuradas" });
     const callbackUrl = `${publicBase(req as any).replace(/\/$/, "")}/api/auth/tray/callback?state=${encodeURIComponent(tenant.slug)}`;
     const url = buildTrayAuthorizeUrl({ apiAddress: q.data.apiAddress, consumerKey, callbackUrl });
     return { url };
@@ -64,9 +66,9 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
     if (!q.success) return reply.code(400).send({ error: q.error.flatten() });
     const tenant = await resolveTenant(q.data.tenantSlug);
     if (!tenant) return reply.code(404).send({ error: "tenant not found" });
-    if (!mpAppConfigured()) return reply.code(400).send({ error: "MERCADOPAGO_APP_ID/SECRET não configurados" });
+    if (!(await isAppConfigured(tenant.id, "mercadopago"))) return reply.code(400).send({ error: "Credenciais Mercado Pago não configuradas" });
     const redirectUri = `${publicBase(req as any).replace(/\/$/, "")}/api/auth/mercadopago/callback`;
-    const url = buildMpUrl(redirectUri, tenant.slug);
+    const url = await buildMpUrl(tenant.id, redirectUri, tenant.slug);
     return { url };
   });
 
@@ -95,9 +97,9 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
     if (!q.success) return reply.code(400).send({ error: q.error.flatten() });
     const tenant = await resolveTenant(q.data.tenantSlug);
     if (!tenant) return reply.code(404).send({ error: "tenant not found" });
-    if (!meAppConfigured()) return reply.code(400).send({ error: "MELHORENVIO_CLIENT_ID/SECRET não configurados" });
+    if (!(await isAppConfigured(tenant.id, "melhor-envio"))) return reply.code(400).send({ error: "Credenciais Melhor Envio não configuradas" });
     const redirectUri = `${publicBase(req as any).replace(/\/$/, "")}/api/auth/melhor-envio/callback`;
-    const url = buildMeUrl(redirectUri, tenant.slug);
+    const url = await buildMeUrl(tenant.id, redirectUri, tenant.slug);
     return { url };
   });
 
@@ -114,9 +116,51 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
     return disconnectMe(tenant.id);
   });
 
-  // ── STATUS: WhatsApp / Instagram / CPlug / Anthropic (env-var only) ──────────
-  app.get("/whatsapp", async () => getWhatsAppStatus());
-  app.get("/instagram", async () => getInstagramStatus());
-  app.get("/cplug", async () => getCplugStatus());
-  app.get("/anthropic", async () => getAnthropicStatus());
+  // ── STATUS: WhatsApp / Instagram / CPlug / Anthropic (token, por loja) ───────
+  app.get("/whatsapp", async (req, reply) => {
+    const t = await resolveTenant((req.query as any).tenantSlug);
+    if (!t) return reply.code(404).send({ error: "tenant not found" });
+    return getWhatsAppStatus(t.id);
+  });
+  app.get("/instagram", async (req, reply) => {
+    const t = await resolveTenant((req.query as any).tenantSlug);
+    if (!t) return reply.code(404).send({ error: "tenant not found" });
+    return getInstagramStatus(t.id);
+  });
+  app.get("/cplug", async (req, reply) => {
+    const t = await resolveTenant((req.query as any).tenantSlug);
+    if (!t) return reply.code(404).send({ error: "tenant not found" });
+    return getCplugStatus(t.id);
+  });
+  app.get("/anthropic", async (req, reply) => {
+    const t = await resolveTenant((req.query as any).tenantSlug);
+    if (!t) return reply.code(404).send({ error: "tenant not found" });
+    return getAnthropicStatus(t.id);
+  });
+
+  // ── CREDENCIAIS por loja (genérico p/ qualquer provider) ─────────────────────
+  // GET  /integrations/:provider/config  → campos + valores mascarados + origem
+  app.get("/:provider/config", async (req, reply) => {
+    const provider = (req.params as any).provider as string;
+    if (!PROVIDER_FIELDS[provider]) return reply.code(404).send({ error: "provider desconhecido" });
+    const t = await resolveTenant((req.query as any).tenantSlug);
+    if (!t) return reply.code(404).send({ error: "tenant not found" });
+    return getMaskedConfig(t.id, provider);
+  });
+
+  // POST /integrations/:provider/config  { tenantSlug, values: {campo: valor} }
+  //   - valor vazio/ausente remove a chave (volta ao fallback de env)
+  app.post("/:provider/config", async (req, reply) => {
+    const provider = (req.params as any).provider as string;
+    if (!PROVIDER_FIELDS[provider]) return reply.code(404).send({ error: "provider desconhecido" });
+    const body = z.object({
+      tenantSlug: z.string(),
+      values: z.record(z.string(), z.string().nullable()),
+    }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+    const t = await resolveTenant(body.data.tenantSlug);
+    if (!t) return reply.code(404).send({ error: "tenant not found" });
+    await saveProviderConfig(t.id, provider, body.data.values);
+    return getMaskedConfig(t.id, provider);
+  });
 };

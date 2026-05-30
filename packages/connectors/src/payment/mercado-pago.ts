@@ -97,18 +97,24 @@ export class MercadoPago implements PaymentConnector {
   }
 }
 
+/** Credenciais do app MP (client_id/secret). Param tem prioridade sobre env. */
+export type MpAppCreds = { appId?: string; appSecret?: string };
+const mpId = (c?: MpAppCreds) => c?.appId ?? process.env.MERCADOPAGO_APP_ID ?? "";
+const mpSecret = (c?: MpAppCreds) => c?.appSecret ?? process.env.MERCADOPAGO_APP_SECRET ?? "";
+
 /** Troca o code OAuth por access_token + refresh_token. */
 export async function exchangeMpCode(opts: {
   code: string;
   redirectUri: string;
+  creds?: MpAppCreds;
 }): Promise<{ accessToken: string; refreshToken: string; userId: string; expiresIn: number }> {
   const res = await fetch(`${MP_API}/oauth/token`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       grant_type: "authorization_code",
-      client_id: process.env.MERCADOPAGO_APP_ID ?? "",
-      client_secret: process.env.MERCADOPAGO_APP_SECRET ?? "",
+      client_id: mpId(opts.creds),
+      client_secret: mpSecret(opts.creds),
       code: opts.code,
       redirect_uri: opts.redirectUri,
     }),
@@ -126,14 +132,14 @@ export async function exchangeMpCode(opts: {
   };
 }
 
-export async function refreshMpToken(refreshToken: string): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> {
+export async function refreshMpToken(refreshToken: string, creds?: MpAppCreds): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> {
   const res = await fetch(`${MP_API}/oauth/token`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       grant_type: "refresh_token",
-      client_id: process.env.MERCADOPAGO_APP_ID ?? "",
-      client_secret: process.env.MERCADOPAGO_APP_SECRET ?? "",
+      client_id: mpId(creds),
+      client_secret: mpSecret(creds),
       refresh_token: refreshToken,
     }),
   });
@@ -142,11 +148,10 @@ export async function refreshMpToken(refreshToken: string): Promise<{ accessToke
   return { accessToken: data.access_token, refreshToken: data.refresh_token, expiresIn: data.expires_in ?? 15552000 };
 }
 
-export function buildMpAuthorizeUrl(redirectUri: string, state: string): string {
-  const appId = process.env.MERCADOPAGO_APP_ID ?? "";
+export function buildMpAuthorizeUrl(redirectUri: string, state: string, appId?: string): string {
   const params = new URLSearchParams({
     response_type: "code",
-    client_id: appId,
+    client_id: appId ?? process.env.MERCADOPAGO_APP_ID ?? "",
     redirect_uri: redirectUri,
     state,
   });

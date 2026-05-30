@@ -302,7 +302,18 @@ export const api = {
     post<{ ok: boolean; status?: string }>(`/ads/campaigns/${id}/status`, { status }),
   adsRefreshInsights: (id: string) =>
     post<{ ok: boolean; metrics?: AdMetrics; reason?: string }>(`/ads/campaigns/${id}/insights`, {}),
+
+  // ── Credenciais de integração por loja (gravadas pelo painel) ──
+  integrationConfig: (provider: string) => get<IntegrationConfig>(`/integrations/${provider}/config`),
+  saveIntegrationConfig: (provider: string, values: Record<string, string>) =>
+    post<IntegrationConfig>(`/integrations/${provider}/config`, { values }),
 };
+
+export type IntegrationConfigField = {
+  key: string; label: string; secret: boolean; required: boolean;
+  source: "db" | "env" | "none"; set: boolean; preview: string;
+};
+export type IntegrationConfig = { provider: string; fields: IntegrationConfigField[]; appConfigured: boolean };
 
 export type AdAudience = { key: string; label: string; size: number; definition: Record<string, unknown> };
 export type AdMetrics = { impressions: number; clicks: number; spendBRL: number; conversions: number; ctr: number; roas: number; updatedAt?: string };
