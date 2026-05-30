@@ -24,6 +24,8 @@ import { requireAuth } from "./auth.js";
 
 export function buildApp() {
   const app = Fastify({
+    // Anexos de cotação (PDF/imagem em base64) podem passar de 1MB (default).
+    bodyLimit: 12 * 1024 * 1024, // 12 MB
     // Serviço único (Railway): o painel chama /api/* na mesma origem. Tiramos o
     // prefixo /api ANTES do roteamento, então as rotas (/auth, /metrics…) batem.
     rewriteUrl(req) {

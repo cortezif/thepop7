@@ -95,6 +95,80 @@ export async function parseSupplierQuote(
   }
 }
 
+export type QuoteAttachment = {
+  fileName: string;
+  mimeType: string;
+  dataBase64: string; // sem o prefixo data:...;base64,
+};
+
+/**
+ * Extrai a cotação de ANEXOS (PDF / imagem / planilha-CSV / texto) enviados pelo
+ * fornecedor. Usa a API Anthropic via fetch (controle do header anthropic-beta
+ * pra PDF), reusando o mesmo QUOTE_TOOL/sistema do parser de texto.
+ * - PDF  → document block (base64)
+ * - imagem (png/jpeg/webp/gif) → image block (base64)
+ * - csv/texto → decodificado e anexado como texto
+ */
+export async function parseSupplierQuoteFromAttachments(
+  attachments: QuoteAttachment[],
+  context: { itemsRequested?: string; note?: string },
+  opts: { model?: string } = {},
+): Promise<{ ok: true; quote: ParsedQuote } | { ok: false; error: string }> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return { ok: false, error: "ANTHROPIC_API_KEY ausente" };
+  const model = opts.model ?? process.env.CLAUDE_MODEL_FAST ?? "claude-haiku-4-5-20251001";
+
+  const textParts: string[] = [
+    context.itemsRequested ? `Itens solicitados: ${context.itemsRequested}` : "",
+    context.note ?? "",
+    "Extraia a cotação dos anexos abaixo e submeta via submit_quote.",
+  ].filter(Boolean);
+
+  const content: any[] = [];
+  let hasPdf = false;
+  for (const a of attachments) {
+    const mt = (a.mimeType || "").toLowerCase();
+    if (mt === "application/pdf" || a.fileName.toLowerCase().endsWith(".pdf")) {
+      hasPdf = true;
+      content.push({ type: "document", source: { type: "base64", media_type: "application/pdf", data: a.dataBase64 } });
+    } else if (/^image\/(png|jpeg|jpg|webp|gif)$/.test(mt)) {
+      const media = mt === "image/jpg" ? "image/jpeg" : mt;
+      content.push({ type: "image", source: { type: "base64", media_type: media, data: a.dataBase64 } });
+    } else {
+      // csv / texto / planilha exportada como texto → decodifica e injeta como texto
+      try { textParts.push(`Conteúdo de ${a.fileName}:\n` + Buffer.from(a.dataBase64, "base64").toString("utf8").slice(0, 8000)); }
+      catch { /* ignora anexo ilegível */ }
+    }
+  }
+  content.unshift({ type: "text", text: textParts.join("\n") });
+
+  try {
+    const headers: Record<string, string> = {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    };
+    if (hasPdf) headers["anthropic-beta"] = "pdfs-2024-09-25";
+
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model, max_tokens: 800, system: PARSE_SYSTEM,
+        tools: [QUOTE_TOOL], tool_choice: { type: "tool", name: "submit_quote" },
+        messages: [{ role: "user", content }],
+      }),
+    });
+    if (!res.ok) return { ok: false, error: `Anthropic ${res.status}: ${await res.text()}` };
+    const data: any = await res.json();
+    const toolUse = (data.content ?? []).find((b: any) => b.type === "tool_use");
+    if (!toolUse) return { ok: false, error: "sem tool_use" };
+    return { ok: true, quote: toolUse.input as ParsedQuote };
+  } catch (e: any) {
+    return { ok: false, error: e?.message ?? String(e) };
+  }
+}
+
 /** Gera a mensagem de solicitação de cotação pro fornecedor. */
 export async function composeQuoteRequest(
   items: Array<{ description: string; quantity: number }>,

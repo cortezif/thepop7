@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { getPrisma, withTenant } from "@hubadvisor/db";
 import { getMessagingConnector, sendEmail, emailConfigured, inboundReplyTo } from "@hubadvisor/connectors";
-import { parseSupplierQuote } from "@hubadvisor/agent";
+import { parseSupplierQuote, parseSupplierQuoteFromAttachments, type QuoteAttachment } from "@hubadvisor/agent";
 import { consolidatePrices, type EstimationMethod } from "./price-consolidation.js";
 
 const onlyDigits = (s: string) => s.replace(/\D/g, "");
@@ -313,6 +313,43 @@ export async function extractQuoteFromText(tenantId: string, input: {
     { tenantId, researchId: input.researchId ?? null, supplierId: input.supplierId ?? null, supplierName: input.supplierName, origin: "ia" },
     input.text,
   );
+}
+
+/** Extrai cotação de ANEXOS (PDF/imagem/CSV) → cotações pendentes. */
+export async function extractQuoteFromAttachments(tenantId: string, input: {
+  researchId?: string; supplierId?: string; supplierName: string; attachments: QuoteAttachment[];
+}) {
+  const prisma = getPrisma();
+  let researchItems: Array<{ description: string }> = [];
+  if (input.researchId) {
+    const r = await prisma.priceResearch.findFirst({ where: { id: input.researchId, tenantId } });
+    researchItems = (r?.items as any[] | undefined)?.map((i) => ({ description: i.description })) ?? [];
+  }
+  const parsed = await parseSupplierQuoteFromAttachments(input.attachments, {
+    itemsRequested: researchItems.map((i) => i.description).join("; ") || undefined,
+  });
+  if (!parsed.ok) return { ok: false as const, reason: `IA não extraiu do anexo: ${parsed.error}` };
+
+  const details = {
+    leadTimeDays: parsed.quote.leadTimeDays ?? undefined,
+    paymentTerms: parsed.quote.paymentTerms ?? undefined,
+    confidence: parsed.quote.confidence, extraidoPor: "claude", fonte: "anexo",
+  };
+  const matched = matchExtracted(researchItems, parsed.quote.items.map((i) => ({ description: i.description, unitPriceBRL: i.unitPriceBRL })));
+  if (matched.length === 0) return { ok: false as const, reason: "nenhum preço reconhecido no anexo" };
+
+  const ids: string[] = [];
+  for (const m of matched) {
+    const q = await prisma.priceQuote.create({
+      data: {
+        tenantId, researchId: input.researchId ?? null, supplierId: input.supplierId ?? null,
+        supplierName: input.supplierName, item: m.item, unitPriceBRL: m.unitPriceBRL, quantity: 1,
+        origin: "ia", details: details as any,
+      },
+    });
+    ids.push(q.id);
+  }
+  return { ok: true as const, quoteIds: ids, count: ids.length };
 }
 
 /** Acha um convite aguardando resposta pelo telefone do remetente (WhatsApp inbound). */

@@ -406,13 +406,28 @@ function ExtractBox({ onDone }: { onDone: () => void }) {
 
   useEffect(() => { if (open) api.mercResearches().then(setResearches).catch(() => {}); }, [open]);
 
+  const [file, setFile] = useState<{ name: string; mime: string; b64: string } | null>(null);
+
+  async function pickFile(f: File | undefined) {
+    if (!f) { setFile(null); return; }
+    if (f.size > 10 * 1024 * 1024) { setMsg("Arquivo acima de 10 MB — reduza ou exporte como PDF/CSV."); return; }
+    const buf = await f.arrayBuffer();
+    let bin = ""; const bytes = new Uint8Array(buf);
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]!);
+    setFile({ name: f.name, mime: f.type || "application/octet-stream", b64: btoa(bin) });
+    setMsg(null);
+  }
+
   async function run() {
-    if (!supplierName.trim() || text.trim().length < 3) return;
+    if (!supplierName.trim()) { setMsg("Informe o fornecedor."); return; }
+    if (!file && text.trim().length < 3) { setMsg("Cole o texto ou anexe um arquivo."); return; }
     setBusy(true); setMsg(null);
     try {
-      const r = await api.mercExtractQuote({ supplierName: supplierName.trim(), text: text.trim(), researchId: researchId || undefined });
-      setMsg(r.ok ? `IA extraiu ${r.count} preço(s) → foram para a fila de aprovação.` : `Não consegui extrair: ${r.reason ?? "texto sem preço reconhecível"}`);
-      if (r.ok) { setText(""); setSupplierName(""); onDone(); }
+      const r = file
+        ? await api.mercExtractFile({ supplierName: supplierName.trim(), researchId: researchId || undefined, attachments: [{ fileName: file.name, mimeType: file.mime, dataBase64: file.b64 }] })
+        : await api.mercExtractQuote({ supplierName: supplierName.trim(), text: text.trim(), researchId: researchId || undefined });
+      setMsg(r.ok ? `IA extraiu ${r.count} preço(s) → foram para a fila de aprovação.` : `Não consegui extrair: ${r.reason ?? "sem preço reconhecível"}`);
+      if (r.ok) { setText(""); setSupplierName(""); setFile(null); onDone(); }
     } catch (e: any) { setMsg(String(e?.message ?? e)); }
     finally { setBusy(false); }
   }
@@ -422,7 +437,7 @@ function ExtractBox({ onDone }: { onDone: () => void }) {
       <CardHeader
         icon={Sparkles}
         title="Extrair proposta com IA"
-        subtitle="Cole o texto da proposta (e-mail, WhatsApp, ou transcrição de PDF). A IA identifica preços, prazo, frete e pagamento."
+        subtitle="Cole o texto OU anexe o arquivo da proposta (PDF, imagem, CSV). A IA identifica preços, prazo, frete e pagamento."
         action={<Button size="sm" variant="ghost" onClick={() => setOpen((o) => !o)}>{open ? "Fechar" : "Abrir"}</Button>}
       />
       {open && (
@@ -434,8 +449,13 @@ function ExtractBox({ onDone }: { onDone: () => void }) {
               {researches.map((r) => <option key={r.id} value={r.id}>{r.title}</option>)}
             </select>
           </div>
-          <textarea className={`${inputClass} min-h-28`} placeholder={'Ex: "Boa tarde! O cabide cx100 sai a R$ 79,90, prazo 4 dias úteis, pix antecipado."'} value={text} onChange={(e) => setText(e.target.value)} />
-          <div className="flex items-center gap-3">
+          <textarea className={`${inputClass} min-h-28`} placeholder={'Ex: "Boa tarde! O cabide cx100 sai a R$ 79,90, prazo 4 dias úteis, pix antecipado."'} value={text} onChange={(e) => setText(e.target.value)} disabled={!!file} />
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="cursor-pointer rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium hover:bg-muted/60">
+              {file ? `📎 ${file.name}` : "Anexar arquivo (PDF/imagem/CSV)"}
+              <input type="file" accept=".pdf,.csv,.txt,image/*" className="hidden" onChange={(e) => pickFile(e.target.files?.[0])} />
+            </label>
+            {file && <button onClick={() => setFile(null)} className="text-xs text-muted-foreground hover:text-foreground">remover</button>}
             <Button Icon={Sparkles} onClick={run} disabled={busy}>{busy ? "Extraindo…" : "Extrair com IA"}</Button>
             {msg && <span className="text-sm text-muted-foreground">{msg}</span>}
           </div>

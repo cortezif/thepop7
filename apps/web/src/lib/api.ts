@@ -264,6 +264,8 @@ export const api = {
     post<{ ok: boolean; quoteId?: string }>(`/mercadologica/quotes`, payload),
   mercExtractQuote: (payload: { supplierName: string; text: string; researchId?: string; supplierId?: string }) =>
     post<{ ok: boolean; count?: number; reason?: string }>(`/mercadologica/quotes/extract`, payload),
+  mercExtractFile: (payload: { supplierName: string; researchId?: string; supplierId?: string; attachments: Array<{ fileName: string; mimeType: string; dataBase64: string }> }) =>
+    post<{ ok: boolean; count?: number; reason?: string }>(`/mercadologica/quotes/extract-file`, payload),
   mercPendingQuotes: () => get<MercPendingQuote[]>(`/mercadologica/quotes/pending`),
   mercApproveQuote: (id: string) => post<{ ok: boolean }>(`/mercadologica/quotes/${id}/approve`, {}),
   mercRejectQuote: (id: string, reason?: string) => post<{ ok: boolean }>(`/mercadologica/quotes/${id}/reject`, { reason }),

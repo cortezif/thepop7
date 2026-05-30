@@ -6,7 +6,7 @@ import {
   createResearch, listResearches, addInvites, sendInvites,
   recordPriceQuote, listPendingQuotes, approveQuote, rejectQuote,
   consolidateResearch, closeResearch, mercadologicaPanel,
-  submitPublicQuote, getPublicInvite, extractQuoteFromText, processResends,
+  submitPublicQuote, getPublicInvite, extractQuoteFromText, extractQuoteFromAttachments, processResends,
 } from "../services/mercadologica-service.js";
 
 async function tid(slug: string) {
@@ -125,6 +125,21 @@ export const mercadologicaRoutes: FastifyPluginAsync = async (app) => {
     const id = await tid(b.data.tenantSlug);
     if (!id) return reply.code(404).send({ error: "tenant not found" });
     return extractQuoteFromText(id, b.data);
+  });
+
+  // IA extrai a proposta de ANEXOS (PDF/imagem/CSV em base64) → pendente
+  app.post("/quotes/extract-file", async (req, reply) => {
+    const b = z.object({
+      tenantSlug: z.string(), supplierName: z.string().min(1),
+      researchId: z.string().optional(), supplierId: z.string().optional(),
+      attachments: z.array(z.object({
+        fileName: z.string(), mimeType: z.string(), dataBase64: z.string().min(1),
+      })).min(1).max(5),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: b.error.flatten() });
+    const id = await tid(b.data.tenantSlug);
+    if (!id) return reply.code(404).send({ error: "tenant not found" });
+    return extractQuoteFromAttachments(id, b.data);
   });
 
   app.get("/quotes/pending", async (req, reply) => {
