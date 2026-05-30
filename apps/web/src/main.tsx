@@ -10,6 +10,7 @@ import { Pedidos } from "./pages/Pedidos";
 import { Estoque } from "./pages/Estoque";
 import { Settings } from "./pages/Settings";
 import { Plataforma } from "./pages/Plataforma";
+import { Recursos } from "./pages/Recursos";
 import "./styles/globals.css";
 
 createRoot(document.getElementById("root")!).render(
@@ -18,6 +19,7 @@ createRoot(document.getElementById("root")!).render(
       <Routes>
         <Route element={<App />}>
           <Route path="/"         element={<Dashboard />} />
+          <Route path="/recursos" element={<Recursos />} />
           <Route path="/inbox"    element={<Inbox />} />
           <Route path="/catalog"  element={<Catalog />} />
           <Route path="/compras"  element={<Compras />} />
