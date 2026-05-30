@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Outlet, NavLink } from "react-router-dom";
 import { LayoutDashboard, MessageSquare, Package, ShoppingCart, ClipboardList, Settings as SettingsIcon, LogOut, Barcode, Sparkles, Scale, Megaphone } from "lucide-react";
 import { cn } from "./lib/utils";
-import { auth, brandName, tenantSlug, fetchMe, api } from "./lib/api";
+import { auth, brandName, tenantSlug, fetchMe, api, storedSegment, setStoredSegment } from "./lib/api";
 import { applyBrandTheme } from "./lib/theme";
 import { Login } from "./pages/Login";
 
@@ -40,9 +40,11 @@ export function App() {
   // Aplica o tema da loja e re-hidrata a marca ao montar (sobrevive a refresh).
   useEffect(() => {
     if (!loggedIn) return;
-    applyBrandTheme(tenantSlug());
-    // Cor por tipo de negócio: re-aplica assim que souber o segmento da loja.
-    api.getConfig().then((c) => applyBrandTheme(tenantSlug(), c.segment)).catch(() => {});
+    // Sem flash: aplica direto a cor do segmento guardado (se houver); senão
+    // mantém o default do CSS até o getConfig responder (evita pulo de cor por slug).
+    const seg = storedSegment();
+    if (seg) applyBrandTheme(tenantSlug(), seg);
+    api.getConfig().then((c) => { setStoredSegment(c.segment); applyBrandTheme(tenantSlug(), c.segment); }).catch(() => {});
     if (!brand) {
       fetchMe().then(() => {
         const n = brandName();
@@ -55,8 +57,9 @@ export function App() {
 
   function handleLogin() {
     setLoggedIn(true);
-    applyBrandTheme(tenantSlug());
-    api.getConfig().then((c) => applyBrandTheme(tenantSlug(), c.segment)).catch(() => {});
+    const seg = storedSegment();
+    if (seg) applyBrandTheme(tenantSlug(), seg);
+    api.getConfig().then((c) => { setStoredSegment(c.segment); applyBrandTheme(tenantSlug(), c.segment); }).catch(() => {});
     const n = brandName();
     setBrand(n);
     if (n) document.title = n;

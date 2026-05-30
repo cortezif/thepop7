@@ -8,7 +8,7 @@ const BRAND_KEY = "hubadvisor_brand";
 export const auth = {
   get: () => localStorage.getItem(TOKEN_KEY),
   set: (t: string) => localStorage.setItem(TOKEN_KEY, t),
-  clear: () => { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(TENANT_KEY); localStorage.removeItem(BRAND_KEY); },
+  clear: () => { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(TENANT_KEY); localStorage.removeItem(BRAND_KEY); localStorage.removeItem("hubadvisor_segment"); },
   isLoggedIn: () => !!localStorage.getItem(TOKEN_KEY),
 };
 /** Slug do tenant da sessão (default thepop7 — demo). */
@@ -18,6 +18,11 @@ const setTenant = (slug: string) => localStorage.setItem(TENANT_KEY, slug);
 /** Marca da loja da sessão (nome de exibição). */
 export const brandName = () => localStorage.getItem(BRAND_KEY) ?? "";
 const setBrand = (name: string) => { if (name) localStorage.setItem(BRAND_KEY, name); };
+
+/** Segmento da loja da sessão (p/ aplicar a cor da marca já no load, sem flash). */
+const SEGMENT_KEY = "hubadvisor_segment";
+export const storedSegment = (): string | undefined => localStorage.getItem(SEGMENT_KEY) ?? undefined;
+export const setStoredSegment = (s?: string | null) => { if (s) localStorage.setItem(SEGMENT_KEY, s); };
 
 function authHeaders(): Record<string, string> {
   const t = auth.get();
