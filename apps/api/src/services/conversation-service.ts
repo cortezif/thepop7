@@ -213,8 +213,8 @@ export async function handleIncomingMessage(dto: IncomingDTO, log: FastifyBaseLo
   // Falha de envio é não-fatal: a resposta já está no DB.
   if (turn.replyText && dto.channel !== "manual") {
     try {
-      const phone = decryptPII(setup.contact.phone);
-      const igHandle = setup.contact.igHandle;
+      const phone = decryptPII(contact.phone);
+      const igHandle = contact.igHandle;
       const to = dto.channel === "instagram" ? igHandle : phone;
       if (to) {
         await getMessagingConnector(dto.channel).send({
