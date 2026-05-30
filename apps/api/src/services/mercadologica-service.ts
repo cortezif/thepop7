@@ -1,7 +1,8 @@
 import crypto from "node:crypto";
-import { getPrisma, withTenant } from "@hubadvisor/db";
+import { getPrisma, withTenant, resolveTenantCredentials } from "@hubadvisor/db";
 import { getMessagingConnector, sendEmail, emailConfigured, inboundReplyTo } from "@hubadvisor/connectors";
 import { parseSupplierQuote, parseSupplierQuoteFromAttachments, type QuoteAttachment } from "@hubadvisor/agent";
+import { enterCredentials, runWithCredentials } from "@hubadvisor/shared";
 import { storeAttachment } from "./attachment-storage.js";
 import { consolidatePrices, type EstimationMethod } from "./price-consolidation.js";
 
@@ -166,6 +167,7 @@ function publicQuoteLink(token: string): string {
  */
 export async function sendInvites(tenantId: string, researchId: string) {
   const prisma = getPrisma();
+  enterCredentials(await resolveTenantCredentials(tenantId));
   const research = await prisma.priceResearch.findFirst({
     where: { id: researchId, tenantId }, include: { invites: true },
   });
@@ -269,6 +271,7 @@ type ExtractContext = {
  */
 export async function extractAndRecordQuotes(ctx: ExtractContext, rawText: string) {
   const prisma = getPrisma();
+  enterCredentials(await resolveTenantCredentials(ctx.tenantId));
   let researchItems: Array<{ description: string }> = [];
   if (ctx.researchId) {
     const r = await prisma.priceResearch.findFirst({ where: { id: ctx.researchId, tenantId: ctx.tenantId } });
@@ -423,6 +426,11 @@ export async function processResends() {
   });
   const now = Date.now();
   let resent = 0, gaveUp = 0;
+  const credsCache = new Map<string, Awaited<ReturnType<typeof resolveTenantCredentials>>>();
+  const credsFor = async (tid: string) => {
+    if (!credsCache.has(tid)) credsCache.set(tid, await resolveTenantCredentials(tid));
+    return credsCache.get(tid)!;
+  };
   for (const inv of open) {
     if (!inv.research) continue;
     const deadlineMs = inv.research.deadlineDays * 86_400_000;
@@ -435,7 +443,10 @@ export async function processResends() {
     const link = publicQuoteLink(inv.token);
     const body = `Lembrete: ainda aguardamos sua cotação para "${inv.research.title}". Responda pelo link: ${link}`;
     if (inv.phone) {
-      try { await getMessagingConnector("whatsapp").send({ tenantId: inv.tenantId, conversationId: `rfq-${inv.id}`, type: "text", text: body, to: inv.phone, channel: "whatsapp" }); } catch { /* segue */ }
+      try {
+        const creds = await credsFor(inv.tenantId);
+        await runWithCredentials(creds, () => getMessagingConnector("whatsapp").send({ tenantId: inv.tenantId, conversationId: `rfq-${inv.id}`, type: "text", text: body, to: inv.phone!, channel: "whatsapp" }));
+      } catch { /* segue */ }
     }
     if (inv.email && emailConfigured()) {
       await sendEmail({ to: inv.email, subject: `Lembrete de cotação — ${inv.research.title}`, text: body, replyTo: inboundReplyTo(inv.token) });

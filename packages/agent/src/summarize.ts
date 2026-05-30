@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { getAnthropicClient } from "./providers.js";
 
 const SUMMARY_MODEL = "claude-haiku-4-5-20251001";
 
@@ -20,7 +21,7 @@ export async function summarizeConversation(input: {
     .map((m) => `${m.direction === "in" ? "Cliente" : input.persona}: ${m.text}`)
     .join("\n");
 
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const client = getAnthropicClient();
   const res = await client.messages.create({
     model: SUMMARY_MODEL,
     max_tokens: 220,

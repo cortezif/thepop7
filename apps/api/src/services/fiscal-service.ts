@@ -1,6 +1,7 @@
-import { getPrisma, withTenant, decryptPII } from "@hubadvisor/db";
+import { getPrisma, withTenant, decryptPII, resolveTenantCredentials } from "@hubadvisor/db";
 import { getFiscalConnector } from "@hubadvisor/connectors";
 import type { NfeInput } from "@hubadvisor/connectors";
+import { enterCredentials } from "@hubadvisor/shared";
 
 /**
  * Emite a NF-e de um pedido (ADR-023/CPlug). Acionado na transição → `paid`.
@@ -15,6 +16,7 @@ export async function issueNfeForOrder(tenantId: string, orderId: string): Promi
   { ok: true; number: string } | { ok: false; reason: string; skipped?: boolean }
 > {
   const prisma = getPrisma();
+  enterCredentials(await resolveTenantCredentials(tenantId));
   const order = await prisma.order.findUnique({
     where: { id: orderId },
     include: {

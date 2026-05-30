@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { getAnthropicClient } from "../providers.js";
 
 export type JudgeVerdict = { score: number; pass: boolean; reason: string };
 
@@ -18,7 +19,7 @@ export async function judgeReply(args: {
   reply: string;
   rubric: string;
 }): Promise<JudgeVerdict> {
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const client = getAnthropicClient();
 
   const res = await client.messages.create({
     model: JUDGE_MODEL,

@@ -1,7 +1,7 @@
 import { runAgentTurn, summarizeConversation, extractProductAttributes, DEFAULT_CASCADE, type AgentConfig, type ConversationContext, type AgentToolImpl } from "@hubadvisor/agent";
-import { getPrisma, withTenant, getTrayCreds, decryptPII } from "@hubadvisor/db";
+import { getPrisma, withTenant, getTrayCreds, decryptPII, resolveTenantCredentials } from "@hubadvisor/db";
 import { buildErpForTenant, getLogisticsConnector, getMessagingConnector } from "@hubadvisor/connectors";
-import type { ContactProfileUpdate, ProductSummary } from "@hubadvisor/shared";
+import { enterCredentials, type ContactProfileUpdate, type ProductSummary } from "@hubadvisor/shared";
 import type { FastifyBaseLogger } from "fastify";
 import { searchProducts, type CustomerProfile, type ProductFilter } from "./product-search.js";
 import { createOrder, cancelOrder, startReturn, getOrderStatus } from "./order-service.js";
@@ -22,6 +22,9 @@ export async function handleIncomingMessage(dto: IncomingDTO, log: FastifyBaseLo
   const prisma = getPrisma();
   const tenant = await prisma.tenant.findUnique({ where: { slug: dto.tenantSlug } });
   if (!tenant) throw new Error(`Tenant não encontrado: ${dto.tenantSlug}`);
+  // Credenciais da loja no contexto: agent (Anthropic) e envio (WhatsApp/IG)
+  // passam a usar a credencial desta loja; sem nada salvo, cai na env.
+  enterCredentials(await resolveTenantCredentials(tenant.id));
 
   // FASE 1 (transação curta): garante contato, conversa, persiste a entrada
   // e carrega o contexto. NUNCA roda LLM aqui — transações Prisma têm timeout.
@@ -279,6 +282,7 @@ export async function suggestReply(tenantSlug: string, conversationId: string, l
   const prisma = getPrisma();
   const tenant = await prisma.tenant.findUnique({ where: { slug: tenantSlug } });
   if (!tenant) throw new Error(`Tenant não encontrado: ${tenantSlug}`);
+  enterCredentials(await resolveTenantCredentials(tenant.id));
 
   const data = await withTenant(tenant.id, async (tx) => {
     const conversation = await tx.conversation.findUnique({ where: { id: conversationId } });

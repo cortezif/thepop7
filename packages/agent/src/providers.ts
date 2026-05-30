@@ -10,7 +10,13 @@
    ============================================================ */
 
 import Anthropic from "@anthropic-ai/sdk";
+import { credentialFromContext } from "@hubadvisor/shared";
 import { computeCacheKey, getCacheEntry, setCacheEntry } from "./cache.js";
+
+/** Chave Anthropic da loja (contexto) ou a env var (fallback). */
+function anthropicKey(): string {
+  return credentialFromContext("anthropic", "apiKey") ?? process.env.ANTHROPIC_API_KEY ?? "";
+}
 
 export type ProviderId = "anthropic" | "groq" | "ollama" | "gemini" | "deepseek" | "xai";
 
@@ -45,7 +51,7 @@ const OPENAI_COMPATIBLE: Partial<Record<ProviderId, { baseUrl: string; keyEnv: s
 /** True se a chave do provider está no ambiente (anthropic/ollama tratados à parte). */
 export function isProviderConfigured(p: ProviderId): boolean {
   switch (p) {
-    case "anthropic": return !!process.env.ANTHROPIC_API_KEY;
+    case "anthropic": return !!anthropicKey();
     case "ollama":    return !!process.env.OLLAMA_URL || process.env.NODE_ENV !== "production"; // local só faz sentido em dev
     default:          return !!process.env[OPENAI_COMPATIBLE[p]?.keyEnv ?? ""];
   }
@@ -73,10 +79,19 @@ export type ProviderUsage = {
   cachedTokens: number;
 };
 
-let _anthropic: Anthropic | null = null;
+// Cache de clientes por chave — chaves diferentes por loja (contexto) reaproveitam
+// a mesma instância sem recriar a cada chamada.
+const _anthropicByKey = new Map<string, Anthropic>();
 function anthropic(): Anthropic {
-  if (!_anthropic) _anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  return _anthropic;
+  const key = anthropicKey();
+  let client = _anthropicByKey.get(key);
+  if (!client) { client = new Anthropic({ apiKey: key }); _anthropicByKey.set(key, client); }
+  return client;
+}
+
+/** Cliente Anthropic resolvido por contexto da loja → env. Use no lugar de `new Anthropic`. */
+export function getAnthropicClient(): Anthropic {
+  return anthropic();
 }
 
 /** Chamada unificada — internamente roteia pro provider correto. */

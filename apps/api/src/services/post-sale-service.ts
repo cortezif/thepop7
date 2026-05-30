@@ -1,7 +1,7 @@
-import { getPrisma, withTenant } from "@hubadvisor/db";
+import { getPrisma, withTenant, resolveTenantCredentials } from "@hubadvisor/db";
 import { getMessagingConnector } from "@hubadvisor/connectors";
 import { generatePostSaleMessage, type PostSaleStage } from "@hubadvisor/agent";
-import { returnDeadline, EVENTS } from "@hubadvisor/shared";
+import { returnDeadline, EVENTS, enterCredentials } from "@hubadvisor/shared";
 
 // Categoria de opt-out por estágio (LGPD — ADR-013).
 // D+1/D+7 são transacionais (entrega/prazo legal) — sempre enviados.
@@ -29,6 +29,7 @@ export function nfeSuffix(stage: PostSaleStage, nfeNumber?: string | null, nfePd
  */
 export async function runPostSaleStage(tenantId: string, orderId: string, stage: PostSaleStage) {
   const prisma = getPrisma();
+  enterCredentials(await resolveTenantCredentials(tenantId));
 
   const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
   if (!tenant) throw new Error("tenant não encontrado");

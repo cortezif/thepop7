@@ -1,12 +1,12 @@
 import type { MessagingConnector } from "../types.js";
-import type { OutgoingMessage } from "@hubadvisor/shared";
+import { resolveCredential, credentialFromContext, type OutgoingMessage } from "@hubadvisor/shared";
 
 const WA_API = "https://graph.facebook.com/v18.0";
 
 export class WhatsappCloud implements MessagingConnector {
   async send(msg: OutgoingMessage): Promise<{ externalId: string }> {
-    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID ?? "";
-    const accessToken = process.env.WHATSAPP_ACCESS_TOKEN ?? "";
+    const phoneNumberId = resolveCredential("whatsapp", "phoneNumberId", "WHATSAPP_PHONE_NUMBER_ID");
+    const accessToken = resolveCredential("whatsapp", "accessToken", "WHATSAPP_ACCESS_TOKEN");
 
     if (!phoneNumberId || !accessToken) {
       throw new Error("WHATSAPP_PHONE_NUMBER_ID e WHATSAPP_ACCESS_TOKEN não configurados");
@@ -60,7 +60,9 @@ export class WhatsappCloud implements MessagingConnector {
   }
 }
 
-/** Verifica se as credenciais WhatsApp estão configuradas. */
+/** Verifica se as credenciais WhatsApp estão configuradas (contexto da loja ou env). */
 export function whatsappConfigured(): boolean {
-  return !!(process.env.WHATSAPP_PHONE_NUMBER_ID && process.env.WHATSAPP_ACCESS_TOKEN);
+  const id = credentialFromContext("whatsapp", "phoneNumberId") ?? process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const token = credentialFromContext("whatsapp", "accessToken") ?? process.env.WHATSAPP_ACCESS_TOKEN;
+  return !!(id && token);
 }

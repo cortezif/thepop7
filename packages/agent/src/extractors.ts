@@ -13,6 +13,7 @@
    ============================================================ */
 
 import Anthropic from "@anthropic-ai/sdk";
+import { getAnthropicClient } from "./providers.js";
 
 // ====== Vocabulário fechado — alinhado com schema.prisma e o catálogo ======
 export const STYLES = [
@@ -94,10 +95,8 @@ function buildAttributesTool(vocab: { styles: string[]; occasions: string[]; fas
   };
 }
 
-let _client: Anthropic | null = null;
 function client(): Anthropic {
-  if (!_client) _client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  return _client;
+  return getAnthropicClient();
 }
 
 export type ExtractInput = {

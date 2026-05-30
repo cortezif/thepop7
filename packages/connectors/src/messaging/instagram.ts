@@ -1,5 +1,5 @@
 import type { MessagingConnector } from "../types.js";
-import type { OutgoingMessage } from "@hubadvisor/shared";
+import { resolveCredential, credentialFromContext, type OutgoingMessage } from "@hubadvisor/shared";
 
 // Docs: https://developers.facebook.com/docs/messenger-platform/instagram
 // Requer: INSTAGRAM_ACCESS_TOKEN (Page Access Token com instagram_manage_messages)
@@ -9,7 +9,7 @@ const IG_API = "https://graph.facebook.com/v18.0";
 
 export class InstagramMessaging implements MessagingConnector {
   async send(msg: OutgoingMessage): Promise<{ externalId: string }> {
-    const accessToken = process.env.INSTAGRAM_ACCESS_TOKEN ?? "";
+    const accessToken = resolveCredential("instagram", "accessToken", "INSTAGRAM_ACCESS_TOKEN");
 
     if (!accessToken) {
       throw new Error("INSTAGRAM_ACCESS_TOKEN não configurado");
@@ -44,7 +44,7 @@ export class InstagramMessaging implements MessagingConnector {
   }
 }
 
-/** Verifica se as credenciais Instagram estão configuradas. */
+/** Verifica se as credenciais Instagram estão configuradas (contexto da loja ou env). */
 export function instagramConfigured(): boolean {
-  return !!(process.env.INSTAGRAM_ACCESS_TOKEN);
+  return !!(credentialFromContext("instagram", "accessToken") ?? process.env.INSTAGRAM_ACCESS_TOKEN);
 }

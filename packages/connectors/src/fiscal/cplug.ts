@@ -1,4 +1,5 @@
 import type { FiscalConnector, NfeInput, NfeResult } from "../types.js";
+import { resolveCredential } from "@hubadvisor/shared";
 
 // CPlug / ConnectPlug (gestão/PDV/fiscal usado pela loja) — emissor de NF-e/NFC-e/SAT.
 // É o fiscal real da loja (≠ PlugNotas, que é só gateway de NF-e).
@@ -68,11 +69,11 @@ export function normalizeNfeResult(r: CplugNfeResponse, orderId: string): NfeRes
 }
 
 export class CplugFiscal implements FiscalConnector {
-  private readonly baseUrl = (process.env.CPLUG_API_URL ?? "").replace(/\/$/, "");
-  private readonly clientId = process.env.CPLUG_CLIENT_ID ?? "";
-  private readonly clientSecret = process.env.CPLUG_CLIENT_SECRET ?? "";
-  private readonly user = process.env.CPLUG_STORE_USER ?? "";
-  private readonly password = process.env.CPLUG_STORE_PASSWORD ?? "";
+  private readonly baseUrl = resolveCredential("cplug", "apiUrl", "CPLUG_API_URL").replace(/\/$/, "");
+  private readonly clientId = resolveCredential("cplug", "clientId", "CPLUG_CLIENT_ID");
+  private readonly clientSecret = resolveCredential("cplug", "clientSecret", "CPLUG_CLIENT_SECRET");
+  private readonly user = resolveCredential("cplug", "storeUser", "CPLUG_STORE_USER");
+  private readonly password = resolveCredential("cplug", "storePassword", "CPLUG_STORE_PASSWORD");
   private token: string | null = null;
 
   private assertCreds() {

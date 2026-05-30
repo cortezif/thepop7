@@ -1,6 +1,7 @@
 import type { Job } from "bullmq";
-import { getPrisma, withTenant } from "@hubadvisor/db";
+import { getPrisma, withTenant, resolveTenantCredentials } from "@hubadvisor/db";
 import { extractProductAttributes } from "@hubadvisor/agent";
+import { enterCredentials } from "@hubadvisor/shared";
 
 type EnrichmentJobData = { tenantId: string; productId?: string; limit?: number };
 
@@ -17,6 +18,7 @@ type EnrichmentJobData = { tenantId: string; productId?: string; limit?: number 
 export async function catalogEnrichmentProcessor(job: Job<EnrichmentJobData>): Promise<void> {
   const { tenantId, productId, limit = 10 } = job.data;
   const prisma = getPrisma();
+  enterCredentials(await resolveTenantCredentials(tenantId));
 
   const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
   const segment = tenant?.segment ?? "moda";

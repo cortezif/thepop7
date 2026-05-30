@@ -51,3 +51,26 @@ export async function getTrayCreds(
   if (!row?.apiAddress || !accessToken || row.status !== "connected") return null;
   return { apiUrl: row.apiAddress, accessToken };
 }
+
+/**
+ * Credenciais de app salvas no painel POR LOJA (Integration.appConfig), por
+ * provider, já decifradas. Formato: { provider: { campo: valor } }. Usado para
+ * popular o contexto de credenciais (runWithCredentials/enterCredentials) em
+ * api e worker, para que connectors/agent usem a credencial da loja em runtime.
+ * Só inclui o que está salvo no banco — env continua sendo o fallback.
+ */
+export async function resolveTenantCredentials(
+  tenantId: string
+): Promise<Record<string, Record<string, string>>> {
+  const rows = await getPrisma().integration.findMany({ where: { tenantId } });
+  const out: Record<string, Record<string, string>> = {};
+  for (const row of rows) {
+    const raw = decryptPII(row.appConfig);
+    if (!raw) continue;
+    try {
+      const cfg = JSON.parse(raw) as Record<string, string>;
+      if (cfg && typeof cfg === "object" && Object.keys(cfg).length) out[row.provider] = cfg;
+    } catch { /* ignora json inválido */ }
+  }
+  return out;
+}

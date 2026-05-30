@@ -1,7 +1,8 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { getPrisma, withTenant, decryptPII } from "@hubadvisor/db";
+import { getPrisma, withTenant, decryptPII, resolveTenantCredentials } from "@hubadvisor/db";
 import { getMessagingConnector } from "@hubadvisor/connectors";
+import { enterCredentials } from "@hubadvisor/shared";
 import { suggestReply, summarizeAndPersist } from "../services/conversation-service.js";
 
 async function resolveTenant(slug: string) {
@@ -73,6 +74,7 @@ export const inboxRoutes: FastifyPluginAsync = async (app) => {
 
     const tenant = await resolveTenant(body.data.tenantSlug);
     if (!tenant) return reply.code(404).send({ error: "tenant not found" });
+    enterCredentials(await resolveTenantCredentials(tenant.id));
 
     return withTenant(tenant.id, async (tx) => {
       const conv = await tx.conversation.findUnique({ where: { id } });
