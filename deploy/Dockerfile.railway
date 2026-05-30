@@ -8,8 +8,8 @@ WORKDIR /app
 COPY . .
 
 RUN npm ci
-RUN npm --workspace @thepop/web run build      # gera apps/web/dist (o app.ts serve)
-RUN npm --workspace @thepop/db run generate    # Prisma Client
+RUN npm --workspace @hubadvisor/web run build      # gera apps/web/dist (o app.ts serve)
+RUN npm --workspace @hubadvisor/db run generate    # Prisma Client
 
 ENV NODE_ENV=production
 # Railway injeta PORT automaticamente; o app escuta nela.

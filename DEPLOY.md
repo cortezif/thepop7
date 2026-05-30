@@ -59,7 +59,7 @@ docker compose -f docker-compose.prod.yml exec api npx prisma db push --schema p
 # aplica as políticas de isolamento (RLS) e o pgvector
 docker compose -f docker-compose.prod.yml exec -T postgres psql -U postgres -d thepop < packages/db/prisma/migrations/manual/rls.sql
 # dados-exemplo (loja + produtos) — opcional, bom pra validar
-docker compose -f docker-compose.prod.yml exec api npm --workspace @thepop/db run seed
+docker compose -f docker-compose.prod.yml exec api npm --workspace @hubadvisor/db run seed
 # cria o usuário admin do painel (usa ADMIN_EMAIL/ADMIN_PASSWORD do .env)
 docker compose -f docker-compose.prod.yml exec api node --import tsx apps/api/src/seed-admin.ts
 ```

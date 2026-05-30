@@ -61,7 +61,7 @@ pnpm db:migrate
 psql $DATABASE_URL -f packages/db/prisma/migrations/manual/rls.sql
 
 # 6. Seed inicial
-pnpm --filter @thepop/db run seed
+pnpm --filter @hubadvisor/db run seed
 
 # 7. Subir tudo em dev
 pnpm dev

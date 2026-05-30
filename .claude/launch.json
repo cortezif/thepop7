@@ -4,13 +4,13 @@
     {
       "name": "web",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--workspace", "@thepop/web", "run", "dev"],
+      "runtimeArgs": ["--workspace", "@hubadvisor/web", "run", "dev"],
       "port": 3000
     },
     {
       "name": "api",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--workspace", "@thepop/api", "run", "dev"],
+      "runtimeArgs": ["--workspace", "@hubadvisor/api", "run", "dev"],
       "port": 3001
     }
   ]
