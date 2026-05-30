@@ -30,7 +30,11 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const token = signJwt({ sub: user.id, email: user.email, role: user.role, tenantId: tenant.id, tenantSlug: tenant.slug });
-    return { token, tenantSlug: tenant.slug, user: { id: user.id, name: user.name, email: user.email, role: user.role } };
+    return {
+      token, tenantSlug: tenant.slug,
+      tenant: { slug: tenant.slug, name: tenant.name },
+      user: { id: user.id, name: user.name, email: user.email, role: user.role },
+    };
   });
 
   // POST /auth/signup — cadastro self-service de loja (cria tenant + owner). Aberta.
@@ -64,12 +68,20 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
     const owner = tenant.users[0]!;
     const token = signJwt({ sub: owner.id, email: owner.email, role: owner.role, tenantId: tenant.id, tenantSlug: tenant.slug });
-    return { token, tenantSlug: tenant.slug, user: { id: owner.id, name: owner.name, email: owner.email, role: owner.role } };
+    return {
+      token, tenantSlug: tenant.slug,
+      tenant: { slug: tenant.slug, name: tenant.name },
+      user: { id: owner.id, name: owner.name, email: owner.email, role: owner.role },
+    };
   });
 
-  // GET /auth/me — valida o token e devolve o usuário (pro web saber se está logado)
+  // GET /auth/me — valida o token e devolve o usuário + a loja (marca) da sessão.
   app.get("/me", { preHandler: requireAuth }, async (req) => {
-    return { id: req.auth!.sub, email: req.auth!.email, role: req.auth!.role };
+    const tenant = await getPrisma().tenant.findUnique({ where: { id: req.auth!.tenantId } });
+    return {
+      id: req.auth!.sub, email: req.auth!.email, role: req.auth!.role,
+      tenant: tenant ? { slug: tenant.slug, name: tenant.name } : null,
+    };
   });
 
   // GET /auth/tray/callback — callback OAuth da Tray (passo 2). Aberta: a Tray

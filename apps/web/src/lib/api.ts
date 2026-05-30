@@ -4,15 +4,20 @@
 // ---- Auth (F2): token JWT + tenant da sessão no localStorage ----
 const TOKEN_KEY = "thepop7_token";
 const TENANT_KEY = "thepop7_tenant";
+const BRAND_KEY = "thepop7_brand";
 export const auth = {
   get: () => localStorage.getItem(TOKEN_KEY),
   set: (t: string) => localStorage.setItem(TOKEN_KEY, t),
-  clear: () => { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(TENANT_KEY); },
+  clear: () => { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(TENANT_KEY); localStorage.removeItem(BRAND_KEY); },
   isLoggedIn: () => !!localStorage.getItem(TOKEN_KEY),
 };
 /** Slug do tenant da sessão (default thepop7 — demo). */
 export const tenantSlug = () => localStorage.getItem(TENANT_KEY) ?? "thepop7";
 const setTenant = (slug: string) => localStorage.setItem(TENANT_KEY, slug);
+
+/** Marca da loja da sessão (nome de exibição). */
+export const brandName = () => localStorage.getItem(BRAND_KEY) ?? "";
+const setBrand = (name: string) => { if (name) localStorage.setItem(BRAND_KEY, name); };
 
 function authHeaders(): Record<string, string> {
   const t = auth.get();
@@ -76,7 +81,11 @@ export async function downloadOrdersCsv() {
   URL.revokeObjectURL(url);
 }
 
-type AuthResult = { token: string; tenantSlug: string; user: { id: string; name: string; email: string; role: string } };
+type AuthResult = {
+  token: string; tenantSlug: string;
+  tenant?: { slug: string; name: string };
+  user: { id: string; name: string; email: string; role: string };
+};
 
 /** Login: guarda token + tenant da sessão. `slug` = identificador da loja. */
 export async function login(email: string, password: string, slug: string) {
@@ -88,7 +97,17 @@ export async function login(email: string, password: string, slug: string) {
   if (!res.ok) throw new Error("E-mail, senha ou loja inválidos");
   const data = (await res.json()) as AuthResult;
   auth.set(data.token); setTenant(data.tenantSlug);
+  if (data.tenant?.name) setBrand(data.tenant.name);
   return data.user;
+}
+
+/** Revalida o token e re-hidrata a marca (ex.: após refresh da página). */
+export async function fetchMe(): Promise<{ tenant: { slug: string; name: string } | null } | null> {
+  try {
+    const me = await get<{ tenant: { slug: string; name: string } | null }>(`/auth/me`);
+    if (me?.tenant?.name) setBrand(me.tenant.name);
+    return me;
+  } catch { return null; }
 }
 
 /** Cadastro self-service de loja: cria tenant + owner e já loga. */
@@ -104,6 +123,7 @@ export async function signup(input: { storeName: string; slug: string; name: str
   }
   const data = (await res.json()) as AuthResult;
   auth.set(data.token); setTenant(data.tenantSlug);
+  if (data.tenant?.name) setBrand(data.tenant.name);
   return data.user;
 }
 

@@ -4,31 +4,57 @@
 
 @layer base {
   :root {
-    --background: 30 33% 97%;
-    --foreground: 240 10% 13%;
-    --primary: 350 78% 60%;
+    /* Neutros quentes — estética de ateliê / boutique de alto padrão */
+    --background: 36 30% 98%;        /* marfim suave */
+    --foreground: 230 14% 12%;       /* tinta quase preta */
+    --card: 40 44% 99%;              /* branco-creme dos cartões */
+    --card-foreground: 230 14% 12%;
+    --muted: 36 18% 94%;             /* areia clara */
+    --muted-foreground: 230 6% 42%;  /* cinza médio */
+    --border: 36 16% 90%;            /* borda discreta */
+
+    /* Acento de marca — sobrescrito por loja em runtime (theme.ts) */
+    --primary: 345 64% 52%;
     --primary-foreground: 0 0% 100%;
-    --muted: 30 10% 92%;
-    --muted-foreground: 240 5% 45%;
-    --border: 30 10% 88%;
-    --accent: 350 78% 60%;
+    --primary-strong: 345 64% 44%;
+    --accent: 345 64% 52%;
     --accent-foreground: 0 0% 100%;
+    --accent-soft: 345 32% 95%;
+    --ring: 345 64% 52%;
   }
 
   .dark {
-    --background: 252 22% 14%;
-    --foreground: 0 0% 98%;
-    --primary: 350 78% 60%;
+    --background: 240 14% 10%;
+    --foreground: 36 30% 96%;
+    --card: 240 12% 13%;
+    --card-foreground: 36 30% 96%;
+    --muted: 240 10% 18%;
+    --muted-foreground: 240 6% 65%;
+    --border: 240 10% 22%;
     --primary-foreground: 0 0% 100%;
-    --muted: 252 18% 22%;
-    --muted-foreground: 240 5% 70%;
-    --border: 252 18% 26%;
-    --accent: 350 78% 60%;
     --accent-foreground: 0 0% 100%;
+    --accent-soft: 240 10% 20%;
+  }
+
+  * {
+    border-color: hsl(var(--border));
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
     font-feature-settings: "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
   }
+
+  /* Tipografia de títulos — serif display elegante */
+  h1, h2, h3, .font-serif {
+    font-feature-settings: "liga" 1, "dlig" 1;
+  }
+}
+
+@layer utilities {
+  .text-balance { text-wrap: balance; }
+  /* Realce sutil de marca para fundos */
+  .bg-accent-soft { background-color: hsl(var(--accent-soft)); }
+  .text-primary-strong { color: hsl(var(--primary-strong)); }
 }

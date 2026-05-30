@@ -1,9 +1,12 @@
-export function PageHeader({ eyebrow, title }: { eyebrow: string; title: string }) {
+export function PageHeader({ eyebrow, title, subtitle }: { eyebrow: string; title: string; subtitle?: string }) {
   return (
-    <header>
-      <p className="text-xs font-bold tracking-[0.25em] text-primary">{eyebrow}</p>
-      <h1 className="mt-2 font-serif text-4xl font-bold tracking-tight">{title}</h1>
-      <div className="mt-3 h-[3px] w-12 bg-primary" />
+    <header className="mb-8">
+      <p className="text-[11px] font-semibold uppercase tracking-luxe text-primary">{eyebrow}</p>
+      <h1 className="mt-2.5 font-serif text-[2.5rem] font-semibold leading-[1.1] tracking-tight text-foreground text-balance">
+        {title}
+      </h1>
+      {subtitle && <p className="mt-2 max-w-2xl text-sm text-muted-foreground">{subtitle}</p>}
+      <div className="mt-4 h-px w-16 bg-gradient-to-r from-primary to-transparent" />
     </header>
   );
 }
