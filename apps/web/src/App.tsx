@@ -82,7 +82,7 @@ export function App() {
           </div>
           <div className="min-w-0">
             <h1 className="truncate font-serif text-lg font-semibold leading-tight text-foreground">{displayName}</h1>
-            <p className="text-[10px] font-medium uppercase tracking-luxe text-muted-foreground">Ateliê Digital</p>
+            <p className="text-[10px] font-medium uppercase tracking-luxe text-muted-foreground">Painel de gestão</p>
           </div>
         </div>
 

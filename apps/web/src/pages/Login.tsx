@@ -96,10 +96,10 @@ export function Login({ onLogin }: { onLogin: () => void }) {
         <form onSubmit={submit} className="w-full max-w-sm">
           <div className="mb-8">
             <h2 className="font-serif text-3xl font-semibold tracking-tight">
-              {mode === "login" ? "Bem-vinda de volta" : "Crie sua loja"}
+              {mode === "login" ? "Acessar o painel" : "Criar loja"}
             </h2>
             <p className="mt-1.5 text-sm text-muted-foreground">
-              {mode === "login" ? "Acesse o painel da sua boutique." : "Cadastre sua marca e comece em minutos."}
+              {mode === "login" ? "Entre com os dados da sua loja." : "Cadastre sua loja e comece a usar."}
             </p>
           </div>
 
