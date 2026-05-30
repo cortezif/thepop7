@@ -1,4 +1,6 @@
-# Briefing — Sistema The Pop 7 / Produto SaaS
+# Briefing — Hub Advisor (produto SaaS)
+
+> **Rebrand (ADR-029):** o produto chama-se **Hub Advisor** e atende qualquer segmento. "The Pop 7" passou a ser a **loja-piloto** (tenant #1) — as menções abaixo a "The Pop 7" referem-se a essa loja, não ao produto.
 
 **Para:** Thoyama, Iatagan
 **De:** Cortez

@@ -1,7 +1,8 @@
 # Status de Implementação × ADR
 
 **Data:** 2026-05-28
-**Confronto entre [ADR-Sistema.md](ADR-Sistema.md) (28 decisões) e o código real em `C:\tp7`.**
+**Confronto entre [ADR-Sistema.md](ADR-Sistema.md) (29 decisões) e o código real em `C:\tp7`.**
+**Produto:** Hub Advisor (rebrand ADR-029; "The Pop 7" = loja-piloto/tenant #1).
 
 Legenda:
 - 🟢 **Feito** — implementado e validado rodando
@@ -43,6 +44,7 @@ Legenda:
 | **026** | Múltiplas personas (Maya/Bia/Lia/Theo) | 🟡 | **Maya (vendas) + Lia (pós-venda) + Bia (compras) rodando** com prompts/tons distintos | Theo (mídia paga) — depende de Meta Ads API |
 | **027** | Integração bancária (Pix Automático) | 🔴 | — | Tudo (médio prazo) |
 | **028** | Mídia paga (Meta Ads / Theo) | 🔴 | — | Tudo (Fase 2) |
+| **029** | Fundação Hub Advisor: multi-segmento + Mercadológica | 🟢 | **Rebrand técnico `@thepop/* → @hubadvisor/*`** completo (10 pacotes, ~63 imports, storage keys, evento DOM; typecheck api/web/worker/mcp + build web verdes). **Mercadológica** ponta a ponta: schema (`SupplierOffer`/`PriceResearch`/`PriceResearchInvite`/`PriceQuote` + cadastro no `Supplier`), `consolidatePrices` (média/mediana/menor, descarte de outliers, CV, alerta — 7 testes), serviço + rotas `/mercadologica/*` (fornecedores, ofertas, pesquisas, convites tokenizados, envio link público+WhatsApp, captura, aprovação, consolidação/mapa comparativo, painel) + rota pública `/cotacao-publica/:token`; tela **Mercadológica** (Painel/Fornecedores/Pesquisas/Pendentes) + página pública `/cotacao/:token`; seed de demo populado em produção — **validado** (typecheck + testes + seed) | Provedor de e-mail transacional + inbound routing (hoje: link público + WhatsApp); extração de proposta por IA (PDF/planilha); monetização da rede |
 
 ---
 

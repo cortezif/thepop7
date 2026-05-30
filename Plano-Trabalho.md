@@ -1,8 +1,10 @@
-# Plano de Trabalho — Plataforma de Comércio Autônomo
+# Plano de Trabalho — Hub Advisor (Plataforma de Comércio Autônomo)
 
 **Documento companheiro do [ADR-Sistema.md](ADR-Sistema.md)**
 **Data de início:** 2026-05-27
 **Versão:** 1.0
+
+> **Rebrand (ADR-029):** produto = **Hub Advisor** (multi-segmento). "The Pop 7" abaixo = a **loja-piloto** (tenant #1), não o nome do produto.
 
 ---
 
