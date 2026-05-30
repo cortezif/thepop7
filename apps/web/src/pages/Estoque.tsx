@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Barcode, Search, Tag, PackagePlus, Image as ImageIcon } from "lucide-react";
+import { Barcode, Search, Tag, PackagePlus, Image as ImageIcon, History, ScanLine } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
+import { Page, Card, CardHeader, Button, Badge, EmptyState, Skeleton, inputClass } from "../components/ui";
 import { api, downloadLabels, type StockTrace, type BarcodeByPhoto } from "../lib/api";
 
 const TYPE_LABEL: Record<string, string> = {
@@ -11,6 +12,13 @@ const TYPE_LABEL: Record<string, string> = {
   adjust_out: "Ajuste −",
 };
 const IS_IN = (t: string) => ["purchase_in", "return_in", "adjust_in"].includes(t);
+const TYPE_TONE: Record<string, "success" | "danger" | "info" | "warning" | "neutral"> = {
+  purchase_in: "success",
+  sale_out: "danger",
+  return_in: "info",
+  adjust_in: "warning",
+  adjust_out: "neutral",
+};
 
 export function Estoque() {
   const [code, setCode] = useState("");
@@ -84,147 +92,110 @@ export function Estoque() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl p-10">
-      <PageHeader eyebrow="ESTOQUE" title="Código de barras & rastreabilidade" />
+    <Page>
+      <PageHeader
+        eyebrow="ESTOQUE"
+        title="Código de barras & rastreabilidade"
+        subtitle="Bipe uma peça para rastrear saldo e histórico, lance entradas e gere etiquetas do ateliê."
+      />
 
-      <div className="mt-4 flex gap-2">
-        <div className="relative flex-1">
-          <Barcode className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
-          <input
-            autoFocus
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && lookup()}
-            placeholder="Bipe ou digite o código de barras…"
-            className="w-full rounded-md border border-border bg-background py-2 pl-9 pr-3 text-sm"
-          />
+      {/* ── Scan / rastreio em destaque ─────────────────────────────────────── */}
+      <Card className="bg-gradient-to-br from-card to-accent-soft/30">
+        <CardHeader
+          icon={ScanLine}
+          title="Rastrear peça"
+          subtitle="Bipe ou digite o código de barras para abrir o rastreio completo."
+        />
+        <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+          <div className="relative flex-1">
+            <Barcode className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" size={17} />
+            <input
+              autoFocus
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && lookup()}
+              placeholder="Bipe ou digite o código de barras…"
+              className={`${inputClass} pl-10`}
+            />
+          </div>
+          <Button onClick={() => lookup()} disabled={busy} Icon={Search} className="shrink-0">
+            {busy ? "Buscando…" : "Rastrear"}
+          </Button>
         </div>
-        <button onClick={() => lookup()} disabled={busy}
-          className="flex items-center gap-1.5 rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50">
-          <Search size={15} /> {busy ? "Buscando…" : "Rastrear"}
-        </button>
-      </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-3">
-        <button onClick={backfill} className="text-xs text-muted-foreground underline hover:text-foreground">
-          Gerar/sincronizar códigos do catálogo
-        </button>
-        {backfillMsg && <span className="text-xs text-muted-foreground">{backfillMsg}</span>}
-      </div>
-
-      <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/30 p-4">
-        <Tag size={16} className="text-muted-foreground" />
-        <span className="text-sm font-medium">Arquivo de etiquetas (fornecedor)</span>
-        <button onClick={() => baixarEtiquetas("csv")}
-          className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted">
-          Baixar CSV
-        </button>
-        <button onClick={() => baixarEtiquetas("zpl")}
-          className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted">
-          Baixar ZPL (Zebra)
-        </button>
-        {labelMsg && <span className="text-xs text-muted-foreground">{labelMsg}</span>}
-      </div>
-
-      <div className="mt-4 rounded-lg border border-border bg-muted/30 p-4">
-        <p className="mb-2 flex items-center gap-1.5 text-sm font-medium">
-          <PackagePlus size={16} className="text-muted-foreground" /> Entrada / ajuste de estoque
-        </p>
-        <div className="flex flex-wrap items-center gap-2">
-          <select value={entryType} onChange={(e) => setEntryType(e.target.value as any)}
-            className="rounded-md border border-border bg-background px-2 py-2 text-sm">
-            <option value="receive">Recebimento (fornecedor)</option>
-            <option value="adjust_in">Ajuste + (balanço)</option>
-            <option value="adjust_out">Ajuste − (quebra/perda)</option>
-          </select>
-          <input
-            value={entryBarcode}
-            onChange={(e) => setEntryBarcode(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && lancarEntrada()}
-            placeholder="Código de barras…"
-            className="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm"
-          />
-          <input
-            type="number" min={1} value={entryQty} onChange={(e) => setEntryQty(e.target.value)}
-            className="w-20 rounded-md border border-border bg-background px-3 py-2 text-sm"
-          />
-          <button onClick={lancarEntrada}
-            className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background">
-            Lançar
-          </button>
-          {entryMsg && <span className="text-xs text-muted-foreground">{entryMsg}</span>}
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <Button variant="ghost" size="sm" onClick={backfill}>
+            Gerar / sincronizar códigos do catálogo
+          </Button>
+          {backfillMsg && <span className="text-xs text-muted-foreground">{backfillMsg}</span>}
         </div>
-      </div>
+      </Card>
 
-      <div className="mt-4 rounded-lg border border-border bg-muted/30 p-4">
-        <p className="mb-2 flex items-center gap-1.5 text-sm font-medium">
-          <ImageIcon size={16} className="text-muted-foreground" /> Encontrar código pela foto da peça
-        </p>
-        <div className="flex gap-2">
-          <input
-            value={photoUrl}
-            onChange={(e) => setPhotoUrl(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && buscarPorFoto()}
-            placeholder="URL da foto da peça…"
-            className="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm"
-          />
-          <button onClick={buscarPorFoto} disabled={photoBusy}
-            className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50">
-            {photoBusy ? "Analisando…" : "Buscar"}
-          </button>
-        </div>
-        {photoErr && <p className="mt-2 text-xs text-red-600">{photoErr}</p>}
-        {photoRes && (
-          <ul className="mt-3 space-y-2">
-            {photoRes.candidatos.length === 0 && <li className="text-sm text-muted-foreground">Nenhum candidato.</li>}
-            {photoRes.candidatos.map((c) => (
-              <li key={c.productId} className="flex items-start gap-3 rounded-md border border-border bg-background p-3">
-                {c.mainPhoto && <img src={c.mainPhoto} alt="" className="h-14 w-14 rounded object-cover" />}
-                <div className="min-w-0">
-                  <p className="text-sm font-medium">{c.name}</p>
-                  <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
-                    {c.variantes.map((v) => (
-                      <span key={v.sku}>{[v.color, v.size].filter(Boolean).join("/") || v.sku}: <b className="text-foreground">{v.barcode ?? "—"}</b></span>
-                    ))}
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      {/* ── Resultado de rastreio ──────────────────────────────────────────── */}
+      {busy && (
+        <Card className="mt-6">
+          <div className="flex items-start gap-4">
+            <Skeleton className="h-16 w-16 rounded-lg" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-4 w-48" />
+              <Skeleton className="h-3 w-32" />
+            </div>
+            <Skeleton className="h-10 w-20" />
+          </div>
+          <div className="mt-6 space-y-2">
+            <Skeleton className="h-3 w-28" />
+            <Skeleton className="h-9 w-full" />
+            <Skeleton className="h-9 w-full" />
+          </div>
+        </Card>
+      )}
 
-      {err && <p className="mt-4 text-sm text-red-600">{err}</p>}
+      {err && !busy && (
+        <Card className="mt-6 border-red-200 bg-red-50/60">
+          <p className="text-sm text-red-700">{err}</p>
+        </Card>
+      )}
 
-      {trace && (
-        <section className="mt-6 rounded-lg border border-border bg-background p-6">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-start gap-3">
-              {trace.photo && <img src={trace.photo} alt="" className="h-16 w-16 rounded object-cover" />}
+      {trace && !busy && (
+        <Card className="mt-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="flex items-start gap-4">
+              {trace.photo ? (
+                <img src={trace.photo} alt="" className="h-20 w-20 rounded-lg border border-border object-cover" />
+              ) : (
+                <span className="flex h-20 w-20 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                  <ImageIcon size={22} />
+                </span>
+              )}
               <div>
-                <p className="font-medium">{trace.productName}</p>
-                <p className="text-xs text-muted-foreground">{trace.variantSku} · {trace.barcode}</p>
+                <p className="font-serif text-xl font-semibold text-foreground">{trace.productName}</p>
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  <Badge tone="neutral">SKU {trace.variantSku}</Badge>
+                  <Badge tone="accent">{trace.barcode}</Badge>
+                </div>
               </div>
             </div>
-            <div className="text-right">
-              <p className="text-xs text-muted-foreground">Saldo (razão)</p>
+            <div className="rounded-lg bg-muted/50 px-4 py-2.5 text-right">
+              <p className="text-[11px] font-semibold uppercase tracking-luxe text-muted-foreground">Saldo (razão)</p>
               <p className={cnSaldo(trace.saldoRazao)}>{trace.saldoRazao}</p>
             </div>
           </div>
 
-          <div className="mt-4">
-            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Movimentações</p>
+          <div className="mt-6 border-t border-border pt-5">
+            <p className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-luxe text-muted-foreground">
+              <History size={14} /> Movimentações
+            </p>
             {trace.movimentos.length === 0 ? (
               <p className="text-sm text-muted-foreground">Sem movimentações registradas.</p>
             ) : (
               <ul className="divide-y divide-border">
                 {trace.movimentos.map((m) => (
-                  <li key={m.id} className="flex items-center justify-between py-2 text-sm">
-                    <span className="flex items-center gap-2">
-                      <span className={IS_IN(m.type) ? "text-emerald-600" : "text-red-600"}>
+                  <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
+                    <span className="flex items-center gap-2.5">
+                      <span className={`tabular-nums font-semibold ${IS_IN(m.type) ? "text-emerald-600" : "text-red-600"}`}>
                         {IS_IN(m.type) ? "+" : "−"}{m.quantity}
                       </span>
-                      <span>{TYPE_LABEL[m.type] ?? m.type}</span>
+                      <Badge tone={TYPE_TONE[m.type] ?? "neutral"}>{TYPE_LABEL[m.type] ?? m.type}</Badge>
                       {m.refType && <span className="text-xs text-muted-foreground">({m.refType})</span>}
                     </span>
                     <span className="text-xs text-muted-foreground">
@@ -235,12 +206,119 @@ export function Estoque() {
               </ul>
             )}
           </div>
-        </section>
+        </Card>
       )}
-    </div>
+
+      {/* ── Painéis operacionais ───────────────────────────────────────────── */}
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        {/* Entrada / ajuste */}
+        <Card>
+          <CardHeader
+            icon={PackagePlus}
+            title="Entrada & ajuste de estoque"
+            subtitle="Recebimento de fornecedor, balanço ou quebra/perda."
+          />
+          <div className="mt-5 space-y-3">
+            <select
+              value={entryType}
+              onChange={(e) => setEntryType(e.target.value as any)}
+              className={inputClass}
+            >
+              <option value="receive">Recebimento (fornecedor)</option>
+              <option value="adjust_in">Ajuste + (balanço)</option>
+              <option value="adjust_out">Ajuste − (quebra/perda)</option>
+            </select>
+            <div className="flex gap-2">
+              <input
+                value={entryBarcode}
+                onChange={(e) => setEntryBarcode(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && lancarEntrada()}
+                placeholder="Código de barras…"
+                className={`${inputClass} flex-1`}
+              />
+              <input
+                type="number" min={1} value={entryQty} onChange={(e) => setEntryQty(e.target.value)}
+                className={`${inputClass} w-20 shrink-0 text-center`}
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button onClick={lancarEntrada} Icon={PackagePlus}>Lançar</Button>
+              {entryMsg && <span className="text-xs text-muted-foreground">{entryMsg}</span>}
+            </div>
+          </div>
+        </Card>
+
+        {/* Etiquetas */}
+        <Card>
+          <CardHeader
+            icon={Tag}
+            title="Arquivo de etiquetas"
+            subtitle="Exporte os códigos do catálogo para o fornecedor de etiquetas."
+          />
+          <div className="mt-5 flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" Icon={Tag} onClick={() => baixarEtiquetas("csv")}>
+              Baixar CSV
+            </Button>
+            <Button variant="outline" size="sm" Icon={Tag} onClick={() => baixarEtiquetas("zpl")}>
+              Baixar ZPL (Zebra)
+            </Button>
+          </div>
+          {labelMsg && <p className="mt-3 text-xs text-muted-foreground">{labelMsg}</p>}
+        </Card>
+      </div>
+
+      {/* ── Busca por foto ─────────────────────────────────────────────────── */}
+      <Card className="mt-6">
+        <CardHeader
+          icon={ImageIcon}
+          title="Encontrar código pela foto da peça"
+          subtitle="Cole a URL de uma foto e a visão identifica candidatos do catálogo."
+        />
+        <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+          <input
+            value={photoUrl}
+            onChange={(e) => setPhotoUrl(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && buscarPorFoto()}
+            placeholder="URL da foto da peça…"
+            className={`${inputClass} flex-1`}
+          />
+          <Button onClick={buscarPorFoto} disabled={photoBusy} Icon={Search} className="shrink-0">
+            {photoBusy ? "Analisando…" : "Buscar"}
+          </Button>
+        </div>
+        {photoErr && <p className="mt-3 text-sm text-red-600">{photoErr}</p>}
+        {photoRes && (
+          photoRes.candidatos.length === 0 ? (
+            <div className="mt-5">
+              <EmptyState
+                icon={ImageIcon}
+                title="Nenhum candidato"
+                description="A visão não encontrou peças do catálogo compatíveis com essa foto."
+              />
+            </div>
+          ) : (
+            <ul className="mt-5 space-y-2">
+              {photoRes.candidatos.map((c) => (
+                <li key={c.productId} className="flex items-start gap-3 rounded-lg border border-border bg-background p-3.5">
+                  {c.mainPhoto && <img src={c.mainPhoto} alt="" className="h-14 w-14 rounded-md border border-border object-cover" />}
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground">{c.name}</p>
+                    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                      {c.variantes.map((v) => (
+                        <span key={v.sku}>{[v.color, v.size].filter(Boolean).join("/") || v.sku}: <b className="text-foreground">{v.barcode ?? "—"}</b></span>
+                      ))}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )
+        )}
+      </Card>
+    </Page>
   );
 }
 
 function cnSaldo(v: number) {
-  return `text-2xl font-bold ${v < 0 ? "text-red-600" : "text-foreground"}`;
+  return `font-serif text-3xl font-semibold ${v < 0 ? "text-red-600" : "text-foreground"}`;
 }

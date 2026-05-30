@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { Bot, User, Send, Wrench, Sparkles, Brain, AlertTriangle } from "lucide-react";
+import { Bot, User, Send, Wrench, Sparkles, Brain, AlertTriangle, MessageCircle, Tag, StickyNote, UserCheck, CheckCircle2, FlaskConical } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { ChatMarkdown } from "../components/ChatMarkdown";
+import { Card, Button, Badge, EmptyState, Tabs, inputClass } from "../components/ui";
 import { api, type Conversation, type Message, type ConversationNote } from "../lib/api";
 import { cn, formatBRL } from "../lib/utils";
+
+type StatusFilter = "all" | "active" | "handed_off" | "closed";
 
 export function Inbox() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -17,6 +20,7 @@ export function Inbox() {
   const [notes, setNotes] = useState<ConversationNote[]>([]);
   const [newNote, setNewNote] = useState("");
   const [newTag, setNewTag] = useState("");
+  const [filter, setFilter] = useState<StatusFilter>("all");
   const threadRef = useRef<HTMLDivElement>(null);
 
   async function loadNotes(id: string) {
@@ -113,112 +117,143 @@ export function Inbox() {
   }
 
   const current = conversations.find((c) => c.id === selected);
+  const counts = {
+    all: conversations.length,
+    active: conversations.filter((c) => c.status === "active").length,
+    handed_off: conversations.filter((c) => c.status === "handed_off").length,
+    closed: conversations.filter((c) => c.status === "closed").length,
+  };
+  const visible = filter === "all" ? conversations : conversations.filter((c) => c.status === filter);
 
   return (
-    <div className="flex h-screen flex-col p-8">
-      <PageHeader eyebrow="ATENDIMENTO" title="Inbox unificado" />
-      {error && <p className="mt-2 text-sm text-primary">Erro: {error}</p>}
+    <div className="flex h-screen flex-col bg-background px-8 pb-6 pt-10 lg:px-10">
+      <PageHeader eyebrow="ATENDIMENTO" title="Inbox unificado" subtitle="Conversas de WhatsApp e Instagram em um só lugar — a Maya atende, você assume quando quiser." />
 
-      <div className="mt-6 grid min-h-0 flex-1 grid-cols-[320px_1fr] gap-px overflow-hidden rounded-lg border border-border bg-border">
-        {/* Lista de conversas */}
-        <div className="flex flex-col overflow-y-auto bg-background">
-          <div className="border-b border-border p-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-            Conversas ({conversations.length})
-          </div>
-          {conversations.length === 0 ? (
-            <p className="p-4 text-sm text-muted-foreground">
-              Nenhuma conversa. Use a aba simulador abaixo pra criar uma.
-            </p>
-          ) : (
-            conversations.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => setSelected(c.id)}
-                className={cn(
-                  "border-b border-border p-3 text-left transition-colors",
-                  selected === c.id ? "bg-muted" : "hover:bg-muted/50"
-                )}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold">{c.contactName}</span>
-                  <StatusBadge status={c.status} />
-                </div>
-                <p className="mt-1 truncate text-xs text-muted-foreground">{c.lastMessage}</p>
-              </button>
-            ))
-          )}
+      {error && (
+        <div className="mb-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">
+          <AlertTriangle size={15} className="shrink-0" /> {error}
         </div>
+      )}
 
-        {/* Thread */}
-        <div className="flex min-h-0 flex-col bg-background">
+      <div className="grid min-h-0 flex-1 grid-cols-[340px_1fr] gap-5 overflow-hidden xl:grid-cols-[340px_1fr_300px]">
+        {/* ── Lista de conversas ──────────────────────────────────────────── */}
+        <aside className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-soft">
+          <div className="border-b border-border px-4 pb-3 pt-4">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="font-serif text-base font-semibold text-foreground">Conversas</h3>
+              <Badge tone="accent">{conversations.length}</Badge>
+            </div>
+            <Tabs
+              tabs={[
+                { key: "all", label: "Todas", count: counts.all },
+                { key: "active", label: "Ativas", count: counts.active },
+                { key: "handed_off", label: "Humano", count: counts.handed_off },
+                { key: "closed", label: "Fechadas", count: counts.closed },
+              ]}
+              active={filter}
+              onChange={setFilter}
+            />
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto p-2">
+            {visible.length === 0 ? (
+              <div className="px-3 py-10">
+                <EmptyState
+                  icon={MessageCircle}
+                  title="Nenhuma conversa"
+                  description="Use o simulador de cliente abaixo para criar uma conversa de teste."
+                />
+              </div>
+            ) : (
+              <ul className="space-y-1">
+                {visible.map((c) => (
+                  <li key={c.id}>
+                    <button
+                      onClick={() => setSelected(c.id)}
+                      className={cn(
+                        "flex w-full items-start gap-3 rounded-lg px-3 py-2.5 text-left transition-colors",
+                        selected === c.id ? "bg-accent-soft" : "hover:bg-muted/60",
+                      )}
+                    >
+                      <Avatar name={c.contactName} active={selected === c.id} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate text-sm font-semibold text-foreground">{c.contactName}</span>
+                          <StatusBadge status={c.status} />
+                        </div>
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">{c.lastMessage}</p>
+                      </div>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </aside>
+
+        {/* ── Thread ──────────────────────────────────────────────────────── */}
+        <section className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-soft">
           {current ? (
             <>
-              <div className="border-b border-border px-4 py-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-semibold">{current.contactName}</p>
-                    <p className="text-xs text-muted-foreground">{current.channel} · {current.status}</p>
+              <header className="border-b border-border px-5 py-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <Avatar name={current.contactName} active size="lg" />
+                    <div>
+                      <p className="font-serif text-lg font-semibold leading-tight text-foreground">{current.contactName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        <span className="capitalize">{current.channel}</span> · <span className="capitalize">{current.status.replace("_", " ")}</span>
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center justify-end gap-2">
                     {current.handoffReason && (
-                      <span className="rounded bg-primary/10 px-2 py-1 text-xs text-primary">
-                        handoff: {current.handoffReason}
-                      </span>
+                      <Badge tone="warning">handoff: {current.handoffReason}</Badge>
                     )}
-                    <button
+                    <Button
+                      size="sm"
+                      variant={current.assignedToId ? "soft" : "outline"}
+                      Icon={UserCheck}
                       onClick={toggleAssign}
                       title="Atribuir esta conversa a mim"
-                      className={cn("rounded-md border px-2.5 py-1 text-xs font-medium", current.assignedToId ? "border-primary/40 bg-primary/10 text-primary" : "border-border hover:bg-muted")}
                     >
                       {current.assignedToId ? `Atribuída: ${current.assignedToName}` : "Assumir"}
-                    </button>
+                    </Button>
                     {current.status !== "closed" && (
-                      <button
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        Icon={CheckCircle2}
                         onClick={handleClose}
                         title="Encerra a conversa e gera um resumo (memória da cliente)"
-                        className="rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted"
                       >
                         Encerrar + resumir
-                      </button>
+                      </Button>
                     )}
                   </div>
                 </div>
 
-                {/* Tags (ADR-016) */}
-                <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                  {(current.tags ?? []).map((t) => (
-                    <span key={t} className="flex items-center gap-1 rounded bg-muted px-2 py-0.5 text-[11px]">
-                      #{t}
-                      <button onClick={() => removeTag(t)} className="text-muted-foreground hover:text-primary">×</button>
-                    </span>
-                  ))}
-                  <input
-                    value={newTag}
-                    onChange={(e) => setNewTag(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && addTag()}
-                    placeholder="+ tag"
-                    className="w-20 rounded border border-dashed border-border bg-background px-1.5 py-0.5 text-[11px] outline-none focus:border-primary"
-                  />
-                </div>
                 {current.summary && (
-                  <p className="mt-2 flex items-start gap-1.5 rounded bg-muted/60 px-2.5 py-1.5 text-xs text-muted-foreground">
-                    <Brain size={12} className="mt-0.5 shrink-0 text-primary" />
-                    <span><span className="font-medium text-foreground">Memória:</span> {current.summary}</span>
+                  <p className="mt-3 flex items-start gap-2 rounded-lg bg-accent-soft/60 px-3 py-2 text-xs text-muted-foreground">
+                    <Brain size={13} className="mt-0.5 shrink-0 text-primary" />
+                    <span><span className="font-semibold text-foreground">Memória:</span> {current.summary}</span>
                   </p>
                 )}
-              </div>
+              </header>
 
-              <div ref={threadRef} className="flex-1 space-y-3 overflow-y-auto p-4">
+              <div ref={threadRef} className="flex-1 space-y-4 overflow-y-auto bg-muted/20 px-5 py-5">
                 {messages.map((m) => (
                   <MessageBubble key={m.id} message={m} />
                 ))}
               </div>
 
               {/* Notas internas (ADR-016) — nunca enviadas ao cliente */}
-              <div className="border-t border-border bg-amber-50/40 px-3 py-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-700">Notas internas ({notes.length})</p>
+              <div className="border-t border-border bg-amber-50/50 px-5 py-3">
+                <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-amber-700">
+                  <StickyNote size={12} /> Notas internas ({notes.length})
+                </p>
                 {notes.length > 0 && (
-                  <div className="mt-1 max-h-24 space-y-1 overflow-y-auto">
+                  <div className="mt-1.5 max-h-24 space-y-1 overflow-y-auto">
                     {notes.map((n) => (
                       <p key={n.id} className="text-xs text-muted-foreground">
                         <span className="text-foreground">{n.text}</span>
@@ -227,61 +262,114 @@ export function Inbox() {
                     ))}
                   </div>
                 )}
-                <div className="mt-1 flex gap-2">
+                <div className="mt-2 flex gap-2">
                   <input
                     value={newNote}
                     onChange={(e) => setNewNote(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && addNote()}
                     placeholder="Anotação interna (não vai pro cliente)…"
-                    className="flex-1 rounded border border-border bg-background px-2 py-1 text-xs outline-none focus:border-primary"
+                    className={cn(inputClass, "flex-1 py-2")}
                   />
-                  <button onClick={addNote} disabled={!newNote.trim()} className="rounded border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50">
+                  <Button size="sm" variant="outline" onClick={addNote} disabled={!newNote.trim()}>
                     Anotar
-                  </button>
+                  </Button>
                 </div>
               </div>
 
-              <div className="border-t border-border p-3">
+              {/* Composição */}
+              <div className="border-t border-border px-5 py-4">
                 {suggested && (
-                  <p className="mb-1.5 flex items-center gap-1 text-xs text-primary">
-                    <Sparkles size={12} /> Sugestão da Maya — revise e edite antes de enviar.
+                  <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-primary">
+                    <Sparkles size={13} /> Sugestão da Maya — revise e edite antes de enviar.
                   </p>
                 )}
-                <div className="flex gap-2">
-                  <button
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    Icon={Sparkles}
                     onClick={handleSuggest}
                     disabled={suggesting || sending}
                     title="Maya sugere uma resposta (não envia nada)"
-                    className="flex items-center gap-1 rounded-md border border-primary/40 px-3 py-2 text-sm font-medium text-primary hover:bg-primary/5 disabled:opacity-50"
+                    className="shrink-0 border-primary/40 text-primary hover:bg-primary/5"
                   >
-                    <Sparkles size={14} /> {suggesting ? "Pensando…" : "Sugerir (IA)"}
-                  </button>
+                    {suggesting ? "Pensando…" : "Sugerir (IA)"}
+                  </Button>
                   <input
                     value={reply}
                     onChange={(e) => { setReply(e.target.value); if (suggested) setSuggested(false); }}
                     onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleReply()}
                     placeholder="Responder como atendente humano…"
-                    className="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                    className={inputClass}
                   />
-                  <button
-                    onClick={handleReply}
-                    disabled={sending || !reply.trim()}
-                    className="flex items-center gap-1 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
-                  >
-                    <Send size={14} /> Enviar
-                  </button>
+                  <Button Icon={Send} onClick={handleReply} disabled={sending || !reply.trim()} className="shrink-0">
+                    Enviar
+                  </Button>
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">
+                <p className="mt-2 text-xs text-muted-foreground">
                   Responder aqui assume a conversa (status → handoff). A Maya para de responder.
                 </p>
               </div>
             </>
           ) : (
-            <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-              Selecione uma conversa
+            <div className="flex flex-1 items-center justify-center p-8">
+              <EmptyState
+                icon={MessageCircle}
+                title="Selecione uma conversa"
+                description="Escolha um contato na lista ao lado para ver o histórico e responder."
+              />
             </div>
           )}
-        </div>
+        </section>
+
+        {/* ── Painel de contexto (perfil / tags) ──────────────────────────── */}
+        <aside className="hidden min-h-0 flex-col gap-5 overflow-y-auto xl:flex">
+          {current ? (
+            <>
+              <Card className="p-5">
+                <div className="flex flex-col items-center text-center">
+                  <Avatar name={current.contactName} active size="xl" />
+                  <p className="mt-3 font-serif text-lg font-semibold text-foreground">{current.contactName}</p>
+                  <p className="text-xs capitalize text-muted-foreground">{current.channel}</p>
+                  <div className="mt-2"><StatusBadge status={current.status} /></div>
+                </div>
+              </Card>
+
+              <Card className="p-5">
+                <p className="mb-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <Tag size={12} /> Tags
+                </p>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {(current.tags ?? []).map((t) => (
+                    <span key={t} className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                      #{t}
+                      <button onClick={() => removeTag(t)} className="text-muted-foreground/60 transition-colors hover:text-primary" aria-label={`Remover tag ${t}`}>×</button>
+                    </span>
+                  ))}
+                  <input
+                    value={newTag}
+                    onChange={(e) => setNewTag(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && addTag()}
+                    placeholder="+ tag"
+                    className="w-20 rounded-full border border-dashed border-border bg-background px-2.5 py-0.5 text-[11px] outline-none transition-colors focus:border-primary"
+                  />
+                </div>
+              </Card>
+
+              {current.summary && (
+                <Card className="p-5">
+                  <p className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <Brain size={12} /> Memória da cliente
+                  </p>
+                  <p className="text-sm leading-relaxed text-muted-foreground">{current.summary}</p>
+                </Card>
+              )}
+            </>
+          ) : (
+            <Card className="p-5 text-center text-sm text-muted-foreground">
+              Selecione uma conversa para ver o contexto.
+            </Card>
+          )}
+        </aside>
       </div>
 
       <Simulator onSent={loadConversations} />
@@ -289,42 +377,74 @@ export function Inbox() {
   );
 }
 
+function Avatar({ name, active, size = "md" }: { name: string; active?: boolean; size?: "md" | "lg" | "xl" }) {
+  const initials = (name ?? "?").trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase()).join("") || "?";
+  const dims = { md: "h-9 w-9 text-xs", lg: "h-11 w-11 text-sm", xl: "h-16 w-16 text-lg" };
+  return (
+    <span
+      className={cn(
+        "flex shrink-0 items-center justify-center rounded-full font-serif font-semibold",
+        active ? "bg-primary text-primary-foreground" : "bg-accent-soft text-primary-strong",
+        dims[size],
+      )}
+    >
+      {initials}
+    </span>
+  );
+}
+
 function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, string> = {
-    active: "bg-green-100 text-green-700",
-    handed_off: "bg-amber-100 text-amber-700",
-    closed: "bg-gray-100 text-gray-500",
+  const map: Record<string, { tone: "success" | "warning" | "neutral"; label: string }> = {
+    active: { tone: "success", label: "ativa" },
+    handed_off: { tone: "warning", label: "humano" },
+    closed: { tone: "neutral", label: "fechada" },
   };
-  return <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-medium", map[status] ?? "")}>{status}</span>;
+  const cfg = map[status] ?? { tone: "neutral" as const, label: status };
+  return <Badge tone={cfg.tone}>{cfg.label}</Badge>;
 }
 
 function MessageBubble({ message }: { message: Message }) {
   const isIn = message.direction === "in";
   const isAI = !isIn && !!message.llmModel;
   return (
-    <div className={cn("flex gap-2", isIn ? "justify-start" : "justify-end")}>
-      {isIn && <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted"><User size={14} /></div>}
-      <div className={cn("max-w-[75%] rounded-lg px-3 py-2 text-sm", isIn ? "bg-muted" : "bg-primary text-primary-foreground")}>
+    <div className={cn("flex items-end gap-2", isIn ? "justify-start" : "justify-end")}>
+      {isIn && (
+        <span className="mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-card text-muted-foreground shadow-soft">
+          <User size={15} />
+        </span>
+      )}
+      <div
+        className={cn(
+          "max-w-[75%] rounded-2xl px-4 py-2.5 text-sm shadow-soft",
+          isIn
+            ? "rounded-bl-md bg-muted text-foreground"
+            : "rounded-br-md bg-primary text-primary-foreground",
+        )}
+      >
         <ChatMarkdown text={message.content ?? ""} />
         {message.toolCalls && message.toolCalls.length > 0 && (
-          <div className={cn("mt-2 flex flex-wrap gap-1 border-t pt-1 text-[10px]", isIn ? "border-border" : "border-primary-foreground/20")}>
+          <div className={cn("mt-2 flex flex-wrap gap-1.5 border-t pt-2 text-[10px]", isIn ? "border-border" : "border-primary-foreground/20")}>
             {message.toolCalls.map((t, i) => (
-              <span key={i} className="flex items-center gap-1 opacity-80"><Wrench size={9} />{t.name}</span>
+              <span key={i} className="inline-flex items-center gap-1 opacity-80"><Wrench size={9} />{t.name}</span>
             ))}
           </div>
         )}
         {isAI && (
-          <div className="mt-1 text-[10px] opacity-70">
+          <div className="mt-1.5 text-[10px] opacity-70">
             {message.llmModel} · {message.llmCostBRL ? formatBRL(Number(message.llmCostBRL)) : ""}
           </div>
         )}
         {message.reviewFlagged && (
-          <div className="mt-1 flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700" title={message.reviewReasons?.join("; ")}>
+          <div className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700" title={message.reviewReasons?.join("; ")}>
             <AlertTriangle size={10} /> revisar: {message.reviewReasons?.join("; ")}
           </div>
         )}
       </div>
-      {isAI && <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary"><Bot size={14} className="text-primary-foreground" /></div>}
+      {isAI && (
+        <span className="mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary shadow-soft">
+          <Bot size={15} className="text-primary-foreground" />
+        </span>
+      )}
     </div>
   );
 }
@@ -355,18 +475,18 @@ function Simulator({ onSent }: { onSent: () => void }) {
   }
 
   return (
-    <div className="mt-4 rounded-lg border border-dashed border-border bg-muted/30 p-3">
-      <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-        Simulador de cliente (até WhatsApp/IG reais)
+    <div className="mt-5 rounded-xl border border-dashed border-border bg-accent-soft/30 px-5 py-4">
+      <p className="mb-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <FlaskConical size={13} /> Simulador de cliente (até WhatsApp/IG reais)
       </p>
       <div className="flex gap-2">
-        <input value={name} onChange={(e) => setName(e.target.value)} className="w-28 rounded border border-border bg-background px-2 py-1.5 text-sm" placeholder="Nome" />
-        <input value={text} onChange={(e) => setText(e.target.value)} className="flex-1 rounded border border-border bg-background px-2 py-1.5 text-sm" placeholder="Mensagem do cliente" />
-        <button onClick={send} disabled={busy} className="rounded bg-foreground px-3 py-1.5 text-sm font-medium text-background disabled:opacity-50">
+        <input value={name} onChange={(e) => setName(e.target.value)} className={cn(inputClass, "w-32 py-2")} placeholder="Nome" />
+        <input value={text} onChange={(e) => setText(e.target.value)} className={cn(inputClass, "flex-1 py-2")} placeholder="Mensagem do cliente" />
+        <Button variant="primary" Icon={Send} onClick={send} disabled={busy} className="shrink-0">
           {busy ? "Maya pensando…" : "Enviar como cliente"}
-        </button>
+        </Button>
       </div>
-      {result && <p className="mt-2 text-xs text-muted-foreground">{result}</p>}
+      {result && <p className="mt-2.5 text-xs text-muted-foreground">{result}</p>}
     </div>
   );
 }

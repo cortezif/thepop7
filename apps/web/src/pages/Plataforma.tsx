@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { Card, CardHeader, Button, Badge, EmptyState, inputClass } from "../components/ui";
+import { PageHeader } from "../components/PageHeader";
+import { formatBRL } from "../lib/utils";
 
 // Painel NÍVEL-PLATAFORMA (ADR-024): receita de comissões da rede de atacado B2B.
 // Não é do operador da loja — autentica por uma CHAVE DE PLATAFORMA (x-platform-key),
@@ -12,7 +15,6 @@ type Summary = {
 };
 
 const KEY_STORE = "thepop7_platform_key";
-const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 export function Plataforma() {
   const [key, setKey] = useState(localStorage.getItem(KEY_STORE) ?? "");
@@ -34,77 +36,120 @@ export function Plataforma() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl p-10">
-      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">PLATAFORMA · REDE B2B</p>
-      <h1 className="mt-1 font-serif text-2xl font-bold">Receita de comissões (atacado)</h1>
-
-      <div className="mt-6 flex gap-2">
-        <input
-          type="password" value={key} onChange={(e) => setKey(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && load()}
-          placeholder="Chave de plataforma…"
-          className="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm"
+    <div className="min-h-screen bg-background">
+      <div className="mx-auto max-w-6xl px-8 py-10">
+        <PageHeader
+          eyebrow="REDE B2B"
+          title="Receita de comissões"
+          subtitle="Painel executivo da rede de atacado — acesso restrito por chave de plataforma."
         />
-        <button onClick={load} disabled={busy || !key.trim()}
-          className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50">
-          {busy ? "Carregando…" : "Carregar"}
-        </button>
+
+        {/* Acesso por chave de plataforma */}
+        <Card className="max-w-xl">
+          <CardHeader
+            title="Acesso da plataforma"
+            subtitle="Sua chave fica guardada apenas neste navegador."
+          />
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+            <input
+              type="password" value={key} onChange={(e) => setKey(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && load()}
+              placeholder="Chave de plataforma…"
+              className={inputClass + " flex-1"}
+            />
+            <Button onClick={load} disabled={busy || !key.trim()}>
+              {busy ? "Carregando…" : "Carregar"}
+            </Button>
+          </div>
+          {err && (
+            <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700">
+              {err}
+            </p>
+          )}
+        </Card>
+
+        {data && (
+          <>
+            {/* Métricas em destaque */}
+            <div className="mt-10 grid grid-cols-1 gap-5 md:grid-cols-3">
+              <Stat label="GMV — volume transacionado" value={formatBRL(data.gmvBRL)} />
+              <Stat label="Comissão da plataforma" value={formatBRL(data.commissionBRL)} accent />
+              <Stat label="Pedidos B2B" value={String(data.orders)} />
+            </div>
+
+            {/* Por vendedor */}
+            <section className="mt-12">
+              <h2 className="font-serif text-xl font-semibold text-foreground">Por vendedor</h2>
+              <div className="mt-1 h-px w-12 bg-gradient-to-r from-primary to-transparent" />
+
+              {data.bySeller.length === 0 ? (
+                <div className="mt-5">
+                  <EmptyState title="Sem pedidos B2B ainda" description="As lojas vendedoras aparecerão aqui assim que houver transações na rede." />
+                </div>
+              ) : (
+                <Card padded={false} className="mt-5 overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="border-b border-border bg-muted/50 text-[11px] uppercase tracking-luxe text-muted-foreground">
+                      <tr>
+                        <th className="px-5 py-3 text-left font-semibold">Loja vendedora</th>
+                        <th className="px-5 py-3 text-right font-semibold">Pedidos</th>
+                        <th className="px-5 py-3 text-right font-semibold">GMV</th>
+                        <th className="px-5 py-3 text-right font-semibold">Comissão</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.bySeller.map((s) => (
+                        <tr key={s.sellerTenantId} className="border-t border-border transition-colors hover:bg-muted/30">
+                          <td className="px-5 py-3.5 font-medium text-foreground">{s.sellerName}</td>
+                          <td className="px-5 py-3.5 text-right tabular-nums text-muted-foreground">{s.orders}</td>
+                          <td className="px-5 py-3.5 text-right tabular-nums">{formatBRL(s.gmvBRL)}</td>
+                          <td className="px-5 py-3.5 text-right font-serif font-semibold tabular-nums text-primary-strong">{formatBRL(s.commissionBRL)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </Card>
+              )}
+            </section>
+
+            {/* Pedidos recentes */}
+            <section className="mt-12">
+              <h2 className="font-serif text-xl font-semibold text-foreground">Pedidos recentes</h2>
+              <div className="mt-1 h-px w-12 bg-gradient-to-r from-primary to-transparent" />
+
+              {data.recent.length === 0 ? (
+                <div className="mt-5">
+                  <EmptyState title="Nenhum pedido" description="Os pedidos B2B mais recentes da rede aparecerão aqui." />
+                </div>
+              ) : (
+                <Card padded={false} className="mt-5 divide-y divide-border">
+                  {data.recent.map((o) => (
+                    <div key={o.orderId} className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-5 py-3.5 text-sm">
+                      <span className="font-mono text-xs text-muted-foreground">#{o.orderId.slice(-6)}</span>
+                      <span className="font-medium text-foreground">{o.sellerName}</span>
+                      <span className="text-xs text-muted-foreground">comprador {o.buyerRef.slice(-6)}</span>
+                      <Badge tone="neutral" className="uppercase tracking-wide">{o.status}</Badge>
+                      <span className="ml-auto tabular-nums text-foreground">{formatBRL(o.totalBRL)}</span>
+                      <span className="font-medium tabular-nums text-emerald-700">+{formatBRL(o.commissionBRL)}</span>
+                    </div>
+                  ))}
+                </Card>
+              )}
+            </section>
+          </>
+        )}
       </div>
-      {err && <p className="mt-3 text-sm text-red-600">{err}</p>}
-
-      {data && (
-        <>
-          <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
-            <Card label="GMV (volume transacionado)" value={brl(data.gmvBRL)} />
-            <Card label="Comissão da plataforma" value={brl(data.commissionBRL)} accent />
-            <Card label="Pedidos B2B" value={String(data.orders)} />
-          </div>
-
-          <h2 className="mt-8 font-serif text-lg font-bold">Por vendedor</h2>
-          <div className="mt-2 overflow-hidden rounded-lg border border-border">
-            <table className="w-full text-sm">
-              <thead className="bg-muted text-xs uppercase tracking-wider text-muted-foreground">
-                <tr><th className="px-4 py-2 text-left">Loja vendedora</th><th className="px-4 py-2 text-right">Pedidos</th><th className="px-4 py-2 text-right">GMV</th><th className="px-4 py-2 text-right">Comissão</th></tr>
-              </thead>
-              <tbody>
-                {data.bySeller.map((s) => (
-                  <tr key={s.sellerTenantId} className="border-t border-border">
-                    <td className="px-4 py-2 font-medium">{s.sellerName}</td>
-                    <td className="px-4 py-2 text-right">{s.orders}</td>
-                    <td className="px-4 py-2 text-right">{brl(s.gmvBRL)}</td>
-                    <td className="px-4 py-2 text-right font-semibold">{brl(s.commissionBRL)}</td>
-                  </tr>
-                ))}
-                {data.bySeller.length === 0 && <tr><td colSpan={4} className="px-4 py-3 text-muted-foreground">Sem pedidos B2B ainda.</td></tr>}
-              </tbody>
-            </table>
-          </div>
-
-          <h2 className="mt-8 font-serif text-lg font-bold">Pedidos recentes</h2>
-          <div className="mt-2 divide-y divide-border rounded-lg border border-border">
-            {data.recent.map((o) => (
-              <div key={o.orderId} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2 text-sm">
-                <span className="font-mono text-xs text-muted-foreground">#{o.orderId.slice(-6)}</span>
-                <span className="font-medium">{o.sellerName}</span>
-                <span className="text-xs text-muted-foreground">comprador {o.buyerRef.slice(-6)}</span>
-                <span className="rounded bg-muted px-2 py-0.5 text-[10px] uppercase">{o.status}</span>
-                <span className="ml-auto">{brl(o.totalBRL)}</span>
-                <span className="text-emerald-700">+{brl(o.commissionBRL)}</span>
-              </div>
-            ))}
-            {data.recent.length === 0 && <p className="px-4 py-3 text-sm text-muted-foreground">Nenhum pedido.</p>}
-          </div>
-        </>
-      )}
     </div>
   );
 }
 
-function Card({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
-    <div className={`rounded-lg border p-5 ${accent ? "border-emerald-300 bg-emerald-50/50" : "border-border bg-background"}`}>
-      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
-      <p className={`mt-3 font-serif text-3xl font-bold ${accent ? "text-emerald-700" : ""}`}>{value}</p>
-    </div>
+    <Card className={accent ? "border-primary/40 bg-accent-soft" : undefined}>
+      <p className="text-[11px] font-semibold uppercase tracking-luxe text-muted-foreground">{label}</p>
+      <p className={`mt-3 font-serif text-4xl font-semibold tabular-nums ${accent ? "text-primary-strong" : "text-foreground"}`}>
+        {value}
+      </p>
+    </Card>
   );
 }

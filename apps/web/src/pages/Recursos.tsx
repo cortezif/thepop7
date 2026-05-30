@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Search } from "lucide-react";
+import { Search, ArrowRight } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
+import { Page, Card, Badge, inputClass } from "../components/ui";
+import { cn } from "../lib/utils";
 
 // Visão geral de TODOS os recursos do sistema, por área, com status e link pra
 // tela onde cada um vive. Catálogo curado (não consulta API) — é a "vitrine" das
@@ -169,10 +171,10 @@ const AREAS: Area[] = [
   },
 ];
 
-const BADGE: Record<St, { dot: string; label: string; cls: string }> = {
-  ok:      { dot: "🟢", label: "Pronto",  cls: "text-emerald-700" },
-  partial: { dot: "🟡", label: "Parcial", cls: "text-amber-700" },
-  blocked: { dot: "🔴", label: "Falta",   cls: "text-red-600" },
+const BADGE: Record<St, { dot: string; label: string; tone: "success" | "warning" | "danger" }> = {
+  ok:      { dot: "🟢", label: "Pronto",  tone: "success" },
+  partial: { dot: "🟡", label: "Parcial", tone: "warning" },
+  blocked: { dot: "🔴", label: "Falta",   tone: "danger"  },
 };
 
 export function Recursos() {
@@ -200,69 +202,90 @@ export function Recursos() {
   const shown = filtered.reduce((s, a) => s + a.items.length, 0);
 
   return (
-    <div className="mx-auto max-w-5xl p-10">
-      <PageHeader eyebrow="VISÃO GERAL" title="Tudo o que o sistema faz" />
+    <Page>
+      <PageHeader
+        eyebrow="RECURSOS"
+        title="Tudo o que o sistema faz"
+        subtitle="A vitrine completa de capacidades da plataforma — por área, com o estado de cada recurso e o atalho para a tela onde ele vive."
+      />
 
-      <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
-        <FilterChip dot="🟢" label="Pronto" value={count("ok")} on={active.has("ok")} onClick={() => toggle("ok")} />
-        <FilterChip dot="🟡" label="Parcial" value={count("partial")} on={active.has("partial")} onClick={() => toggle("partial")} />
-        <FilterChip dot="🔴" label="Falta" value={count("blocked")} on={active.has("blocked")} onClick={() => toggle("blocked")} />
-        {active.size > 0 && (
-          <button onClick={() => setActive(new Set())} className="text-xs text-muted-foreground underline hover:text-foreground">limpar</button>
-        )}
-        <div className="relative ml-auto">
-          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="buscar recurso…"
-            className="rounded-md border border-border bg-background py-1.5 pl-8 pr-3 text-sm" />
+      {/* Barra de filtros e busca */}
+      <Card padded={false} className="overflow-hidden">
+        <div className="flex flex-wrap items-center gap-3 p-4">
+          <span className="text-[11px] font-semibold uppercase tracking-luxe text-muted-foreground">Filtrar</span>
+          <FilterChip status="ok" value={count("ok")} on={active.has("ok")} onClick={() => toggle("ok")} />
+          <FilterChip status="partial" value={count("partial")} on={active.has("partial")} onClick={() => toggle("partial")} />
+          <FilterChip status="blocked" value={count("blocked")} on={active.has("blocked")} onClick={() => toggle("blocked")} />
+          {active.size > 0 && (
+            <button onClick={() => setActive(new Set())} className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">limpar</button>
+          )}
+          <div className="relative ml-auto w-full sm:w-64">
+            <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/70" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="buscar recurso…"
+              className={cn(inputClass, "pl-9")} />
+          </div>
         </div>
-      </div>
-      <p className="mt-2 text-xs text-muted-foreground">
-        Mostrando {shown} de {all.length} recursos{active.size > 0 || q ? " (filtro ativo)" : ""}.
-        {" "}Clique numa cor pra filtrar (ex.: 🔴 só o que falta).
-      </p>
+        <div className="border-t border-border bg-muted/20 px-4 py-2.5 text-xs text-muted-foreground">
+          Mostrando <span className="font-medium text-foreground">{shown}</span> de {all.length} recursos{active.size > 0 || q ? " · filtro ativo" : ""}.
+          {" "}Clique numa cor para filtrar (ex.: 🔴 só o que falta).
+        </div>
+      </Card>
 
-      {filtered.length === 0 && <p className="mt-8 text-sm text-muted-foreground">Nenhum recurso para esse filtro.</p>}
+      {filtered.length === 0 && (
+        <p className="mt-10 text-center text-sm text-muted-foreground">Nenhum recurso para esse filtro.</p>
+      )}
 
+      {/* Áreas temáticas */}
       <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-2">
         {filtered.map((area) => (
-          <section key={area.title} className="rounded-lg border border-border bg-background p-5">
-            <div className="flex items-center gap-2">
-              <span className="text-lg">{area.icon}</span>
-              <h2 className="font-serif text-base font-bold">{area.title}</h2>
+          <Card key={area.title} hover className="flex flex-col">
+            <header className="flex items-center gap-3 border-b border-border pb-4">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-lg">{area.icon}</span>
+              <h2 className="font-serif text-lg font-semibold leading-tight text-foreground">{area.title}</h2>
               {area.to && (
-                <Link to={area.to} className="ml-auto text-xs text-muted-foreground underline hover:text-foreground">
-                  abrir tela →
+                <Link to={area.to} className="ml-auto inline-flex shrink-0 items-center gap-1 text-xs font-medium text-primary transition-colors hover:text-primary-strong">
+                  abrir tela <ArrowRight size={13} />
                 </Link>
               )}
-            </div>
-            <ul className="mt-3 space-y-1.5">
+            </header>
+            <ul className="mt-1 divide-y divide-border/60">
               {area.items.map((it, i) => (
-                <li key={i} className="flex items-start gap-2 text-sm">
-                  <span title={BADGE[it.status].label}>{BADGE[it.status].dot}</span>
-                  <span className={it.status === "blocked" ? "text-muted-foreground" : ""}>
+                <li key={i} className="flex items-start justify-between gap-3 py-2.5 text-sm">
+                  <span className={it.status === "blocked" ? "text-muted-foreground" : "text-foreground"}>
                     {it.label}
                     {it.note && <span className="ml-1 text-xs text-muted-foreground">({it.note})</span>}
                   </span>
+                  <Badge tone={BADGE[it.status].tone} className="mt-0.5 shrink-0">
+                    {BADGE[it.status].dot} {BADGE[it.status].label}
+                  </Badge>
                 </li>
               ))}
             </ul>
-          </section>
+          </Card>
         ))}
       </div>
 
-      <p className="mt-8 rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-        🟢 já funciona com dados/contas simuladas (laboratório). 🔴 depende de credenciais externas
-        (Meta, Tray, CPlug, Mercado Pago) ou de decisão contábil — quando chegarem, é só configurar.
-      </p>
-    </div>
+      <Card className="mt-8 bg-muted/30">
+        <p className="text-sm text-muted-foreground">
+          🟢 já funciona com dados/contas simuladas (laboratório). 🔴 depende de credenciais externas
+          (Meta, Tray, CPlug, Mercado Pago) ou de decisão contábil — quando chegarem, é só configurar.
+        </p>
+      </Card>
+    </Page>
   );
 }
 
-function FilterChip({ dot, label, value, on, onClick }: { dot: string; label: string; value: number; on: boolean; onClick: () => void }) {
+function FilterChip({ status, value, on, onClick }: { status: St; value: number; on: boolean; onClick: () => void }) {
+  const b = BADGE[status];
   return (
     <button onClick={onClick}
-      className={`flex items-center gap-1.5 rounded-full border px-3 py-1 transition ${on ? "border-foreground bg-foreground/5 font-medium" : "border-border hover:bg-muted"}`}>
-      {dot} <b>{value}</b> <span className="text-muted-foreground">{label}</span>
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition-all",
+        on ? "border-primary bg-accent-soft font-medium text-foreground shadow-soft" : "border-border text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+      )}>
+      <span>{b.dot}</span>
+      <b className="text-foreground">{value}</b>
+      <span>{b.label}</span>
     </button>
   );
 }

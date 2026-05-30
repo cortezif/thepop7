@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Package, Truck, Sparkles, Plus, Download, Barcode, Check, X, FileWarning } from "lucide-react";
+import { Package, Truck, Sparkles, Plus, Download, Barcode, Check, X, FileWarning, FileText, ShieldAlert } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
+import { Page, Card, CardHeader, Button, Badge, EmptyState, inputClass } from "../components/ui";
 import { api, downloadOrdersCsv, type Order, type PickingItem, type PackResult } from "../lib/api";
 import { cn, formatBRL } from "../lib/utils";
 
@@ -8,6 +9,12 @@ const STATUS_LABEL: Record<string, string> = {
   created: "Criado", paid: "Pago", picking: "Separação", shipped: "Postado",
   in_transit: "Em trânsito", out_for_delivery: "Saiu p/ entrega",
   delivered: "Entregue", finalized: "Finalizado", canceled: "Cancelado",
+};
+
+const STATUS_TONE: Record<string, "neutral" | "success" | "warning" | "danger" | "info" | "accent"> = {
+  created: "neutral", paid: "info", picking: "warning", shipped: "info",
+  in_transit: "info", out_for_delivery: "info",
+  delivered: "success", finalized: "success", canceled: "danger",
 };
 
 const EVENT_LABEL: Record<string, string> = {
@@ -80,159 +87,196 @@ export function Pedidos() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl p-10">
-      <div className="flex items-start justify-between">
+    <Page>
+      <div className="flex items-start justify-between gap-4">
         <PageHeader eyebrow="PEDIDOS · LIA" title="Ciclo do pedido e pós-venda" />
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2 pt-1">
           {orders.length > 0 && (
-            <button
+            <Button
+              variant="outline"
+              size="sm"
+              Icon={Download}
               onClick={() => downloadOrdersCsv().catch((e) => setError(String(e)))}
-              className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-muted"
             >
-              <Download size={15} /> Exportar CSV
-            </button>
+              Exportar CSV
+            </Button>
           )}
-          <button
+          <Button
+            variant="primary"
+            size="sm"
+            Icon={Plus}
             onClick={createSample}
             disabled={busy === "sample"}
-            className="flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
           >
-            <Plus size={15} /> {busy === "sample" ? "Criando…" : "Pedido de exemplo"}
-          </button>
+            {busy === "sample" ? "Criando…" : "Pedido de exemplo"}
+          </Button>
         </div>
       </div>
-      {error && <p className="mt-4 text-sm text-primary">Erro: {error}</p>}
+
+      {error && (
+        <p className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          Erro: {error}
+        </p>
+      )}
 
       {orders.length === 0 ? (
-        <p className="mt-8 rounded-lg border border-border bg-muted/30 p-6 text-sm text-muted-foreground">
-          Nenhum pedido ainda. Clique em <b>Pedido de exemplo</b> para gerar um e exercitar o ciclo:
-          ver pedido → simular entrega → disparar a Lia.
-        </p>
+        <EmptyState
+          icon={Package}
+          title="Nenhum pedido ainda"
+          description="Gere um pedido de exemplo para exercitar o ciclo completo: ver pedido → simular entrega → disparar a Lia."
+          action={
+            <Button variant="primary" size="md" Icon={Plus} onClick={createSample} disabled={busy === "sample"}>
+              {busy === "sample" ? "Criando…" : "Pedido de exemplo"}
+            </Button>
+          }
+        />
       ) : (
-        <div className="mt-8 space-y-4">
+        <div className="space-y-5">
           {orders.map((o) => {
             const delivered = ["delivered", "finalized"].includes(o.status);
             return (
-              <div key={o.id} className="rounded-lg border border-border bg-background p-5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Package size={16} className="text-primary" />
-                    <span className="font-medium">{o.contactName}</span>
-                    <span className="text-xs text-muted-foreground">#{o.id.slice(-6)}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {o.pendingApproval && (
-                      <span className="rounded bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-700">
-                        Aguardando aprovação
-                      </span>
-                    )}
-                    <span className="rounded bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wider">
-                      {STATUS_LABEL[o.status] ?? o.status}
-                    </span>
-                  </div>
-                </div>
+              <Card key={o.id} hover>
+                <CardHeader
+                  icon={Package}
+                  title={o.contactName}
+                  subtitle={`Pedido #${o.id.slice(-6)}`}
+                  action={
+                    <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                      {o.pendingApproval && (
+                        <Badge tone="warning">
+                          <ShieldAlert size={12} /> Aguardando aprovação
+                        </Badge>
+                      )}
+                      <Badge tone={STATUS_TONE[o.status] ?? "neutral"}>
+                        {STATUS_LABEL[o.status] ?? o.status}
+                      </Badge>
+                    </div>
+                  }
+                />
 
-                <div className="mt-2 text-sm text-muted-foreground">
-                  {o.items.map((i) => `${i.quantity}x ${i.name} (${i.variantSku})`).join(", ")}
-                  <span className="ml-2 font-semibold text-foreground">{formatBRL(o.totalBRL)}</span>
+                <div className="mt-5 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 border-t border-border pt-4">
+                  <p className="text-sm text-muted-foreground">
+                    {o.items.map((i) => `${i.quantity}× ${i.name} (${i.variantSku})`).join(", ")}
+                  </p>
+                  <span className="font-serif text-xl font-semibold text-foreground">{formatBRL(o.totalBRL)}</span>
                 </div>
 
                 {o.nfeNumber ? (
-                  <div className="mt-2 text-xs text-emerald-700">
-                    NF-e {o.nfeNumber}
+                  <div className="mt-3 flex items-center gap-2 text-xs text-emerald-700">
+                    <FileText size={13} /> NF-e {o.nfeNumber}
                     {o.nfePdfUrl && (
-                      <a href={o.nfePdfUrl} target="_blank" rel="noreferrer" className="ml-2 underline">
+                      <a href={o.nfePdfUrl} target="_blank" rel="noreferrer" className="font-medium underline underline-offset-2">
                         DANFE (PDF)
                       </a>
                     )}
                   </div>
                 ) : NFE_PENDING_STATUSES.includes(o.status) && (
-                  <div className="mt-2 flex items-center gap-2 text-xs text-amber-700">
-                    <FileWarning size={13} /> NF-e pendente
-                    <button
+                  <div className="mt-3 flex items-center gap-3 text-xs text-amber-700">
+                    <span className="flex items-center gap-1.5">
+                      <FileWarning size={13} /> NF-e pendente
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
                       onClick={() => emitNfe(o.id)}
                       disabled={busy === `nfe:${o.id}`}
-                      className="rounded-md border border-amber-300 px-2 py-1 font-medium hover:bg-amber-50 disabled:opacity-50"
+                      className="border-amber-300 text-amber-800 hover:bg-amber-50"
                     >
                       {busy === `nfe:${o.id}` ? "Emitindo…" : "Emitir NF-e"}
-                    </button>
+                    </Button>
                   </div>
                 )}
 
                 {o.pendingApproval && (
-                  <div className="mt-3 flex items-center justify-between rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
-                    <span className="text-xs text-amber-700">
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                    <span className="flex items-center gap-2 text-xs text-amber-800">
+                      <ShieldAlert size={14} className="shrink-0" />
                       Pedido acima do limite de auto-aprovação — revise e libere o pagamento.
                     </span>
-                    <button
+                    <Button
+                      variant="primary"
+                      size="sm"
                       onClick={() => approve(o.id)}
                       disabled={busy === `approve:${o.id}`}
-                      className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
                     >
                       {busy === `approve:${o.id}` ? "Aprovando…" : "Aprovar e gerar PIX"}
-                    </button>
+                    </Button>
                   </div>
                 )}
 
                 {/* Timeline */}
                 {o.timeline.length > 0 && (
-                  <ol className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs">
-                    {o.timeline.map((e, i) => (
-                      <li key={i} className="flex items-center gap-1.5">
-                        <span className={cn("h-1.5 w-1.5 rounded-full", e.type.startsWith("postsale") ? "bg-primary" : "bg-muted-foreground/50")} />
-                        <span className={cn(e.type.startsWith("postsale") ? "text-primary font-medium" : "text-muted-foreground")}>
-                          {EVENT_LABEL[e.type] ?? e.type}
-                        </span>
-                      </li>
-                    ))}
+                  <ol className="mt-5 border-l border-border pl-5">
+                    {o.timeline.map((e, i) => {
+                      const isPost = e.type.startsWith("postsale");
+                      return (
+                        <li key={i} className="relative pb-3 last:pb-0">
+                          <span
+                            className={cn(
+                              "absolute -left-[1.4rem] top-1 h-2.5 w-2.5 rounded-full ring-4 ring-card",
+                              isPost ? "bg-primary" : "bg-muted-foreground/40",
+                            )}
+                          />
+                          <span className={cn("text-xs", isPost ? "font-medium text-primary" : "text-muted-foreground")}>
+                            {EVENT_LABEL[e.type] ?? e.type}
+                          </span>
+                        </li>
+                      );
+                    })}
                   </ol>
                 )}
 
                 {/* Ações */}
-                <div className="mt-4 flex flex-wrap items-center gap-2">
+                <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-border pt-4">
                   {!delivered && (
-                    <button
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      Icon={Truck}
                       onClick={() => simulate(o.id)}
                       disabled={busy === o.id || o.status === "canceled"}
-                      className="flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted disabled:opacity-50"
                     >
-                      <Truck size={14} /> {busy === o.id ? "Simulando…" : "Simular entrega"}
-                    </button>
+                      {busy === o.id ? "Simulando…" : "Simular entrega"}
+                    </Button>
                   )}
                   {delivered && STAGES.map((s) => (
-                    <button
+                    <Button
                       key={s}
+                      variant="soft"
+                      size="sm"
+                      Icon={Sparkles}
                       onClick={() => trigger(o.id, s)}
                       disabled={busy === `${o.id}:${s}`}
-                      className="flex items-center gap-1.5 rounded-md bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary/20 disabled:opacity-50"
                     >
-                      <Sparkles size={13} /> {busy === `${o.id}:${s}` ? "…" : `Lia ${s.toUpperCase()}`}
-                    </button>
+                      {busy === `${o.id}:${s}` ? "…" : `Lia ${s.toUpperCase()}`}
+                    </Button>
                   ))}
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    Icon={Barcode}
                     onClick={() => setPicking(picking === o.id ? null : o.id)}
-                    className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
                   >
-                    <Barcode size={14} /> Conferir envio
-                  </button>
+                    Conferir envio
+                  </Button>
                 </div>
 
                 {picking === o.id && <PickingPanel orderId={o.id} />}
 
                 {liaMsg[o.id] && (
-                  <div className="mt-3 rounded-md border border-primary/30 bg-primary/5 p-3 text-sm">
-                    <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-primary">
+                  <div className="mt-4 rounded-lg border border-primary/30 bg-accent-soft/60 p-4 text-sm text-foreground">
+                    <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-luxe text-primary">
                       <Sparkles size={12} /> Lia
                     </p>
                     {liaMsg[o.id]}
                   </div>
                 )}
-              </div>
+              </Card>
             );
           })}
         </div>
       )}
-    </div>
+    </Page>
   );
 }
 
@@ -266,8 +310,8 @@ function PickingPanel({ orderId }: { orderId: string }) {
   const scanCount = scanned.reduce<Record<string, number>>((m, c) => { m[c] = (m[c] ?? 0) + 1; return m; }, {});
 
   return (
-    <div className="mt-3 rounded-md border border-border bg-muted/30 p-4">
-      <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+    <div className="mt-4 rounded-lg border border-border bg-muted/40 p-5">
+      <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-luxe text-muted-foreground">
         <Barcode size={13} /> Conferência de envio
       </p>
 
@@ -278,28 +322,29 @@ function PickingPanel({ orderId }: { orderId: string }) {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && addScan()}
           placeholder="Bipe o código de barras do item…"
-          className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm"
+          className={cn(inputClass, "flex-1")}
         />
-        <button onClick={conferir} disabled={scanned.length === 0}
-          className="rounded-md bg-foreground px-4 py-1.5 text-sm font-medium text-background disabled:opacity-50">
+        <Button variant="primary" size="md" onClick={conferir} disabled={scanned.length === 0}>
           Conferir ({scanned.length})
-        </button>
+        </Button>
       </div>
 
-      <ul className="mt-3 space-y-1 text-sm">
+      <ul className="mt-4 space-y-2 text-sm">
         {items.map((it) => {
           const got = scanCount[it.barcode ?? ""] ?? 0;
           const line = result?.items.find((r) => r.variantSku === it.variantSku);
           const conferred = line ? line.conferred : Math.min(got, it.quantity);
           const ok = conferred >= it.quantity;
           return (
-            <li key={it.variantSku} className="flex items-center justify-between">
-              <span className="flex items-center gap-2">
-                {ok ? <Check size={14} className="text-emerald-600" /> : <X size={14} className="text-muted-foreground" />}
-                <span>{it.description}</span>
+            <li key={it.variantSku} className="flex items-center justify-between rounded-md bg-card px-3 py-2 shadow-soft">
+              <span className="flex items-center gap-2.5">
+                {ok
+                  ? <Check size={15} className="shrink-0 text-emerald-600" />
+                  : <X size={15} className="shrink-0 text-muted-foreground" />}
+                <span className="text-foreground">{it.description}</span>
                 <span className="text-xs text-muted-foreground">{it.barcode ?? "sem código"}</span>
               </span>
-              <span className={cn("text-xs", ok ? "text-emerald-600" : "text-muted-foreground")}>
+              <span className={cn("text-xs font-medium", ok ? "text-emerald-600" : "text-muted-foreground")}>
                 {conferred}/{it.quantity}
               </span>
             </li>
@@ -308,20 +353,20 @@ function PickingPanel({ orderId }: { orderId: string }) {
       </ul>
 
       {result && (
-        <div className="mt-3 text-sm">
+        <div className="mt-4 text-sm">
           {result.complete ? (
-            <p className="flex items-center gap-1.5 font-medium text-emerald-700"><Check size={14} /> Envio conferido — tudo certo.</p>
+            <p className="flex items-center gap-1.5 font-medium text-emerald-700"><Check size={15} /> Envio conferido — tudo certo.</p>
           ) : (
-            <p className="flex items-center gap-1.5 font-medium text-red-600"><X size={14} /> Divergência na conferência.</p>
+            <p className="flex items-center gap-1.5 font-medium text-red-600"><X size={15} /> Divergência na conferência.</p>
           )}
           {result.extras.length > 0 && (
-            <p className="mt-1 text-xs text-red-600">
+            <p className="mt-1.5 text-xs text-red-600">
               Códigos fora do pedido: {result.extras.map((e) => `${e.barcode} (${e.count})`).join(", ")}
             </p>
           )}
         </div>
       )}
-      {err && <p className="mt-2 text-xs text-red-600">{err}</p>}
+      {err && <p className="mt-3 text-xs text-red-600">{err}</p>}
     </div>
   );
 }
