@@ -66,6 +66,17 @@ export function Pedidos() {
     finally { setBusy(null); }
   }
 
+  async function dispatchCourier(id: string) {
+    setBusy(`courier:${id}`); setError(null);
+    try {
+      const r = await api.dispatchCourier(id);
+      if (!r.ok) setError(r.error ?? "falha ao acionar entregador");
+      else setError(null);
+      load();
+    } catch (e) { setError(String(e)); }
+    finally { setBusy(null); }
+  }
+
   async function approve(id: string) {
     setBusy(`approve:${id}`); setError(null);
     try {
@@ -259,6 +270,17 @@ export function Pedidos() {
                   >
                     Conferir envio
                   </Button>
+                  {!delivered && o.status !== "canceled" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      Icon={Truck}
+                      onClick={() => dispatchCourier(o.id)}
+                      disabled={busy === `courier:${o.id}`}
+                    >
+                      {busy === `courier:${o.id}` ? "Acionando…" : "Acionar entregador"}
+                    </Button>
+                  )}
                 </div>
 
                 {picking === o.id && <PickingPanel orderId={o.id} />}

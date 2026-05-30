@@ -4,6 +4,7 @@ import { z } from "zod";
 import { listOrders, createSampleOrder, exportOrdersCSV, approveOrder, receiveReturn } from "../services/order-service.js";
 import { getPickingList, confirmPicking } from "../services/picking-service.js";
 import { issueNfeForOrder } from "../services/fiscal-service.js";
+import { dispatchCourierForOrder } from "../services/courier-dispatch-service.js";
 
 async function tid(slug: string) {
   const t = await getPrisma().tenant.findUnique({ where: { slug } });
@@ -50,6 +51,15 @@ export const orderRoutes: FastifyPluginAsync = async (app) => {
     const r = await receiveReturn(id, (req.params as any).returnId);
     if (!r.ok) return reply.code(400).send(r);
     return r;
+  });
+
+  // POST /orders/:id/dispatch-courier — aciona o entregador on-demand p/ o pedido (ADR-030)
+  app.post("/:id/dispatch-courier", async (req, reply) => {
+    try {
+      return await dispatchCourierForOrder(req.auth!.tenantId, (req.params as any).id);
+    } catch (e: any) {
+      return reply.code(400).send({ error: e?.message ?? String(e) });
+    }
   });
 
   // POST /orders/:id/shipping-cost — registra o custo real do frete (ADR-017)

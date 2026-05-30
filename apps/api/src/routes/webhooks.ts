@@ -3,6 +3,7 @@ import { getPrisma, withTenant } from "@hubadvisor/db";
 import { tokenFromAddress } from "@hubadvisor/connectors";
 import { handleIncomingMessage } from "../services/conversation-service.js";
 import { captureWhatsappInbound, captureEmailInbound } from "../services/mercadologica-service.js";
+import { applyCourierWebhook } from "../services/courier-dispatch-service.js";
 
 // Webhooks externos. GET = verification handshake (Meta). POST = evento real.
 // Cada handler processa o evento ou delega ao serviço correspondente.
@@ -211,6 +212,19 @@ export const webhookRoutes: FastifyPluginAsync = async (app) => {
       app.log.info({ token, ok: (r as any).ok }, "email-inbound processado");
     } catch (e) {
       app.log.error(e, "email-inbound erro interno");
+    }
+  });
+
+  // ── Courier (entregador on-demand: Lalamove/Open Delivery) — ADR-030 ──────────
+  // Provedor posta mudanças de status da corrida. Casa pelo deliveryId
+  // (Order.trackingCode) e atualiza o pedido. Responde 200 sempre (não reprocessa).
+  app.post("/courier", async (req, reply) => {
+    reply.send({ received: true });
+    try {
+      const r = await applyCourierWebhook(req.body);
+      app.log.info({ r }, "courier webhook processado");
+    } catch (e) {
+      app.log.error(e, "courier webhook erro interno");
     }
   });
 };

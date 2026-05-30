@@ -81,6 +81,15 @@ export function buildLalamoveOrderBody(input: CourierDispatchInput): Record<stri
   };
 }
 
+/** Extrai deliveryId + status normalizado de um webhook do Lalamove (pura, tolerante). */
+export function parseLalamoveWebhook(payload: any): { deliveryId: string; rawStatus?: string; status: CourierStatus["status"] } {
+  const d = payload?.data ?? payload ?? {};
+  const order = d.order ?? d;
+  const deliveryId = String(order?.orderId ?? order?.id ?? d?.orderId ?? "");
+  const rawStatus = order?.status ?? d?.status;
+  return { deliveryId, rawStatus: rawStatus ? String(rawStatus) : undefined, status: normalizeLalamoveStatus(rawStatus) };
+}
+
 /** Normaliza o status do Lalamove para o nosso conjunto. */
 export function normalizeLalamoveStatus(s: string | undefined): CourierStatus["status"] {
   switch ((s ?? "").toUpperCase()) {

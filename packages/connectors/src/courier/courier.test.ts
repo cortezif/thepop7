@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import {
   lalamoveSignature, lalamoveServiceType, buildLalamoveQuoteBody,
-  parseLalamoveQuote, buildLalamoveOrderBody, normalizeLalamoveStatus,
+  parseLalamoveQuote, buildLalamoveOrderBody, normalizeLalamoveStatus, parseLalamoveWebhook,
 } from "./lalamove.js";
 import { haversineKm, mockCourierPrice } from "./mock-courier.js";
 import { parseOpenDeliveryAvailability } from "./open-delivery.js";
@@ -63,6 +63,19 @@ test("normalizeLalamoveStatus: mapeia status do provider", () => {
   assert.equal(normalizeLalamoveStatus("COMPLETED"), "delivered");
   assert.equal(normalizeLalamoveStatus("CANCELED"), "canceled");
   assert.equal(normalizeLalamoveStatus("???"), "unknown");
+});
+
+test("parseLalamoveWebhook: extrai deliveryId + status (formato data.order)", () => {
+  const r = parseLalamoveWebhook({ eventType: "ORDER_STATUS_CHANGED", data: { order: { orderId: "ord-99", status: "PICKED_UP" } } });
+  assert.equal(r.deliveryId, "ord-99");
+  assert.equal(r.status, "picked_up");
+  assert.equal(r.rawStatus, "PICKED_UP");
+});
+
+test("parseLalamoveWebhook: formato plano (data.orderId) e status desconhecido", () => {
+  const r = parseLalamoveWebhook({ data: { orderId: "ord-1", status: "WEIRD" } });
+  assert.equal(r.deliveryId, "ord-1");
+  assert.equal(r.status, "unknown");
 });
 
 // ── Mock courier (haversine + tarifa) ─────────────────────────────────────────

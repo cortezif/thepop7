@@ -258,6 +258,8 @@ export const api = {
     post<{ ok: boolean; transitions: string[] }>(`/post-sale/simulate-delivery`, { orderId }),
   issueNfe: (orderId: string) =>
     post<{ ok: boolean; number?: string; reason?: string; skipped?: boolean }>(`/orders/${orderId}/issue-nfe`, {}),
+  dispatchCourier: (orderId: string) =>
+    post<{ ok: boolean; provider?: string; deliveryId?: string; status?: string; trackingUrl?: string | null; priceBRL?: number; modal?: string; error?: string }>(`/orders/${orderId}/dispatch-courier`, {}),
   triggerPostSale: (orderId: string, stage: "d1" | "d7" | "d14" | "d30") =>
     post<{ stage: string; message?: string; skipped?: boolean; reason?: string }>(
       `/post-sale/trigger`, { orderId, stage }
