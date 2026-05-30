@@ -169,6 +169,10 @@ export async function suggestPurchaseClose(tenantId: string, requestId: string) 
  */
 export async function rankQuotes(tenantId: string, requestId: string) {
   return withTenant(tenantId, async (tx) => {
+    // Garante que a requisição é desta loja antes de ler/ranquear as cotações
+    // (quotes não tem RLS; sem isto, daria pra ranquear cotação de outra loja).
+    const req = await tx.purchaseRequest.findFirst({ where: { id: requestId, tenantId } });
+    if (!req) return { ranked: [] };
     const quotes = await tx.quote.findMany({
       where: { requestId },
       include: { supplier: { select: { name: true, relationshipScore: true, onTimeRate: true } } },

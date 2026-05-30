@@ -41,7 +41,7 @@ export async function recordNps(tenantId: string, input: { contactId?: string; o
 /** Resumo NPS por tipo + geral, pro painel. */
 export async function npsSummary(tenantId: string) {
   return withTenant(tenantId, async (tx) => {
-    const rows = await tx.npsResponse.findMany({ select: { kind: true, score: true } });
+    const rows = await tx.npsResponse.findMany({ where: { tenantId }, select: { kind: true, score: true } });
     const all = rows.map((r) => r.score);
     const byKind = (k: string) => computeNps(rows.filter((r) => r.kind === k).map((r) => r.score));
     return { geral: computeNps(all), produto: byKind("produto"), atendimento: byKind("atendimento") };
