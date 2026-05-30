@@ -1,15 +1,147 @@
 import type { FastifyPluginAsync } from "fastify";
+import { randomUUID } from "node:crypto";
 import { buildErpForTenant } from "@hubadvisor/connectors";
-import { getPrisma, getTrayCreds } from "@hubadvisor/db";
+import { getPrisma, getTrayCreds, withTenant } from "@hubadvisor/db";
 import { searchProducts } from "../services/product-search.js";
 import { backfillBarcodes, resolveScannedBarcode, findBarcodesByPhoto } from "../services/barcode-service.js";
 import { z } from "zod";
 
+// Mapeia uma linha de Product (banco) para o shape consumido pelo painel.
+function mapProduct(p: any) {
+  return {
+    id: p.id,
+    externalId: p.externalId,
+    source: p.source ?? "erp",
+    name: p.name,
+    description: p.description ?? null,
+    priceBRL: Number(p.priceBRL),
+    costBRL: p.costBRL == null ? null : Number(p.costBRL),
+    variants: ((p.variants as Array<{ sku?: string; color?: string; size?: string; stock?: number }>) ?? []),
+    measurements: (p.measurements as Record<string, unknown> | null) ?? null,
+    styles: p.styles ?? [],
+    occasions: p.occasions ?? [],
+    active: p.active,
+  };
+}
+
+const VariantSchema = z.object({
+  sku: z.string().min(1),
+  color: z.string().optional(),
+  size: z.string().optional(),
+  stock: z.number().int().min(0).default(0),
+});
+const ProductBodySchema = z.object({
+  tenantSlug: z.string().optional(),
+  name: z.string().min(1, "informe o nome"),
+  description: z.string().optional(),
+  priceBRL: z.number().positive("preço deve ser > 0"),
+  costBRL: z.number().min(0).nullable().optional(),
+  variants: z.array(VariantSchema).min(1, "informe ao menos uma variante"),
+  measurements: z.record(z.string(), z.any()).nullable().optional(),
+  styles: z.array(z.string()).optional(),
+  occasions: z.array(z.string()).optional(),
+});
+
 export const catalogRoutes: FastifyPluginAsync = async (app) => {
+  // Catálogo unificado: lê do banco (produtos do ERP sincronizados + manuais).
+  // É a mesma fonte usada por busca/pedidos/atacado/enriquecimento.
   app.get("/products", async (req) => {
+    const products = await getPrisma().product.findMany({
+      where: { tenantId: req.auth!.tenantId, active: true },
+      orderBy: [{ source: "asc" }, { createdAt: "desc" }],
+    });
+    return products.map(mapProduct);
+  });
+
+  // POST /catalog/products — cadastra um produto MANUAL (loja sem ERP, ou item avulso).
+  app.post("/products", async (req, reply) => {
+    const body = ProductBodySchema.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+    const tenantId = req.auth!.tenantId;
+    const d = body.data;
+    const created = await getPrisma().product.create({
+      data: {
+        tenantId,
+        externalId: `manual-${randomUUID()}`,
+        source: "manual",
+        name: d.name,
+        description: d.description ?? null,
+        priceBRL: d.priceBRL,
+        costBRL: d.costBRL ?? null,
+        variants: d.variants as any,
+        media: { mainPhoto: null, photos: [], videos: [] } as any,
+        measurements: (d.measurements ?? undefined) as any,
+        styles: d.styles ?? [],
+        occasions: d.occasions ?? [],
+        enrichmentStatus: "approved", // manual = revisado pelo lojista
+      },
+    });
+    return mapProduct(created);
+  });
+
+  // PUT /catalog/products/:id — edita. Manual: edição total. ERP/Tray: os campos
+  // centrais vêm do ERP (edite lá) — bloqueia para preservar o sync (A coexiste com B).
+  app.put("/products/:id", async (req, reply) => {
+    const body = ProductBodySchema.partial().safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+    const tenantId = req.auth!.tenantId;
+    const id = (req.params as any).id;
+    const prod = await getPrisma().product.findFirst({ where: { id, tenantId } });
+    if (!prod) return reply.code(404).send({ error: "produto não encontrado" });
+    if (prod.source !== "manual") {
+      return reply.code(409).send({ error: "produto sincronizado do ERP (Tray) — edite no ERP. Aqui dá pra ajustar só atacado e atributos de IA." });
+    }
+    const d = body.data;
+    const updated = await getPrisma().product.update({
+      where: { id },
+      data: {
+        ...(d.name !== undefined ? { name: d.name } : {}),
+        ...(d.description !== undefined ? { description: d.description ?? null } : {}),
+        ...(d.priceBRL !== undefined ? { priceBRL: d.priceBRL } : {}),
+        ...(d.costBRL !== undefined ? { costBRL: d.costBRL ?? null } : {}),
+        ...(d.variants !== undefined ? { variants: d.variants as any } : {}),
+        ...(d.measurements !== undefined ? { measurements: (d.measurements ?? undefined) as any } : {}),
+        ...(d.styles !== undefined ? { styles: d.styles } : {}),
+        ...(d.occasions !== undefined ? { occasions: d.occasions } : {}),
+      },
+    });
+    return mapProduct(updated);
+  });
+
+  // DELETE /catalog/products/:id — remove do catálogo (soft delete, active=false).
+  // Funciona p/ manual e ERP; o sync (upsert-only) não reativa o que foi desativado.
+  app.delete("/products/:id", async (req, reply) => {
+    const tenantId = req.auth!.tenantId;
+    const id = (req.params as any).id;
+    const prod = await getPrisma().product.findFirst({ where: { id, tenantId } });
+    if (!prod) return reply.code(404).send({ error: "produto não encontrado" });
+    await getPrisma().product.update({ where: { id }, data: { active: false } });
+    return { ok: true };
+  });
+
+  // POST /catalog/sync — puxa o catálogo do ERP (Tray) para o banco sob demanda
+  // (upsert por externalId, source=erp; NÃO toca nos manuais).
+  app.post("/sync", async (req) => {
     const tenantId = req.auth!.tenantId;
     const erp = buildErpForTenant({ trayCreds: await getTrayCreds(tenantId) });
-    return erp.listProducts();
+    const products = await erp.listProducts();
+    let upserted = 0;
+    await withTenant(tenantId, async (tx) => {
+      for (const p of products) {
+        await tx.product.upsert({
+          where: { tenantId_externalId: { tenantId, externalId: p.externalId } },
+          update: { name: p.name, description: p.description ?? null, priceBRL: p.priceBRL, costBRL: p.costBRL ?? null, variants: p.variants as any },
+          create: {
+            tenantId, externalId: p.externalId, source: "erp", name: p.name,
+            description: p.description ?? null, priceBRL: p.priceBRL, costBRL: p.costBRL ?? null,
+            variants: p.variants as any, media: { mainPhoto: p.photos[0], photos: p.photos, videos: [] } as any,
+            styles: [], occasions: [],
+          },
+        });
+        upserted++;
+      }
+    });
+    return { ok: true as const, upserted };
   });
 
   // GET /catalog/recommend?tenantSlug=&estilo=&ocasiao=&tamanho= — debug do recomendador (ADR-008)

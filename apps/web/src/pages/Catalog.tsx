@@ -1,18 +1,11 @@
 import { useEffect, useState } from "react";
-import { Store, Shirt, ChevronDown, ChevronUp, Boxes } from "lucide-react";
+import { Store, Shirt, ChevronDown, ChevronUp, Boxes, Plus, Pencil, Trash2, RefreshCw, X } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { formatBRL } from "../lib/utils";
-import { api, type WholesaleProductRow } from "../lib/api";
+import { api, type WholesaleProductRow, type CatalogProduct, type ProductVariant } from "../lib/api";
 import { Page, Card, Button, Badge, EmptyState, Skeleton, inputClass } from "../components/ui";
 
-type Product = {
-  externalId: string;
-  name: string;
-  priceBRL: number;
-  costBRL?: number;
-  variants: Array<{ sku: string; color?: string; size?: string; stock: number }>;
-  measurements?: Record<string, { bust?: number; waist?: number; hips?: number; length?: number }>;
-};
+type Product = CatalogProduct;
 
 type MarginInfo = { brl: number; pct: number; tone: "success" | "neutral" | "warning" };
 
@@ -30,20 +23,59 @@ export function Catalog() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isFashion, setIsFashion] = useState(true); // segmento do tenant (ADR-029)
+  const [editing, setEditing] = useState<Product | "new" | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
-  useEffect(() => {
-    // Usa o cliente `api` (injeta Authorization + tenantSlug e trata 401);
-    // o fetch cru anterior não mandava o token → 401 sob requireAuth.
+  function load() {
+    setLoading(true);
     api.listCatalogProducts()
-      .then((data) => setProducts(data as Product[]))
+      .then(setProducts)
       .catch((e) => setError(String(e)))
       .finally(() => setLoading(false));
+  }
+  useEffect(() => {
+    load();
     api.getConfig().then((c) => setIsFashion((c.segment ?? "moda").toLowerCase() === "moda")).catch(() => {});
   }, []);
+
+  async function remove(p: Product) {
+    if (!window.confirm(`Remover "${p.name}" do catálogo?`)) return;
+    setNotice(null);
+    try { await api.deleteProduct(p.id); load(); }
+    catch (e: any) { setError(String(e?.message ?? e)); }
+  }
+
+  async function syncTray() {
+    setSyncing(true); setNotice(null); setError(null);
+    try { const r = await api.syncCatalog(); setNotice(`Sincronizado do ERP: ${r.upserted} produto(s).`); load(); }
+    catch (e: any) { setError(String(e?.message ?? e)); }
+    finally { setSyncing(false); }
+  }
 
   return (
     <Page>
       <PageHeader eyebrow="CATÁLOGO" title="A coleção" />
+
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <button onClick={() => { setEditing("new"); setNotice(null); }}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-soft transition-opacity hover:opacity-90">
+          <Plus size={15} /> Novo produto
+        </button>
+        <button onClick={syncTray} disabled={syncing}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3.5 py-2 text-sm font-medium transition-colors hover:bg-muted disabled:opacity-50">
+          <RefreshCw size={14} className={syncing ? "animate-spin" : ""} /> {syncing ? "Sincronizando…" : "Sincronizar Tray"}
+        </button>
+        {notice && <span className="text-xs text-emerald-700">{notice}</span>}
+      </div>
+
+      {editing && (
+        <ProductForm
+          initial={editing === "new" ? null : editing}
+          onCancel={() => setEditing(null)}
+          onSaved={() => { setEditing(null); load(); }}
+        />
+      )}
 
       <WholesalePanel />
 
@@ -80,7 +112,7 @@ export function Catalog() {
         <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {products.map((p) => {
             const totalStock = p.variants.reduce((s, v) => s + v.stock, 0);
-            const m = marginInfo(p.priceBRL, p.costBRL);
+            const m = marginInfo(p.priceBRL, p.costBRL ?? undefined);
             const hasMeasurements = isFashion && p.measurements && Object.keys(p.measurements).length > 0;
             return (
               <Card key={p.externalId} hover padded={false} className="group flex flex-col overflow-hidden">
@@ -110,9 +142,14 @@ export function Catalog() {
 
                 {/* Conteúdo */}
                 <div className="flex flex-1 flex-col p-5">
-                  <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                    {p.externalId}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                      {p.source === "manual" ? p.externalId.slice(0, 12) : p.externalId}
+                    </p>
+                    <Badge tone={p.source === "manual" ? "accent" : "neutral"} className="text-[9px]">
+                      {p.source === "manual" ? "manual" : "Tray"}
+                    </Badge>
+                  </div>
                   <h3 className="mt-1.5 font-serif text-lg font-semibold leading-snug text-foreground">
                     {p.name}
                   </h3>
@@ -154,6 +191,22 @@ export function Catalog() {
                       </table>
                     </div>
                   )}
+
+                  {/* Ações */}
+                  <div className="mt-auto flex items-center gap-2 pt-4">
+                    {p.source === "manual" ? (
+                      <button onClick={() => { setEditing(p); setNotice(null); }}
+                        className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-muted">
+                        <Pencil size={12} /> Editar
+                      </button>
+                    ) : (
+                      <span className="text-[11px] text-muted-foreground" title="Produto sincronizado do ERP — edite na Tray">via Tray (edite no ERP)</span>
+                    )}
+                    <button onClick={() => remove(p)}
+                      className="ml-auto inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50">
+                      <Trash2 size={12} /> Remover
+                    </button>
+                  </div>
                 </div>
               </Card>
             );
@@ -161,6 +214,102 @@ export function Catalog() {
         </div>
       )}
     </Page>
+  );
+}
+
+/** Formulário de criar/editar produto manual. */
+function ProductForm({ initial, onSaved, onCancel }: { initial: Product | null; onSaved: () => void; onCancel: () => void }) {
+  const [name, setName] = useState(initial?.name ?? "");
+  const [price, setPrice] = useState(initial?.priceBRL != null ? String(initial.priceBRL) : "");
+  const [cost, setCost] = useState(initial?.costBRL != null ? String(initial.costBRL) : "");
+  const [description, setDescription] = useState(initial?.description ?? "");
+  const [variants, setVariants] = useState<ProductVariant[]>(
+    initial?.variants?.length ? initial.variants : [{ sku: "", color: "", size: "", stock: 0 }],
+  );
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  function setVariant(i: number, patch: Partial<ProductVariant>) {
+    setVariants((vs) => vs.map((v, idx) => (idx === i ? { ...v, ...patch } : v)));
+  }
+  const addVariant = () => setVariants((vs) => [...vs, { sku: "", color: "", size: "", stock: 0 }]);
+  const removeVariant = (i: number) => setVariants((vs) => (vs.length > 1 ? vs.filter((_, idx) => idx !== i) : vs));
+
+  async function submit() {
+    setErr(null);
+    const priceNum = Number(price);
+    if (!name.trim()) return setErr("Informe o nome.");
+    if (!(priceNum > 0)) return setErr("Informe um preço maior que zero.");
+    const cleanVariants = variants
+      .map((v) => ({ sku: v.sku.trim(), color: v.color?.trim() || undefined, size: v.size?.trim() || undefined, stock: Number(v.stock) || 0 }))
+      .filter((v) => v.sku);
+    if (cleanVariants.length === 0) return setErr("Informe ao menos uma variante com SKU.");
+    const input = {
+      name: name.trim(),
+      description: description.trim() || undefined,
+      priceBRL: priceNum,
+      costBRL: cost.trim() ? Number(cost) : null,
+      variants: cleanVariants,
+    };
+    setBusy(true);
+    try {
+      if (initial) await api.updateProduct(initial.id, input);
+      else await api.createProduct(input);
+      onSaved();
+    } catch (e: any) { setErr(String(e?.message ?? e)); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <Card className="mt-6">
+      <div className="flex items-center justify-between">
+        <h3 className="font-serif text-lg font-semibold">{initial ? "Editar produto" : "Novo produto"}</h3>
+        <button onClick={onCancel} className="rounded-md p-1 text-muted-foreground hover:bg-muted"><X size={18} /></button>
+      </div>
+
+      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <label className="sm:col-span-2 text-sm font-medium">Nome
+          <input value={name} onChange={(e) => setName(e.target.value)} className={`${inputClass} mt-1`} placeholder="Vestido Floral Manga 3/4" />
+        </label>
+        <label className="text-sm font-medium">Preço (R$)
+          <input type="number" min={0} step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} className={`${inputClass} mt-1`} placeholder="289.00" />
+        </label>
+        <label className="text-sm font-medium">Custo (R$) <span className="font-normal text-muted-foreground">— opcional, p/ margem</span>
+          <input type="number" min={0} step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} className={`${inputClass} mt-1`} placeholder="100.00" />
+        </label>
+        <label className="sm:col-span-2 text-sm font-medium">Descrição <span className="font-normal text-muted-foreground">— opcional</span>
+          <input value={description} onChange={(e) => setDescription(e.target.value)} className={`${inputClass} mt-1`} />
+        </label>
+      </div>
+
+      <div className="mt-5">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-medium">Variantes (SKU, cor, tamanho, estoque)</p>
+          <button onClick={addVariant} className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"><Plus size={13} /> adicionar</button>
+        </div>
+        <div className="mt-2 space-y-2">
+          {variants.map((v, i) => (
+            <div key={i} className="flex flex-wrap items-center gap-2">
+              <input value={v.sku} onChange={(e) => setVariant(i, { sku: e.target.value })} className={`${inputClass} w-40 px-2.5 py-1.5`} placeholder="SKU *" />
+              <input value={v.color ?? ""} onChange={(e) => setVariant(i, { color: e.target.value })} className={`${inputClass} w-28 px-2.5 py-1.5`} placeholder="cor" />
+              <input value={v.size ?? ""} onChange={(e) => setVariant(i, { size: e.target.value })} className={`${inputClass} w-20 px-2.5 py-1.5`} placeholder="tam" />
+              <input type="number" min={0} value={v.stock} onChange={(e) => setVariant(i, { stock: Number(e.target.value) })} className={`${inputClass} w-24 px-2.5 py-1.5`} placeholder="estoque" />
+              <button onClick={() => removeVariant(i)} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted" title="remover variante"><Trash2 size={14} /></button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {err && <p className="mt-4 text-sm text-red-600">{err}</p>}
+
+      <div className="mt-5 flex items-center gap-2">
+        <button onClick={submit} disabled={busy}
+          className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">
+          {busy ? "Salvando…" : initial ? "Salvar alterações" : "Criar produto"}
+        </button>
+        <button onClick={onCancel} className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted">Cancelar</button>
+      </div>
+    </Card>
   );
 }
 

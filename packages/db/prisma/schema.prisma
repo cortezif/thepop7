@@ -308,7 +308,8 @@ model Product {
   tenantId  String
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  externalId   String  // SKU no ERP (Bling, Tray, etc.)
+  externalId   String  // SKU no ERP (Bling, Tray, etc.) ou "manual-<cuid>" se cadastrado no painel
+  source       String  @default("erp") // "erp" (sincronizado do ERP/Tray) | "manual" (cadastrado no painel)
   name         String
   description  String?
   priceBRL     Decimal @db.Decimal(10, 2)

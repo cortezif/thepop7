@@ -50,7 +50,26 @@ async function post<T>(path: string, body: Record<string, unknown>): Promise<T> 
     body: JSON.stringify({ tenantSlug: tenantSlug(), ...body }),
   });
   if (res.status === 401) { on401(); throw new Error("não autenticado"); }
-  if (!res.ok) throw new Error(`POST ${path} → ${res.status}`);
+  if (!res.ok) { const e = await res.json().catch(() => null); throw new Error(e?.error?.formErrors?.join?.(" ") || (typeof e?.error === "string" ? e.error : `POST ${path} → ${res.status}`)); }
+  return res.json();
+}
+
+async function put<T>(path: string, body: Record<string, unknown>): Promise<T> {
+  const res = await fetch(`/api${path}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ tenantSlug: tenantSlug(), ...body }),
+  });
+  if (res.status === 401) { on401(); throw new Error("não autenticado"); }
+  if (!res.ok) { const e = await res.json().catch(() => null); throw new Error(typeof e?.error === "string" ? e.error : `PUT ${path} → ${res.status}`); }
+  return res.json();
+}
+
+async function del<T>(path: string): Promise<T> {
+  const sep = path.includes("?") ? "&" : "?";
+  const res = await fetch(`/api${path}${sep}tenantSlug=${tenantSlug()}`, { method: "DELETE", headers: authHeaders() });
+  if (res.status === 401) { on401(); throw new Error("não autenticado"); }
+  if (!res.ok) throw new Error(`DELETE ${path} → ${res.status}`);
   return res.json();
 }
 
@@ -200,9 +219,13 @@ export const api = {
       { channel: "manual", contact: { name: contactName, phone }, text }
     ),
   listProducts: () => get<any[]>(`/catalog/products`).catch(() => []),
-  // Igual ao acima, mas propaga o erro (a tela de Catálogo mostra; 401 já
-  // dispara o logout global em `get`). Inclui Authorization + tenantSlug.
-  listCatalogProducts: () => get<any[]>(`/catalog/products`),
+  // Catálogo unificado (banco): erp sincronizado + manuais. Propaga erro (a tela
+  // mostra; 401 dispara logout global). Inclui Authorization + tenantSlug.
+  listCatalogProducts: () => get<CatalogProduct[]>(`/catalog/products`),
+  createProduct: (input: ProductInput) => post<CatalogProduct>(`/catalog/products`, input as any),
+  updateProduct: (id: string, input: Partial<ProductInput>) => put<CatalogProduct>(`/catalog/products/${id}`, input as any),
+  deleteProduct: (id: string) => del<{ ok: boolean }>(`/catalog/products/${id}`),
+  syncCatalog: () => post<{ ok: boolean; upserted: number }>(`/catalog/sync`, {}),
   cacheStats: () => get<any>(`/admin/cache/stats`),
   getConfig: () => get<{ aiEnabled: boolean; monthlyAIBudgetBRL: number; autoApproveMaxBRL: number; retentionDays: number | null; orderRetentionDays: number | null; segment?: string; catalogVocab?: { styles?: string[]; occasions?: string[] } | null }>(`/admin/config`),
   segmentPresets: () => get<SegmentPreset[]>(`/admin/segment-presets`),
@@ -317,6 +340,30 @@ export type IntegrationConfigField = {
   source: "db" | "env" | "none"; set: boolean; preview: string;
 };
 export type IntegrationConfig = { provider: string; fields: IntegrationConfigField[]; appConfigured: boolean };
+
+export type ProductVariant = { sku: string; color?: string; size?: string; stock: number };
+export type CatalogProduct = {
+  id: string;
+  externalId: string;
+  source: "erp" | "manual";
+  name: string;
+  description?: string | null;
+  priceBRL: number;
+  costBRL?: number | null;
+  variants: ProductVariant[];
+  measurements?: Record<string, { bust?: number; waist?: number; hips?: number; length?: number }> | null;
+  styles?: string[];
+  occasions?: string[];
+  active?: boolean;
+};
+export type ProductInput = {
+  name: string;
+  description?: string;
+  priceBRL: number;
+  costBRL?: number | null;
+  variants: ProductVariant[];
+  measurements?: Record<string, { bust?: number; waist?: number; hips?: number; length?: number }> | null;
+};
 
 export type AdAudience = { key: string; label: string; size: number; definition: Record<string, unknown> };
 export type AdMetrics = { impressions: number; clicks: number; spendBRL: number; conversions: number; ctr: number; roas: number; updatedAt?: string };

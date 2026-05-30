@@ -34,6 +34,7 @@ export async function catalogSyncProcessor(job: Job<CatalogSyncJobData>): Promis
         create: {
           tenantId,
           externalId: p.externalId,
+          source: "erp",
           name: p.name,
           description: p.description ?? null,
           priceBRL: p.priceBRL,
