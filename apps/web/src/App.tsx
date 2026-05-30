@@ -119,7 +119,7 @@ export function App() {
 
         <button
           onClick={() => { auth.clear(); setLoggedIn(false); setBrand(""); }}
-          className="mt-auto flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+          className="mt-3 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
         >
           <LogOut size={17} /> Sair
         </button>
