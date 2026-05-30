@@ -230,7 +230,8 @@ export const catalogRoutes: FastifyPluginAsync = async (app) => {
   app.post("/barcodes/by-photo", async (req, reply) => {
     const body = z.object({
       tenantSlug: z.string().optional(),
-      photoUrls: z.array(z.string().url()).min(1, "envie ao menos uma foto"),
+      // Aceita URL http(s) OU data URL (foto anexada do dispositivo, base64).
+      photoUrls: z.array(z.string().refine((s) => /^https?:\/\//i.test(s) || s.startsWith("data:image/"), "informe uma URL http(s) ou anexe uma imagem")).min(1, "envie ao menos uma foto"),
     }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
     const r = await findBarcodesByPhoto(req.auth!.tenantId, body.data.photoUrls);

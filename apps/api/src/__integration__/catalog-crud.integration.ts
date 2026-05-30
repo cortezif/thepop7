@@ -93,3 +93,14 @@ test("sem token → 401", async () => {
   const r = await app.inject({ method: "GET", url: `/catalog/products?tenantSlug=${slug}` });
   assert.equal(r.statusCode, 401);
 });
+
+test("by-photo: rejeita string que não é URL nem data URL (400)", async () => {
+  const r = await app.inject({ method: "POST", url: "/catalog/barcodes/by-photo", headers: hdr(), payload: { tenantSlug: slug, photoUrls: ["nao-e-url"] } });
+  assert.equal(r.statusCode, 400);
+});
+
+test("by-photo: aceita data URL na validação (não dá 400)", async () => {
+  const dataUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+  const r = await app.inject({ method: "POST", url: "/catalog/barcodes/by-photo", headers: hdr(), payload: { tenantSlug: slug, photoUrls: [dataUrl] } });
+  assert.notEqual(r.statusCode, 400, "data URL passa na validação (vision pode dar 422, mas não 400)");
+});

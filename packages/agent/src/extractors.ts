@@ -251,12 +251,21 @@ async function extractViaAnthropic(
     },
   ];
 
-  // Anexa imagens via URL (Claude faz download). Limite de 20 imagens por turn.
+  // Anexa imagens. URL http(s) → Claude faz download; data URL (foto anexada
+  // do dispositivo) → envia como base64. Limite de 5 imagens por turn.
   for (const url of (input.photoUrls ?? []).slice(0, 5)) {
-    contentBlocks.push({
-      type: "image",
-      source: { type: "url", url },
-    });
+    const m = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/.exec(url);
+    if (m) {
+      contentBlocks.push({
+        type: "image",
+        source: { type: "base64", media_type: m[1] as any, data: m[2]! },
+      });
+    } else {
+      contentBlocks.push({
+        type: "image",
+        source: { type: "url", url },
+      });
+    }
   }
 
   try {

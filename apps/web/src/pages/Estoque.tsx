@@ -72,15 +72,27 @@ export function Estoque() {
     }
   }
 
-  async function buscarPorFoto() {
-    const url = photoUrl.trim();
-    if (!url) return;
+  async function buscarPorFoto(src?: string) {
+    const img = (src ?? photoUrl).trim();
+    if (!img) return;
     setPhotoBusy(true); setPhotoErr(null); setPhotoRes(null);
     try {
-      setPhotoRes(await api.barcodesByPhoto([url]));
+      setPhotoRes(await api.barcodesByPhoto([img]));
     } catch (e: any) {
       setPhotoErr(/422/.test(String(e)) ? "Não consegui analisar a foto (visão indisponível?)." : String(e?.message ?? e));
     } finally { setPhotoBusy(false); }
+  }
+
+  // Anexa foto do dispositivo (câmera/galeria): lê como data URL (base64) e busca.
+  function onPhotoFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // permite reanexar o mesmo arquivo
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) { setPhotoErr("Imagem muito grande (máx. 8 MB)."); return; }
+    const reader = new FileReader();
+    reader.onload = () => { setPhotoUrl(""); buscarPorFoto(String(reader.result)); };
+    reader.onerror = () => setPhotoErr("Não consegui ler a imagem.");
+    reader.readAsDataURL(file);
   }
 
   async function baixarEtiquetas(format: "csv" | "zpl") {
@@ -229,21 +241,28 @@ export function Estoque() {
               <option value="adjust_out">Ajuste − (quebra/perda)</option>
             </select>
             <div className="flex gap-2">
-              <input
-                value={entryBarcode}
-                onChange={(e) => setEntryBarcode(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && lancarEntrada()}
-                placeholder="Código de barras…"
-                className={`${inputClass} flex-1`}
-              />
-              <input
-                type="number" min={1} value={entryQty} onChange={(e) => setEntryQty(e.target.value)}
-                className={`${inputClass} w-20 shrink-0 text-center`}
-              />
+              <label className="flex-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                Código (bipe ou digite)
+                <input
+                  value={entryBarcode}
+                  onChange={(e) => setEntryBarcode(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && lancarEntrada()}
+                  placeholder="Bipe ou digite o código…"
+                  className={`${inputClass} mt-1 w-full font-normal normal-case tracking-normal`}
+                />
+              </label>
+              <label className="w-20 shrink-0 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                Qtd
+                <input
+                  type="number" min={1} value={entryQty} onChange={(e) => setEntryQty(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && lancarEntrada()}
+                  className={`${inputClass} mt-1 w-full text-center font-normal`}
+                />
+              </label>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <Button onClick={lancarEntrada} Icon={PackagePlus}>Lançar</Button>
-              {entryMsg && <span className="text-xs text-muted-foreground">{entryMsg}</span>}
+              <span className="text-xs text-muted-foreground">{entryMsg ?? "Bipe a etiqueta ou digite o código e a quantidade."}</span>
             </div>
           </div>
         </Card>
@@ -272,7 +291,7 @@ export function Estoque() {
         <CardHeader
           icon={ImageIcon}
           title="Encontrar código pela foto da peça"
-          subtitle="Cole a URL de uma foto e a visão identifica candidatos do catálogo."
+          subtitle="Anexe uma foto do dispositivo (câmera/galeria) ou cole a URL — a visão identifica candidatos do catálogo."
         />
         <div className="mt-5 flex flex-col gap-2 sm:flex-row">
           <input
@@ -282,7 +301,11 @@ export function Estoque() {
             placeholder="URL da foto da peça…"
             className={`${inputClass} flex-1`}
           />
-          <Button onClick={buscarPorFoto} disabled={photoBusy} Icon={Search} className="shrink-0">
+          <label className={`inline-flex shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-border px-3.5 py-2 text-sm font-medium transition-colors hover:bg-muted ${photoBusy ? "pointer-events-none opacity-50" : ""}`}>
+            <ImageIcon size={15} /> Anexar foto
+            <input type="file" accept="image/*" capture="environment" onChange={onPhotoFile} className="hidden" />
+          </label>
+          <Button onClick={() => buscarPorFoto()} disabled={photoBusy} Icon={Search} className="shrink-0">
             {photoBusy ? "Analisando…" : "Buscar"}
           </Button>
         </div>
