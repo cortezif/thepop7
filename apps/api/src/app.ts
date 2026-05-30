@@ -59,6 +59,17 @@ export function buildApp() {
     },
   });
 
+  // Canônico sem www: redireciona www.<host> → <host> (301). Genérico — só
+  // atua se o request chegar como www (ex.: www.hub.adviser.api.br depois que
+  // o cert emitir); inofensivo para o domínio railway.app e para o apex.
+  app.addHook("onRequest", async (req, reply) => {
+    const host = (req.headers.host ?? "").toLowerCase();
+    if (host.startsWith("www.")) {
+      const path = req.raw.url ?? "/";
+      return reply.code(301).redirect(`https://${host.slice(4)}${path}`);
+    }
+  });
+
   // Rotas ABERTAS: inbound de cliente/canais (não são ações de operador) + auth + health.
   app.register(healthRoutes,       { prefix: "/health" });
   app.register(authRoutes,         { prefix: "/auth" });
