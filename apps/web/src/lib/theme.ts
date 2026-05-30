@@ -18,6 +18,16 @@ const PALETTE: Record<string, Accent> = {
   navy:      { h: 222, s: 50, l: 44 },
   indigo:    { h: 245, s: 42, l: 50 },
   noir:      { h: 240, s: 12, l: 22 },
+  caramel:   { h: 26,  s: 58, l: 44 }, // bolos/confeitaria — caramelo apetitoso
+};
+
+// Cor por TIPO DE NEGÓCIO (segmento). Tem prioridade sobre o slug da loja.
+const SEGMENT_ACCENT: Record<string, keyof typeof PALETTE> = {
+  moda: "rose",
+  bolos: "caramel",
+  farmacia: "emerald",
+  pet: "gold",
+  generico: "navy",
 };
 
 // Lojas com marca fixa conhecida.
@@ -43,9 +53,17 @@ export function accentForSlug(slug: string): Accent {
   return PALETTE[key];
 }
 
-/** Aplica o acento da loja como variáveis CSS no :root. */
-export function applyBrandTheme(slug: string) {
-  const a = accentForSlug(slug);
+/** Acento por tipo de negócio (segmento), com fallback pro slug. */
+export function accentForSegment(segment: string | undefined, slug: string): Accent {
+  const seg = (segment ?? "").toLowerCase();
+  const key = SEGMENT_ACCENT[seg];
+  if (key) return PALETTE[key];
+  return accentForSlug(slug);
+}
+
+/** Aplica o acento da marca (por segmento; senão por slug) como variáveis CSS. */
+export function applyBrandTheme(slug: string, segment?: string) {
+  const a = accentForSegment(segment, slug);
   const root = document.documentElement.style;
   const value = `${a.h} ${a.s}% ${a.l}%`;
   // tom levemente mais escuro pro hover/realce

@@ -186,8 +186,9 @@ export const api = {
   listProducts: () => get<any[]>(`/catalog/products`).catch(() => []),
   cacheStats: () => get<any>(`/admin/cache/stats`),
   getConfig: () => get<{ aiEnabled: boolean; monthlyAIBudgetBRL: number; autoApproveMaxBRL: number; retentionDays: number | null; orderRetentionDays: number | null; segment?: string; catalogVocab?: { styles?: string[]; occasions?: string[] } | null }>(`/admin/config`),
-  setSegment: (payload: { segment: string; styles?: string[]; occasions?: string[] }) =>
-    post<{ ok: boolean; segment: string; catalogVocab: { styles: string[]; occasions: string[] } | null }>(`/admin/segment-config`, payload),
+  segmentPresets: () => get<SegmentPreset[]>(`/admin/segment-presets`),
+  setSegment: (payload: { segment: string; styles?: string[]; occasions?: string[]; applyVoice?: boolean }) =>
+    post<{ ok: boolean; segment: string; catalogVocab: { styles: string[]; occasions: string[] } | null; voiceApplied?: boolean }>(`/admin/segment-config`, payload),
   setRetention: (payload: { retentionDays?: number | null; orderRetentionDays?: number | null }) =>
     post<{ ok: boolean; retentionDays?: number | null; orderRetentionDays?: number | null }>(`/admin/retention-config`, payload),
   retentionPreview: () => get<{ enabled: boolean; retentionDays: number | null; orderRetentionDays: number | null; mensagensAfetadas?: number; pedidosAfetados?: number }>(`/lgpd/retention/preview`),
@@ -386,6 +387,11 @@ export type IntegrationStatus = {
   appConfigured?: boolean;
   envToken?: boolean;
   lastError?: string | null;
+};
+
+export type SegmentPreset = {
+  id: string; label: string; paletteKey: string;
+  styles: string[]; occasions: string[]; aiVoice: string;
 };
 
 export type TrayStatus = {

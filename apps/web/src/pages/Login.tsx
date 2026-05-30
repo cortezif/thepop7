@@ -40,27 +40,54 @@ export function Login({ onLogin }: { onLogin: () => void }) {
 
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
-      {/* Painel de marca — lado esquerdo */}
+      {/* Painel de marca — lado esquerdo (hero "digital/network" original) */}
       <div className="relative hidden flex-col justify-between overflow-hidden bg-foreground p-12 text-background lg:flex">
+        {/* Imagem própria opcional: coloque /hero.jpg em apps/web/public para usá-la */}
         <div
-          className="pointer-events-none absolute inset-0 opacity-[0.18]"
-          style={{ background: "radial-gradient(120% 80% at 20% 0%, hsl(var(--primary)) 0%, transparent 55%)" }}
+          className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-25"
+          style={{ backgroundImage: "var(--hero-image, none)" }}
         />
+        {/* Brilho na cor da marca */}
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.20]"
+          style={{ background: "radial-gradient(120% 80% at 15% -10%, hsl(var(--primary)) 0%, transparent 55%)" }}
+        />
+        {/* Malha de circuito (SVG original — vibe digital/network) */}
+        <svg className="pointer-events-none absolute inset-0 h-full w-full" preserveAspectRatio="xMidYMid slice" viewBox="0 0 600 800" fill="none" aria-hidden>
+          <g stroke="currentColor" strokeWidth="1" className="text-background/15">
+            <path d="M0 120 H180 L230 170 H420 L470 120 H600" />
+            <path d="M0 300 H120 L170 250 H300 L350 300 H600" />
+            <path d="M0 480 H220 L270 530 H600" />
+            <path d="M0 660 H160 L210 610 H380 L430 660 H600" />
+            <path d="M300 0 V160 L350 210 V420 L300 470 V800" />
+            <path d="M120 0 V230 M470 0 V120 M210 800 V610" />
+          </g>
+          <g className="text-background/40" fill="currentColor">
+            {[
+              [180,120],[230,170],[420,170],[470,120],[170,250],[300,250],[350,300],
+              [220,480],[270,530],[210,610],[380,610],[430,660],[300,210],[350,420],
+            ].map(([cx,cy],i) => <circle key={i} cx={cx} cy={cy} r="3.5" />)}
+          </g>
+          <g className="text-background/25" stroke="currentColor" strokeWidth="1.5" fill="none">
+            {[[180,120],[300,300],[270,530],[430,660]].map(([cx,cy],i) => <circle key={i} cx={cx} cy={cy} r="9" />)}
+          </g>
+        </svg>
+
         <div className="relative">
-          <p className="text-[11px] font-semibold uppercase tracking-luxe text-background/70">Ateliê Digital</p>
+          <p className="text-[11px] font-semibold uppercase tracking-luxe text-background/70">Hub Advisor</p>
         </div>
         <div className="relative max-w-md">
           <h1 className="font-serif text-5xl font-semibold leading-[1.08] tracking-tight">
-            Sua boutique,<br />conduzida com elegância.
+            Seu negócio,<br />conduzido por inteligência.
           </h1>
           <p className="mt-5 text-base leading-relaxed text-background/70">
-            Atendimento, catálogo, pedidos e pós-venda — orquestrados por IA, com o requinte
-            que a sua marca merece.
+            Atendimento nas redes sociais, vendas, estoque, compras e fornecedores —
+            orquestrados por IA, no tom do seu negócio.
           </p>
         </div>
-        <div className="relative flex items-center gap-2 text-xs text-background/50">
+        <div className="relative flex flex-wrap items-center gap-x-2 gap-y-1 text-xs uppercase tracking-luxe text-background/50">
           <span className="h-px w-8 bg-background/30" />
-          Moda feminina de alto estilo
+          <span>Digital</span><span>·</span><span>Network</span><span>·</span><span>Data</span>
         </div>
       </div>
 

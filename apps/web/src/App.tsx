@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Outlet, NavLink } from "react-router-dom";
 import { LayoutDashboard, MessageSquare, Package, ShoppingCart, ClipboardList, Settings as SettingsIcon, LogOut, Barcode, Sparkles, Scale, Megaphone } from "lucide-react";
 import { cn } from "./lib/utils";
-import { auth, brandName, tenantSlug, fetchMe } from "./lib/api";
+import { auth, brandName, tenantSlug, fetchMe, api } from "./lib/api";
 import { applyBrandTheme } from "./lib/theme";
 import { Login } from "./pages/Login";
 
@@ -41,6 +41,8 @@ export function App() {
   useEffect(() => {
     if (!loggedIn) return;
     applyBrandTheme(tenantSlug());
+    // Cor por tipo de negócio: re-aplica assim que souber o segmento da loja.
+    api.getConfig().then((c) => applyBrandTheme(tenantSlug(), c.segment)).catch(() => {});
     if (!brand) {
       fetchMe().then(() => {
         const n = brandName();
@@ -54,6 +56,7 @@ export function App() {
   function handleLogin() {
     setLoggedIn(true);
     applyBrandTheme(tenantSlug());
+    api.getConfig().then((c) => applyBrandTheme(tenantSlug(), c.segment)).catch(() => {});
     const n = brandName();
     setBrand(n);
     if (n) document.title = n;

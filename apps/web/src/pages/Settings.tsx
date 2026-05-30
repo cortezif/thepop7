@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Power, Users, GitMerge, Store, CreditCard, Truck, MessageCircle, Instagram, FileText, Bot, Tag } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
-import { api, type DuplicateGroup, type TrayStatus, type IntegrationStatus } from "../lib/api";
+import { api, type DuplicateGroup, type TrayStatus, type IntegrationStatus, type SegmentPreset } from "../lib/api";
 import { inputClass } from "../components/ui";
 import { cn } from "../lib/utils";
 
@@ -436,15 +436,18 @@ function KillSwitch() {
   );
 }
 
-// ── Segmento da loja (ADR-029, multi-segmento) ───────────────────────────────
+// ── Tipo de negócio / segmento (ADR-029, multi-segmento) ─────────────────────
 function SegmentConfig() {
-  const [segment, setSegment] = useState("");
+  const [presets, setPresets] = useState<SegmentPreset[]>([]);
+  const [segment, setSegment] = useState("moda");
   const [styles, setStyles] = useState("");
   const [occasions, setOccasions] = useState("");
+  const [applyVoice, setApplyVoice] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
   useEffect(() => {
+    api.segmentPresets().then(setPresets).catch(() => {});
     api.getConfig().then((c) => {
       setSegment(c.segment ?? "moda");
       setStyles((c.catalogVocab?.styles ?? []).join(", "));
@@ -452,42 +455,73 @@ function SegmentConfig() {
     }).catch(() => {});
   }, []);
 
+  // Trocar de tipo de negócio prefila o vocabulário do preset (editável).
+  function pick(id: string) {
+    setSegment(id);
+    const p = presets.find((x) => x.id === id);
+    if (p) {
+      setStyles(p.styles.join(", "));
+      setOccasions(p.occasions.join(", "));
+      setApplyVoice(true); // por padrão adota a linguagem de IA do segmento
+    }
+  }
+
   async function save() {
     setBusy(true); setMsg(null);
     try {
       const toList = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
-      const r = await api.setSegment({ segment: segment.trim() || "moda", styles: toList(styles), occasions: toList(occasions) });
-      setMsg(`Segmento salvo: ${r.segment}.`);
+      const r = await api.setSegment({ segment: segment.trim() || "moda", styles: toList(styles), occasions: toList(occasions), applyVoice });
+      setMsg(`Salvo: ${r.segment}${r.voiceApplied ? " · linguagem da IA aplicada" : ""}.`);
     } catch (e) { setMsg(String(e)); } finally { setBusy(false); }
   }
 
-  const isFashion = (segment || "moda").toLowerCase() === "moda";
+  const current = presets.find((p) => p.id === segment);
+  const known = presets.some((p) => p.id === segment);
+
   return (
     <div className="mt-6 rounded-lg border border-border bg-background p-6">
       <div className="flex items-center gap-2">
         <Tag size={18} className="text-primary" />
-        <h2 className="font-serif text-lg font-bold">Segmento da loja</h2>
+        <h2 className="font-serif text-lg font-bold">Tipo de negócio</h2>
       </div>
       <p className="mb-4 mt-1 text-xs text-muted-foreground">
-        Define como a IA classifica seu catálogo. <strong>moda</strong> usa o vocabulário de moda
-        (decote, comprimento, manga, medidas). Qualquer outro segmento (ex.: <em>farmácia, pet, autopeças</em>)
-        usa classificação genérica com o vocabulário que você definir abaixo.
+        Define a <strong>cor da marca</strong>, o <strong>vocabulário do catálogo</strong> e a
+        <strong> linguagem da IA</strong>. Escolha um tipo pronto (prefila tudo, editável) ou digite um próprio.
       </p>
+
+      {/* Chips de tipo de negócio */}
+      <div className="mb-4 flex flex-wrap gap-2">
+        {presets.map((p) => (
+          <button key={p.id} onClick={() => pick(p.id)}
+            className={cn("rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
+              segment === p.id ? "border-primary bg-accent-soft text-primary-strong" : "border-border text-muted-foreground hover:bg-muted")}>
+            {p.label}
+          </button>
+        ))}
+      </div>
+
       <div className="space-y-3">
-        <label className="block text-sm font-medium">Segmento
-          <input value={segment} onChange={(e) => setSegment(e.target.value)} placeholder="moda" className={inputClass + " mt-1"} />
+        <label className="block text-sm font-medium">Identificador do segmento
+          <input value={segment} onChange={(e) => setSegment(e.target.value.toLowerCase())} placeholder="moda" className={inputClass + " mt-1"} />
         </label>
-        <label className="block text-sm font-medium">
-          Estilos / categorias {isFashion && <span className="font-normal text-muted-foreground">(vazio = usa o padrão de moda)</span>}
-          <input value={styles} onChange={(e) => setStyles(e.target.value)} placeholder="ex: higiene, medicamento, infantil, banho" className={inputClass + " mt-1"} />
+        <label className="block text-sm font-medium">Estilos / categorias
+          <input value={styles} onChange={(e) => setStyles(e.target.value)} placeholder="ex: aniversário, casamento, infantil" className={inputClass + " mt-1"} />
         </label>
-        <label className="block text-sm font-medium">
-          Ocasiões / usos
-          <input value={occasions} onChange={(e) => setOccasions(e.target.value)} placeholder="ex: dia-a-dia, presente, emergência" className={inputClass + " mt-1"} />
+        <label className="block text-sm font-medium">Ocasiões / usos
+          <input value={occasions} onChange={(e) => setOccasions(e.target.value)} placeholder="ex: aniversário, chá, corporativo" className={inputClass + " mt-1"} />
         </label>
+
+        <label className="flex items-start gap-2 text-sm">
+          <input type="checkbox" checked={applyVoice} onChange={(e) => setApplyVoice(e.target.checked)} className="mt-0.5" disabled={!known} />
+          <span>
+            Adotar a <strong>linguagem da IA</strong> deste segmento
+            {current && <span className="mt-1 block rounded bg-muted/50 px-2 py-1 text-xs text-muted-foreground">“{current.aiVoice.slice(0, 160)}…”</span>}
+          </span>
+        </label>
+
         <div className="flex items-center gap-3">
           <button onClick={save} disabled={busy} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">
-            {busy ? "Salvando…" : "Salvar segmento"}
+            {busy ? "Salvando…" : "Salvar tipo de negócio"}
           </button>
           {msg && <span className="text-sm text-muted-foreground">{msg}</span>}
         </div>
