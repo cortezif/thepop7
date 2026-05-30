@@ -12,8 +12,18 @@ import {
 
 const json = (data: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] });
 
-export function buildMcpServer(): McpServer {
+/**
+ * @param opts.buyerRef comprador autenticado (resolvido da API-key pelo main).
+ *   Ausente = sessão anônima: as ferramentas de leitura funcionam (vitrine
+ *   pública), mas cotação/pedido/rastreio são recusados.
+ */
+export function buildMcpServer(opts: { buyerRef?: string } = {}): McpServer {
   const server = new McpServer({ name: "thepop7-b2b", version: "0.1.0" });
+  const buyerRef = opts.buyerRef;
+  const requireBuyer = () => {
+    if (!buyerRef) return json({ error: "não autenticado: configure MCP_BUYER_API_KEY de um comprador registrado" });
+    return null;
+  };
 
   server.registerTool("search_products", {
     title: "Buscar produtos no atacado",
@@ -49,25 +59,25 @@ export function buildMcpServer(): McpServer {
 
   server.registerTool("request_quote", {
     title: "Solicitar cotação",
-    description: "Gera uma cotação de atacado para um conjunto de itens (valida quantidade mínima e estoque; itens de um único vendedor).",
+    description: "Gera uma cotação de atacado para um conjunto de itens (valida quantidade mínima e estoque; itens de um único vendedor). Requer comprador autenticado.",
     inputSchema: {
-      buyerRef: z.string().describe("identificador do comprador (loja/agente)"),
       items: z.array(z.object({ productId: z.string(), qty: z.number().int().positive(), sku: z.string().optional() })).min(1),
     },
-  }, async ({ buyerRef, items }) => json(await requestQuote(buyerRef, items)));
+  }, async ({ items }) => requireBuyer() ?? json(await requestQuote(buyerRef!, items)));
 
   server.registerTool("place_wholesale_order", {
     title: "Fechar pedido de atacado",
-    description: "Fecha o pedido B2B a partir de uma cotação aberta e válida.",
-    inputSchema: { buyerRef: z.string(), quoteId: z.string() },
-  }, async ({ buyerRef, quoteId }) => json(await placeWholesaleOrder(quoteId, buyerRef)));
+    description: "Fecha o pedido B2B a partir de uma cotação aberta e válida. Requer comprador autenticado.",
+    inputSchema: { quoteId: z.string() },
+  }, async ({ quoteId }) => requireBuyer() ?? json(await placeWholesaleOrder(quoteId, buyerRef!)));
 
   server.registerTool("track_wholesale_order", {
     title: "Acompanhar pedido de atacado",
-    description: "Status logístico de um pedido B2B.",
-    inputSchema: { buyerRef: z.string(), orderId: z.string() },
-  }, async ({ buyerRef, orderId }) => {
-    const t = await trackWholesaleOrder(orderId, buyerRef);
+    description: "Status logístico de um pedido B2B. Requer comprador autenticado.",
+    inputSchema: { orderId: z.string() },
+  }, async ({ orderId }) => {
+    const auth = requireBuyer(); if (auth) return auth;
+    const t = await trackWholesaleOrder(orderId, buyerRef!);
     return t ? json(t) : json({ error: "pedido não encontrado" });
   });
 

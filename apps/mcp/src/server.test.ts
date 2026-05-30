@@ -16,5 +16,20 @@ test("MCP B2B: cliente lista as 7 ferramentas de atacado", async () => {
   // cada ferramenta tem descrição
   assert.ok(tools.every((t) => typeof t.description === "string" && t.description.length > 0));
 
+  // as ferramentas de escrita NÃO expõem buyerRef (vem do comprador autenticado)
+  const quote = tools.find((t) => t.name === "request_quote")!;
+  assert.ok(!Object.keys(quote.inputSchema.properties ?? {}).includes("buyerRef"));
+
+  await client.close();
+});
+
+test("MCP B2B: sessão anônima recusa cotação (sem comprador autenticado)", async () => {
+  const server = buildMcpServer({}); // sem buyerRef
+  const [clientT, serverT] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "test", version: "0.0.0" });
+  await Promise.all([server.connect(serverT), client.connect(clientT)]);
+
+  const r: any = await client.callTool({ name: "request_quote", arguments: { items: [{ productId: "x", qty: 5 }] } });
+  assert.match(JSON.parse(r.content[0].text).error, /não autenticado/);
   await client.close();
 });

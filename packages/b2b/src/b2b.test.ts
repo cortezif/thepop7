@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildWholesaleQuote, wholesaleUnitPrice, availableStock, type RawWholesaleProduct } from "./index.js";
+import { buildWholesaleQuote, wholesaleUnitPrice, availableStock, hashApiKey, type RawWholesaleProduct } from "./index.js";
 
 const prod = (over: Partial<RawWholesaleProduct>): RawWholesaleProduct => ({
   id: "p1", tenantId: "t1", name: "Vestido", priceBRL: 200, wholesalePriceBRL: 120,
@@ -58,4 +58,12 @@ test("buildWholesaleQuote: itens de vendedores diferentes → erro (pedido é po
 test("buildWholesaleQuote: sem itens → erro", () => {
   const r = buildWholesaleQuote([], []);
   assert.equal(r.ok, false);
+});
+
+test("hashApiKey: determinístico, hex de 64 chars, sensível à key", () => {
+  const h = hashApiKey("b2b_abc");
+  assert.match(h, /^[0-9a-f]{64}$/);
+  assert.equal(hashApiKey("b2b_abc"), h);            // determinístico
+  assert.notEqual(hashApiKey("b2b_abc"), hashApiKey("b2b_xyz"));
+  assert.equal(hashApiKey(" b2b_abc "), h);          // trim
 });

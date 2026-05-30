@@ -765,3 +765,17 @@ model WholesaleOrder {
   @@index([buyerRef])
   @@map("wholesale_orders")
 }
+
+// Comprador da rede de atacado B2B (ADR-024). Autenticado por API-key (só o hash
+// é guardado). O servidor MCP resolve a key → buyer; cotações/pedidos usam o
+// buyer autenticado (não um `buyerRef` que o cliente diz ser).
+model B2bBuyer {
+  id         String   @id @default(cuid())
+  name       String
+  apiKeyHash String   @unique  // sha256(hex) da API-key
+  tenantId   String?  // se a compradora for uma loja nossa (circular)
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  @@map("b2b_buyers")
+}

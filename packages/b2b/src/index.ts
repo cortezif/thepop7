@@ -1,4 +1,5 @@
 import { getPrisma } from "@thepop/db";
+import { createHash, randomBytes } from "node:crypto";
 
 // Rede de atacado B2B (ADR-024). Lógica do marketplace cross-tenant consumida
 // pelo MCP Server. Catálogo agregado = produtos com `wholesaleEnabled` de TODAS
@@ -34,6 +35,31 @@ export type RawWholesaleProduct = {
 };
 
 const num = (v: unknown): number => (v == null ? 0 : Number(v));
+
+// ============================================================
+// Auth do comprador (API-key) — ADR-024
+// ============================================================
+/** Hash determinístico da API-key (sha256 hex) — guardamos só o hash. */
+export function hashApiKey(key: string): string {
+  return createHash("sha256").update(key.trim()).digest("hex");
+}
+
+/** Cria um comprador e devolve a API-key em CLARO uma única vez. */
+export async function createBuyer(name: string, tenantId?: string) {
+  const key = "b2b_" + randomBytes(24).toString("hex");
+  const buyer = await getPrisma().b2bBuyer.create({
+    data: { name, apiKeyHash: hashApiKey(key), tenantId: tenantId ?? null },
+  });
+  return { buyerId: buyer.id, name: buyer.name, apiKey: key };
+}
+
+/** Resolve a API-key → comprador ativo (ou null). Usado pelo servidor MCP. */
+export async function resolveBuyer(apiKey: string | undefined | null): Promise<{ id: string; name: string } | null> {
+  if (!apiKey) return null;
+  const buyer = await getPrisma().b2bBuyer.findUnique({ where: { apiKeyHash: hashApiKey(apiKey) } });
+  if (!buyer || !buyer.active) return null;
+  return { id: buyer.id, name: buyer.name };
+}
 
 /** Preço de atacado do produto (cai pro preço normal se não houver). */
 export function wholesaleUnitPrice(p: RawWholesaleProduct): number {
