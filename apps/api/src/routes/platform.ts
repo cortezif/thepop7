@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
-import { platformCommissionSummary } from "@thepop/b2b";
+import { platformCommissionSummary } from "@hubadvisor/b2b";
 
 // Rotas nível-PLATAFORMA (ADR-024) — não são do operador da loja. Gateadas por
 // uma chave própria (`PLATFORM_ADMIN_KEY`) no header `x-platform-key`, separada

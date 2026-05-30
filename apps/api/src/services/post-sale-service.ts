@@ -1,7 +1,7 @@
-import { getPrisma, withTenant } from "@thepop/db";
-import { getMessagingConnector } from "@thepop/connectors";
-import { generatePostSaleMessage, type PostSaleStage } from "@thepop/agent";
-import { returnDeadline, EVENTS } from "@thepop/shared";
+import { getPrisma, withTenant } from "@hubadvisor/db";
+import { getMessagingConnector } from "@hubadvisor/connectors";
+import { generatePostSaleMessage, type PostSaleStage } from "@hubadvisor/agent";
+import { returnDeadline, EVENTS } from "@hubadvisor/shared";
 
 // Categoria de opt-out por estágio (LGPD — ADR-013).
 // D+1/D+7 são transacionais (entrega/prazo legal) — sempre enviados.

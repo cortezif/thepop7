@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
-import { getPrisma, withTenant } from "@thepop/db";
+import { getPrisma, withTenant } from "@hubadvisor/db";
 import { handleIncomingMessage } from "../services/conversation-service.js";
 
 // Webhooks externos. GET = verification handshake (Meta). POST = evento real.

@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
-import { getPrisma, withTenant } from "@thepop/db";
+import { getPrisma, withTenant } from "@hubadvisor/db";
 import { z } from "zod";
 import { listOrders, createSampleOrder, exportOrdersCSV, approveOrder, receiveReturn } from "../services/order-service.js";
 import { getPickingList, confirmPicking } from "../services/picking-service.js";

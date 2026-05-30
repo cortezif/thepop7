@@ -1,4 +1,4 @@
-import { getPrisma, withTenant, encryptPII, decryptPII, hashPII, type Prisma } from "@thepop/db";
+import { getPrisma, withTenant, encryptPII, decryptPII, hashPII, type Prisma } from "@hubadvisor/db";
 import type { FastifyBaseLogger } from "fastify";
 
 type Tx = Prisma.TransactionClient;

@@ -1,6 +1,6 @@
 import type { Job } from "bullmq";
-import { getPrisma, withTenant } from "@thepop/db";
-import { embedDocument, productEmbeddingText, vectorToPgLiteral } from "@thepop/embedding";
+import { getPrisma, withTenant } from "@hubadvisor/db";
+import { embedDocument, productEmbeddingText, vectorToPgLiteral } from "@hubadvisor/embedding";
 
 type ProductEmbeddingJobData = { tenantId: string; productId?: string };
 

@@ -1,6 +1,6 @@
 import type { Job } from "bullmq";
-import { withTenant, getTrayCreds } from "@thepop/db";
-import { buildErpForTenant } from "@thepop/connectors";
+import { withTenant, getTrayCreds } from "@hubadvisor/db";
+import { buildErpForTenant } from "@hubadvisor/connectors";
 
 type CatalogSyncJobData = { tenantId: string };
 

@@ -1,4 +1,4 @@
-import type { ContactProfileUpdate, ProductSummary } from "@thepop/shared";
+import type { ContactProfileUpdate, ProductSummary } from "@hubadvisor/shared";
 
 // Resultado da busca visual (cliente envia foto -> produtos parecidos)
 export type VisualSearchResult = {

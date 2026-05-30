@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 loadEnv({ path: resolve(__dirname, "../../../.env"), override: true });
 
-import { getPrisma } from "@thepop/db";
+import { getPrisma } from "@hubadvisor/db";
 import { hashPassword } from "./auth.js";
 
 /**

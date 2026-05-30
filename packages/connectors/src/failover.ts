@@ -10,7 +10,7 @@
  * martelar quem está fora) — exceto se for o último recurso da cadeia. Um sucesso
  * fecha o circuito. Estado é por `label`, então persiste entre chamadas da factory.
  *
- * Mesma filosofia do cascade de LLM em @thepop/agent.
+ * Mesma filosofia do cascade de LLM em @hubadvisor/agent.
  */
 
 export function isRecoverableConnectorError(e: unknown): boolean {

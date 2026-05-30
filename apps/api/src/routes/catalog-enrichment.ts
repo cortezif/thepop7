@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { getPrisma, withTenant } from "@thepop/db";
-import { extractProductAttributes } from "@thepop/agent";
+import { getPrisma, withTenant } from "@hubadvisor/db";
+import { extractProductAttributes } from "@hubadvisor/agent";
 
 const schema = z.object({
   tenantSlug: z.string(),

@@ -1,4 +1,4 @@
-import { getPrisma, withTenant, decryptPII, Prisma } from "@thepop/db";
+import { getPrisma, withTenant, decryptPII, Prisma } from "@hubadvisor/db";
 import { appendAudit } from "./audit-service.js";
 
 /**

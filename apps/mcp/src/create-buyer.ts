@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 loadEnv({ path: resolve(__dirname, "../../../.env"), override: true });
 
-import { createBuyer } from "@thepop/b2b";
+import { createBuyer } from "@hubadvisor/b2b";
 
 // Provisiona um comprador da rede de atacado e imprime a API-key (uma única vez).
 // Uso: node --import tsx apps/mcp/src/create-buyer.ts "Nome da Loja Compradora"

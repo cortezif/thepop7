@@ -1,5 +1,5 @@
 import type { MessagingConnector } from "../types.js";
-import type { OutgoingMessage } from "@thepop/shared";
+import type { OutgoingMessage } from "@hubadvisor/shared";
 
 const WA_API = "https://graph.facebook.com/v18.0";
 

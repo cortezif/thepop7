@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { getPrisma, withTenant } from "@thepop/db";
+import { getPrisma, withTenant } from "@hubadvisor/db";
 import { withTestTenant } from "./helpers.js";
 import { transitionOrder, createOrder, cancelOrder, getOrderStatus } from "../services/order-service.js";
 import { resolveContact } from "../services/identity-service.js";

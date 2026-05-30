@@ -1,5 +1,5 @@
 import type { LogisticsConnector, QuoteInput, ShipmentInput, TrackingStatus } from "../types.js";
-import type { ShippingQuote } from "@thepop/shared";
+import type { ShippingQuote } from "@hubadvisor/shared";
 
 const ME_API = "https://melhorenvio.com.br/api/v2/me";
 
@@ -8,7 +8,7 @@ function headers(token: string): Record<string, string> {
     Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
     Accept: "application/json",
-    "User-Agent": "ThePop7/1.0 (suporte@thepop.app)",
+    "User-Agent": "HubAdvisor/1.0 (suporte@hubadvisor.app)",
   };
 }
 

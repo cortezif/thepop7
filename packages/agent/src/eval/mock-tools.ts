@@ -1,5 +1,5 @@
 import type { AgentToolImpl } from "../types.js";
-import type { ProductSummary, ContactProfileUpdate } from "@thepop/shared";
+import type { ProductSummary, ContactProfileUpdate } from "@hubadvisor/shared";
 
 /**
  * Catálogo-fake determinístico para o maya-eval. Não toca rede nem banco.

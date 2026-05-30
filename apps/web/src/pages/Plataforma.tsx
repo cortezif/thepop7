@@ -14,7 +14,7 @@ type Summary = {
   recent: Array<{ orderId: string; sellerName: string; buyerRef: string; status: string; totalBRL: number; commissionBRL: number; createdAt: string }>;
 };
 
-const KEY_STORE = "thepop7_platform_key";
+const KEY_STORE = "hubadvisor_platform_key";
 
 export function Plataforma() {
   const [key, setKey] = useState(localStorage.getItem(KEY_STORE) ?? "");

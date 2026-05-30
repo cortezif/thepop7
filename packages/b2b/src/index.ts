@@ -1,4 +1,4 @@
-import { getPrisma, type Prisma } from "@thepop/db";
+import { getPrisma, type Prisma } from "@hubadvisor/db";
 import { createHash, randomBytes } from "node:crypto";
 
 // Rede de atacado B2B (ADR-024). Lógica do marketplace cross-tenant consumida

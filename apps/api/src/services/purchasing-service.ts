@@ -1,6 +1,6 @@
-import { getPrisma, withTenant } from "@thepop/db";
-import { parseSupplierQuote, composeQuoteRequest, composePurchaseClose } from "@thepop/agent";
-import { EVENTS, normalizeBarcode } from "@thepop/shared";
+import { getPrisma, withTenant } from "@hubadvisor/db";
+import { parseSupplierQuote, composeQuoteRequest, composePurchaseClose } from "@hubadvisor/agent";
+import { EVENTS, normalizeBarcode } from "@hubadvisor/shared";
 import { reconcilePicking } from "./picking-service.js";
 import { movementByBarcode } from "./stock-movement-service.js";
 

@@ -1,5 +1,5 @@
 import type { Job } from "bullmq";
-import { getPrisma } from "@thepop/db";
+import { getPrisma } from "@hubadvisor/db";
 
 /**
  * Job recorrente: marca como `released` toda reserva cujo TTL expirou.

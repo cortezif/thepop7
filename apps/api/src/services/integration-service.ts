@@ -1,10 +1,10 @@
-import { getPrisma, withTenant, encryptPII, decryptPII } from "@thepop/db";
+import { getPrisma, withTenant, encryptPII, decryptPII } from "@hubadvisor/db";
 import {
   exchangeTrayCode, refreshTrayToken, type TrayTokens,
   exchangeMpCode, refreshMpToken, buildMpAuthorizeUrl,
   exchangeMeCode, refreshMeToken, buildMeAuthorizeUrl,
   whatsappConfigured, instagramConfigured,
-} from "@thepop/connectors";
+} from "@hubadvisor/connectors";
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Helpers

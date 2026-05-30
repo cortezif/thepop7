@@ -1,6 +1,6 @@
-# The Pop 7 — Plataforma de Comércio Autônomo
+# Hub Advisor — Plataforma de Comércio Autônomo (multi-segmento)
 
-Monorepo do produto.
+Monorepo do produto. (Antes "The Pop 7"; renomeado na ADR-029. "The Pop 7" passa a ser apenas uma loja/tenant.)
 
 Documentação de produto e estratégia: [ADR-Sistema.md](ADR-Sistema.md), [Plano-Trabalho.md](Plano-Trabalho.md), [Briefing-Equipe.md](Briefing-Equipe.md).
 

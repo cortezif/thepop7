@@ -1,6 +1,6 @@
 import type { Job } from "bullmq";
-import { getPrisma, withTenant } from "@thepop/db";
-import { extractProductAttributes } from "@thepop/agent";
+import { getPrisma, withTenant } from "@hubadvisor/db";
+import { extractProductAttributes } from "@hubadvisor/agent";
 
 type EnrichmentJobData = { tenantId: string; productId?: string; limit?: number };
 

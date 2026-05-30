@@ -1,5 +1,5 @@
 import type { MessagingConnector } from "../types.js";
-import type { OutgoingMessage } from "@thepop/shared";
+import type { OutgoingMessage } from "@hubadvisor/shared";
 
 // Docs: https://developers.facebook.com/docs/messenger-platform/instagram
 // Requer: INSTAGRAM_ACCESS_TOKEN (Page Access Token com instagram_manage_messages)

@@ -1,4 +1,4 @@
-import { getPrisma, withTenant } from "@thepop/db";
+import { getPrisma, withTenant } from "@hubadvisor/db";
 
 /**
  * NPS (ADR-017). Cálculo puro do score (% promotores − % detratores) e

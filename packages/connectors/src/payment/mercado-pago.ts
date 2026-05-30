@@ -27,7 +27,7 @@ export class MercadoPago implements PaymentConnector {
       description: input.description,
       payment_method_id: "pix",
       payer: {
-        email: input.customer.email ?? `pedido-${input.externalReference}@thepop.app`,
+        email: input.customer.email ?? `pedido-${input.externalReference}@hubadvisor.app`,
         first_name: input.customer.name.split(" ")[0] ?? input.customer.name,
         last_name: input.customer.name.split(" ").slice(1).join(" ") || ".",
       },

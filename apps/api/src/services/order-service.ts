@@ -1,9 +1,9 @@
-import { getPrisma, withTenant, encryptPII, decryptPII, hashPII, type Prisma } from "@thepop/db";
-import { getPaymentConnector, getFiscalConnector, getLogisticsConnector } from "@thepop/connectors";
+import { getPrisma, withTenant, encryptPII, decryptPII, hashPII, type Prisma } from "@hubadvisor/db";
+import { getPaymentConnector, getFiscalConnector, getLogisticsConnector } from "@hubadvisor/connectors";
 import {
   canCancelOrder, canRequestReturn, canTransitionOrder,
   returnDeadline, EVENTS, type OrderStatus,
-} from "@thepop/shared";
+} from "@hubadvisor/shared";
 import { summarizeFinancials, buildFunnel, DEFAULT_GATEWAY_FEES } from "./financials.js";
 import { enqueuePostSale } from "../lib/post-sale-queue.js";
 import { issueNfeForOrder } from "./fiscal-service.js";

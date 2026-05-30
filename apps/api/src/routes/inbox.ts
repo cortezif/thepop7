@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { getPrisma, withTenant, decryptPII } from "@thepop/db";
-import { getMessagingConnector } from "@thepop/connectors";
+import { getPrisma, withTenant, decryptPII } from "@hubadvisor/db";
+import { getMessagingConnector } from "@hubadvisor/connectors";
 import { suggestReply, summarizeAndPersist } from "../services/conversation-service.js";
 
 async function resolveTenant(slug: string) {

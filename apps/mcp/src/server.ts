@@ -3,7 +3,7 @@ import { z } from "zod";
 import {
   searchWholesale, getWholesaleProduct, checkAvailability, listCategories,
   requestQuote, placeWholesaleOrder, trackWholesaleOrder,
-} from "@thepop/b2b";
+} from "@hubadvisor/b2b";
 
 // MCP Server da rede de atacado B2B (ADR-024). Expõe o catálogo agregado das
 // lojas (produtos com wholesaleEnabled) como ferramentas consumíveis por

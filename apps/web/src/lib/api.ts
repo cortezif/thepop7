@@ -2,9 +2,9 @@
 // MVP: tenant fixo. Quando houver auth (Fase 2.2), vem do contexto do usuário.
 
 // ---- Auth (F2): token JWT + tenant da sessão no localStorage ----
-const TOKEN_KEY = "thepop7_token";
-const TENANT_KEY = "thepop7_tenant";
-const BRAND_KEY = "thepop7_brand";
+const TOKEN_KEY = "hubadvisor_token";
+const TENANT_KEY = "hubadvisor_tenant";
+const BRAND_KEY = "hubadvisor_brand";
 export const auth = {
   get: () => localStorage.getItem(TOKEN_KEY),
   set: (t: string) => localStorage.setItem(TOKEN_KEY, t),
@@ -27,7 +27,7 @@ function authHeaders(): Record<string, string> {
 // 401 → token inválido/expirado: limpa e manda pro login.
 function on401() {
   auth.clear();
-  window.dispatchEvent(new Event("thepop7:unauthorized"));
+  window.dispatchEvent(new Event("hubadvisor:unauthorized"));
 }
 
 async function get<T>(path: string): Promise<T> {

@@ -1,6 +1,6 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { getPrisma } from "@thepop/db";
+import { getPrisma } from "@hubadvisor/db";
 import { buildApp } from "../app.js";
 
 process.env.JWT_SECRET = process.env.JWT_SECRET ?? "itest-secret";

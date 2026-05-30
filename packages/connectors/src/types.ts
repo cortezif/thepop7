@@ -1,7 +1,7 @@
 // Interfaces estáveis para todos os connectors externos.
 // Trocar de provedor = trocar implementação. App não muda.
 
-import type { OutgoingMessage, ProductSummary, ShippingQuote } from "@thepop/shared";
+import type { OutgoingMessage, ProductSummary, ShippingQuote } from "@hubadvisor/shared";
 
 // ============================================================
 // ERP (catálogo, estoque, pedidos)

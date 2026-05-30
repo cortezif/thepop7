@@ -1,5 +1,5 @@
-import { getPrisma, withTenant } from "@thepop/db";
-import { normalizeBarcode } from "@thepop/shared";
+import { getPrisma, withTenant } from "@hubadvisor/db";
+import { normalizeBarcode } from "@hubadvisor/shared";
 
 // Conferência de envio por scan (barcode F3). O operador bipa os itens ao embalar;
 // reconciliamos contra o pedido. A reconciliação é função pura (testável).

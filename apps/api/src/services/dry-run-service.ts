@@ -1,6 +1,6 @@
-import { runAgentTurn, type AgentConfig, type ConversationContext, type AgentToolImpl } from "@thepop/agent";
-import { getErpConnector, getLogisticsConnector } from "@thepop/connectors";
-import type { ContactProfileUpdate, ProductSummary } from "@thepop/shared";
+import { runAgentTurn, type AgentConfig, type ConversationContext, type AgentToolImpl } from "@hubadvisor/agent";
+import { getErpConnector, getLogisticsConnector } from "@hubadvisor/connectors";
+import type { ContactProfileUpdate, ProductSummary } from "@hubadvisor/shared";
 import type { FastifyBaseLogger } from "fastify";
 
 type DryRunDTO = {

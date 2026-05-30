@@ -1,5 +1,5 @@
 {
-  "name": "@thepop/agent",
+  "name": "@hubadvisor/agent",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.27.0",
-    "@thepop/shared": "*"
+    "@hubadvisor/shared": "*"
   },
   "devDependencies": {
     "typescript": "^5.5.0"

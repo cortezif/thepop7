@@ -1,6 +1,6 @@
-import { getPrisma, withTenant, decryptPII } from "@thepop/db";
-import { getFiscalConnector } from "@thepop/connectors";
-import type { NfeInput } from "@thepop/connectors";
+import { getPrisma, withTenant, decryptPII } from "@hubadvisor/db";
+import { getFiscalConnector } from "@hubadvisor/connectors";
+import type { NfeInput } from "@hubadvisor/connectors";
 
 /**
  * Emite a NF-e de um pedido (ADR-023/CPlug). Acionado na transição → `paid`.

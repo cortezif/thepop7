@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { getPrisma } from "@thepop/db";
-import { buildTrayAuthorizeUrl } from "@thepop/connectors";
+import { getPrisma } from "@hubadvisor/db";
+import { buildTrayAuthorizeUrl } from "@hubadvisor/connectors";
 import {
   getTrayStatus, refreshTray, disconnectTray,
   getMpStatus, refreshMp, disconnectMp, buildMpUrl, mpAppConfigured,

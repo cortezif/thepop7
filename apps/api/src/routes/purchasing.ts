@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { getPrisma, withTenant } from "@thepop/db";
+import { getPrisma, withTenant } from "@hubadvisor/db";
 import { detectReorder, openPurchaseRequest, recordQuote, rankQuotes, suggestPurchaseClose, getReceivingList, confirmReceiving } from "../services/purchasing-service.js";
 
 async function tid(slug: string) {

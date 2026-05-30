@@ -1,5 +1,5 @@
 {
-  "name": "@thepop/connectors",
+  "name": "@hubadvisor/connectors",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -13,7 +13,7 @@
     "test": "node --import tsx --test \"src/**/*.test.ts\""
   },
   "dependencies": {
-    "@thepop/shared": "*"
+    "@hubadvisor/shared": "*"
   },
   "devDependencies": {
     "typescript": "^5.5.0"

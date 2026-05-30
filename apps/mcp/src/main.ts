@@ -10,7 +10,7 @@ loadEnv({ path: resolve(__dirname, "../../../.env"), override: true });
 
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { buildMcpServer } from "./server.js";
-import { resolveBuyer } from "@thepop/b2b";
+import { resolveBuyer } from "@hubadvisor/b2b";
 
 // Servidor MCP da rede de atacado B2B (ADR-024) sobre stdio. Conecte um cliente
 // MCP (Claude Desktop, outro agente) apontando pra: node dist/main.js

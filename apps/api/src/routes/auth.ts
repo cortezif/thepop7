@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { getPrisma } from "@thepop/db";
+import { getPrisma } from "@hubadvisor/db";
 import { verifyPassword, hashPassword, signJwt, requireAuth } from "../auth.js";
 import {
   connectTrayFromCallback,

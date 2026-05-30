@@ -1,4 +1,4 @@
-import { getPrisma } from "@thepop/db";
+import { getPrisma } from "@hubadvisor/db";
 
 // Arquivo único de etiquetas (barcode F3). Consolida {código, descrição, qtd} num
 // único arquivo pra mandar pro fornecedor de etiquetas. Dois formatos:

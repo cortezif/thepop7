@@ -1,5 +1,5 @@
-import { getPrisma } from "@thepop/db";
-import { embedQuery } from "@thepop/embedding";
+import { getPrisma } from "@hubadvisor/db";
+import { embedQuery } from "@hubadvisor/embedding";
 
 export type ProductFilter = {
   estilo?: string[];

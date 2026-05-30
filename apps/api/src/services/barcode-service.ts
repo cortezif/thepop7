@@ -1,6 +1,6 @@
-import { getPrisma, withTenant } from "@thepop/db";
-import { resolveBarcode, normalizeBarcode, isValidEan13 } from "@thepop/shared";
-import { extractProductAttributes } from "@thepop/agent";
+import { getPrisma, withTenant } from "@hubadvisor/db";
+import { resolveBarcode, normalizeBarcode, isValidEan13 } from "@hubadvisor/shared";
+import { extractProductAttributes } from "@hubadvisor/agent";
 import { searchProducts } from "./product-search.js";
 
 // Atribuição/sincronização de códigos de barras (F0/F1).

@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
-import { getPrisma, withTenant } from "@thepop/db";
+import { getPrisma, withTenant } from "@hubadvisor/db";
 import { computeFinancials, computeFunnel } from "../services/order-service.js";
 import { npsSummary } from "../services/nps.js";
 

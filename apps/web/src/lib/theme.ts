@@ -22,7 +22,7 @@ const PALETTE: Record<string, Accent> = {
 
 // Lojas com marca fixa conhecida.
 const PINNED: Record<string, keyof typeof PALETTE> = {
-  thepop7: "rose",
+  hubadvisor: "rose",
 };
 
 // Ordem de rotação para slugs sem pin (exclui rose, reservada à The Pop 7).

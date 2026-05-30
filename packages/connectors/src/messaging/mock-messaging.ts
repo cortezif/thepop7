@@ -1,5 +1,5 @@
 import type { MessagingConnector } from "../types.js";
-import type { OutgoingMessage } from "@thepop/shared";
+import type { OutgoingMessage } from "@hubadvisor/shared";
 
 export class MockMessaging implements MessagingConnector {
   async send(msg: OutgoingMessage): Promise<{ externalId: string }> {

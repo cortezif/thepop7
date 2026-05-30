@@ -32,8 +32,8 @@ export function App() {
 
   useEffect(() => {
     const onUnauth = () => setLoggedIn(false);
-    window.addEventListener("thepop7:unauthorized", onUnauth);
-    return () => window.removeEventListener("thepop7:unauthorized", onUnauth);
+    window.addEventListener("hubadvisor:unauthorized", onUnauth);
+    return () => window.removeEventListener("hubadvisor:unauthorized", onUnauth);
   }, []);
 
   // Aplica o tema da loja e re-hidrata a marca ao montar (sobrevive a refresh).

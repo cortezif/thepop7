@@ -3,8 +3,8 @@ import { z } from "zod";
 import { listMovements, traceByBarcode, movementByBarcode } from "../services/stock-movement-service.js";
 import { resolveScannedBarcode } from "../services/barcode-service.js";
 import { buildLabelItems, labelsToCsv, labelsToZpl } from "../services/label-service.js";
-import { getPrisma } from "@thepop/db";
-import { normalizeBarcode } from "@thepop/shared";
+import { getPrisma } from "@hubadvisor/db";
+import { normalizeBarcode } from "@hubadvisor/shared";
 
 export const stockRoutes: FastifyPluginAsync = async (app) => {
   // GET /stock/movements?barcode=&productId=&variantSku= — razão (mais recentes)

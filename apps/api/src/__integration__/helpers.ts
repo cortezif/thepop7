@@ -1,4 +1,4 @@
-import { getPrisma } from "@thepop/db";
+import { getPrisma } from "@hubadvisor/db";
 
 /**
  * Cria um tenant DESCARTÁVEL (slug único), roda o teste com o tenantId e limpa

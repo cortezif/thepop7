@@ -1,5 +1,5 @@
 {
-  "name": "@thepop/worker",
+  "name": "@hubadvisor/worker",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,10 +10,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@thepop/connectors": "*",
-    "@thepop/db": "*",
-    "@thepop/embedding": "*",
-    "@thepop/shared": "*",
+    "@hubadvisor/connectors": "*",
+    "@hubadvisor/db": "*",
+    "@hubadvisor/embedding": "*",
+    "@hubadvisor/shared": "*",
     "bullmq": "^5.12.0",
     "dotenv": "^16.4.0",
     "ioredis": "^5.4.1",

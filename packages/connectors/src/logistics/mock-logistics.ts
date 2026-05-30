@@ -1,5 +1,5 @@
 import type { LogisticsConnector, QuoteInput, ShipmentInput, TrackingStatus } from "../types.js";
-import type { ShippingQuote } from "@thepop/shared";
+import type { ShippingQuote } from "@hubadvisor/shared";
 
 export class MockLogistics implements LogisticsConnector {
   async quote(_input: QuoteInput): Promise<ShippingQuote[]> {

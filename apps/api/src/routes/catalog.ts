@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
-import { buildErpForTenant } from "@thepop/connectors";
-import { getPrisma, getTrayCreds } from "@thepop/db";
+import { buildErpForTenant } from "@hubadvisor/connectors";
+import { getPrisma, getTrayCreds } from "@hubadvisor/db";
 import { searchProducts } from "../services/product-search.js";
 import { backfillBarcodes, resolveScannedBarcode, findBarcodesByPhoto } from "../services/barcode-service.js";
 import { z } from "zod";

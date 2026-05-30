@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
-import { getPrisma, withTenant } from "@thepop/db";
-import { getMessagingConnector } from "@thepop/connectors";
+import { getPrisma, withTenant } from "@hubadvisor/db";
+import { getMessagingConnector } from "@hubadvisor/connectors";
 import { consolidatePrices, type EstimationMethod } from "./price-consolidation.js";
 
 /* ============================================================================

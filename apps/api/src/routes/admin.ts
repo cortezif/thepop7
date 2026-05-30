@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { getCacheStatsLive, clearCache } from "@thepop/agent";
-import { getPrisma, withTenant } from "@thepop/db";
+import { getCacheStatsLive, clearCache } from "@hubadvisor/agent";
+import { getPrisma, withTenant } from "@hubadvisor/db";
 import { findDuplicateContacts, mergeContactsByIds } from "../services/identity-service.js";
 
 async function resolveTenant(slug: string) {

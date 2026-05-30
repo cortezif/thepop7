@@ -1,5 +1,5 @@
 {
-  "name": "@thepop/b2b",
+  "name": "@hubadvisor/b2b",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -13,8 +13,8 @@
     "test": "node --import tsx --test \"src/**/*.test.ts\""
   },
   "dependencies": {
-    "@thepop/db": "*",
-    "@thepop/shared": "*"
+    "@hubadvisor/db": "*",
+    "@hubadvisor/shared": "*"
   },
   "devDependencies": {
     "tsx": "^4.16.0",

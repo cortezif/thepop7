@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { getPrisma, withTenant } from "@thepop/db";
+import { getPrisma, withTenant } from "@hubadvisor/db";
 
 /**
  * Audit log append-only com hash encadeado (ADR-013).

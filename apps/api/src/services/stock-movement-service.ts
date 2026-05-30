@@ -1,4 +1,4 @@
-import { getPrisma, withTenant, type Prisma } from "@thepop/db";
+import { getPrisma, withTenant, type Prisma } from "@hubadvisor/db";
 
 // Razão de movimentação de estoque (barcode F2). Espelho/auditoria local do canal
 // — a verdade do saldo continua na Tray/CPlug. Cada in/out vira um lançamento

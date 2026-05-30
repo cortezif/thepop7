@@ -1,7 +1,7 @@
-import { runAgentTurn, summarizeConversation, extractProductAttributes, DEFAULT_CASCADE, type AgentConfig, type ConversationContext, type AgentToolImpl } from "@thepop/agent";
-import { getPrisma, withTenant, getTrayCreds, decryptPII } from "@thepop/db";
-import { buildErpForTenant, getLogisticsConnector, getMessagingConnector } from "@thepop/connectors";
-import type { ContactProfileUpdate, ProductSummary } from "@thepop/shared";
+import { runAgentTurn, summarizeConversation, extractProductAttributes, DEFAULT_CASCADE, type AgentConfig, type ConversationContext, type AgentToolImpl } from "@hubadvisor/agent";
+import { getPrisma, withTenant, getTrayCreds, decryptPII } from "@hubadvisor/db";
+import { buildErpForTenant, getLogisticsConnector, getMessagingConnector } from "@hubadvisor/connectors";
+import type { ContactProfileUpdate, ProductSummary } from "@hubadvisor/shared";
 import type { FastifyBaseLogger } from "fastify";
 import { searchProducts, type CustomerProfile, type ProductFilter } from "./product-search.js";
 import { createOrder, cancelOrder, startReturn, getOrderStatus } from "./order-service.js";
