@@ -1,4 +1,4 @@
-import { getPrisma } from "@thepop/db";
+import { getPrisma, type Prisma } from "@thepop/db";
 import { createHash, randomBytes } from "node:crypto";
 
 // Rede de atacado B2B (ADR-024). Lógica do marketplace cross-tenant consumida
@@ -243,7 +243,7 @@ class StockShortage extends Error {}
 
 /** Baixa o estoque do vendedor para uma linha do pedido B2B e grava `sale_out`. */
 async function consumeWholesaleStock(
-  tx: any, sellerTenantId: string,
+  tx: Prisma.TransactionClient, sellerTenantId: string,
   line: { productId: string; name: string; sku: string | null; qty: number }, orderId: string,
 ) {
   const product = await tx.product.findUnique({ where: { id: line.productId } });

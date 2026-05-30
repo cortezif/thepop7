@@ -8,8 +8,11 @@ let _prisma: PrismaClient | null = null;
 
 export function getPrisma(): PrismaClient {
   if (!_prisma) {
+    // `query` (dev) vai pro STDOUT — proibido em processos que usam stdout como
+    // canal (ex.: servidor MCP sobre stdio). Esses setam PRISMA_DISABLE_QUERY_LOG=true.
+    const logQuery = process.env.NODE_ENV === "development" && process.env.PRISMA_DISABLE_QUERY_LOG !== "true";
     _prisma = new PrismaClient({
-      log: process.env.NODE_ENV === "development" ? ["query", "warn", "error"] : ["warn", "error"],
+      log: logQuery ? ["query", "warn", "error"] : ["warn", "error"],
     });
   }
   return _prisma;

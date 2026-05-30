@@ -2,6 +2,9 @@ import { config as loadEnv } from "dotenv";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
+// stdout é o canal do protocolo MCP — impede o Prisma de logar query nele.
+process.env.PRISMA_DISABLE_QUERY_LOG = "true";
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 loadEnv({ path: resolve(__dirname, "../../../.env"), override: true });
 
