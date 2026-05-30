@@ -1,4 +1,6 @@
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { Search } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 
 // Visão geral de TODOS os recursos do sistema, por área, com status e link pra
@@ -177,19 +179,52 @@ export function Recursos() {
   const all = AREAS.flatMap((a) => a.items);
   const count = (s: St) => all.filter((i) => i.status === s).length;
 
+  const [active, setActive] = useState<Set<St>>(new Set());     // vazio = todos
+  const [q, setQ] = useState("");
+
+  const toggle = (s: St) => setActive((prev) => {
+    const n = new Set(prev); n.has(s) ? n.delete(s) : n.add(s); return n;
+  });
+
+  const filtered = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    return AREAS.map((area) => ({
+      ...area,
+      items: area.items.filter((it) =>
+        (active.size === 0 || active.has(it.status)) &&
+        (!term || it.label.toLowerCase().includes(term) || area.title.toLowerCase().includes(term)),
+      ),
+    })).filter((a) => a.items.length > 0);
+  }, [active, q]);
+
+  const shown = filtered.reduce((s, a) => s + a.items.length, 0);
+
   return (
     <div className="mx-auto max-w-5xl p-10">
       <PageHeader eyebrow="VISÃO GERAL" title="Tudo o que o sistema faz" />
 
-      <div className="mt-4 flex flex-wrap gap-3 text-sm">
-        <Legend dot="🟢" label="Pronto (testado)" value={count("ok")} />
-        <Legend dot="🟡" label="Parcial" value={count("partial")} />
-        <Legend dot="🔴" label="Falta (conta/decisão externa)" value={count("blocked")} />
-        <span className="ml-auto text-muted-foreground">{all.length} recursos no total</span>
+      <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
+        <FilterChip dot="🟢" label="Pronto" value={count("ok")} on={active.has("ok")} onClick={() => toggle("ok")} />
+        <FilterChip dot="🟡" label="Parcial" value={count("partial")} on={active.has("partial")} onClick={() => toggle("partial")} />
+        <FilterChip dot="🔴" label="Falta" value={count("blocked")} on={active.has("blocked")} onClick={() => toggle("blocked")} />
+        {active.size > 0 && (
+          <button onClick={() => setActive(new Set())} className="text-xs text-muted-foreground underline hover:text-foreground">limpar</button>
+        )}
+        <div className="relative ml-auto">
+          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="buscar recurso…"
+            className="rounded-md border border-border bg-background py-1.5 pl-8 pr-3 text-sm" />
+        </div>
       </div>
+      <p className="mt-2 text-xs text-muted-foreground">
+        Mostrando {shown} de {all.length} recursos{active.size > 0 || q ? " (filtro ativo)" : ""}.
+        {" "}Clique numa cor pra filtrar (ex.: 🔴 só o que falta).
+      </p>
 
-      <div className="mt-8 grid grid-cols-1 gap-5 md:grid-cols-2">
-        {AREAS.map((area) => (
+      {filtered.length === 0 && <p className="mt-8 text-sm text-muted-foreground">Nenhum recurso para esse filtro.</p>}
+
+      <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-2">
+        {filtered.map((area) => (
           <section key={area.title} className="rounded-lg border border-border bg-background p-5">
             <div className="flex items-center gap-2">
               <span className="text-lg">{area.icon}</span>
@@ -223,10 +258,11 @@ export function Recursos() {
   );
 }
 
-function Legend({ dot, label, value }: { dot: string; label: string; value: number }) {
+function FilterChip({ dot, label, value, on, onClick }: { dot: string; label: string; value: number; on: boolean; onClick: () => void }) {
   return (
-    <span className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1">
+    <button onClick={onClick}
+      className={`flex items-center gap-1.5 rounded-full border px-3 py-1 transition ${on ? "border-foreground bg-foreground/5 font-medium" : "border-border hover:bg-muted"}`}>
       {dot} <b>{value}</b> <span className="text-muted-foreground">{label}</span>
-    </span>
+    </button>
   );
 }
