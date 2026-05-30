@@ -85,6 +85,7 @@ export const purchasingRoutes: FastifyPluginAsync = async (app) => {
     if (!id) return reply.code(404).send({ error: "tenant not found" });
     return withTenant(id, async (tx) => {
       const requests = await tx.purchaseRequest.findMany({
+        where: { tenantId: id },
         orderBy: { createdAt: "desc" },
         take: 20,
         include: {

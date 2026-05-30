@@ -14,7 +14,7 @@ import { movementByBarcode } from "./stock-movement-service.js";
  */
 export async function detectReorder(tenantId: string, leadTimeDays = 7, safetyStock = 2) {
   return withTenant(tenantId, async (tx) => {
-    const products = await tx.product.findMany({ where: { active: true } });
+    const products = await tx.product.findMany({ where: { tenantId, active: true } });
     const since = new Date(Date.now() - 30 * 86400000);
 
     const suggestions: Array<{ productId: string; externalId: string; name: string; stock: number; soldLast30: number; reorderPoint: number; suggestedQty: number }> = [];
@@ -145,7 +145,7 @@ export async function suggestPurchaseClose(tenantId: string, requestId: string) 
   if (!tenant) throw new Error("tenant não encontrado");
 
   return withTenant(tenantId, async (tx) => {
-    const request = await tx.purchaseRequest.findUnique({ where: { id: requestId } });
+    const request = await tx.purchaseRequest.findFirst({ where: { id: requestId, tenantId } });
     if (!request) return { ok: false as const, error: "requisição não encontrada" };
 
     const quote = await tx.quote.findFirst({
