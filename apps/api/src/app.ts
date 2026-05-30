@@ -20,6 +20,7 @@ import { integrationRoutes } from "./routes/integrations.js";
 import { stockRoutes } from "./routes/stock.js";
 import { platformRoutes } from "./routes/platform.js";
 import { mercadologicaRoutes, cotacaoPublicaRoutes, cronRoutes } from "./routes/mercadologica.js";
+import { adsRoutes } from "./routes/ads.js";
 import { requireAuth } from "./auth.js";
 
 export function buildApp() {
@@ -82,6 +83,7 @@ export function buildApp() {
     secure.register(integrationRoutes,        { prefix: "/integrations" });
     secure.register(stockRoutes,              { prefix: "/stock" });
     secure.register(mercadologicaRoutes,      { prefix: "/mercadologica" });
+    secure.register(adsRoutes,                { prefix: "/ads" });
   });
 
   // Painel estático (produção/serviço único): serve o build do web + fallback SPA.

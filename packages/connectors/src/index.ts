@@ -22,3 +22,5 @@ export * from "./messaging/instagram.js";
 export * from "./messaging/mock-messaging.js";
 
 export * from "./email/resend.js";
+
+export * from "./ads/meta-ads.js";

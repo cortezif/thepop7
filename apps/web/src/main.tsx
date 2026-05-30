@@ -12,6 +12,7 @@ import { Settings } from "./pages/Settings";
 import { Plataforma } from "./pages/Plataforma";
 import { Recursos } from "./pages/Recursos";
 import { Mercadologica } from "./pages/Mercadologica";
+import { MidiaPaga } from "./pages/MidiaPaga";
 import { CotacaoPublica } from "./pages/CotacaoPublica";
 import "./styles/globals.css";
 
@@ -26,6 +27,7 @@ createRoot(document.getElementById("root")!).render(
           <Route path="/catalog"  element={<Catalog />} />
           <Route path="/compras"  element={<Compras />} />
           <Route path="/mercadologica" element={<Mercadologica />} />
+          <Route path="/midia-paga" element={<MidiaPaga />} />
           <Route path="/pedidos"  element={<Pedidos />} />
           <Route path="/estoque"  element={<Estoque />} />
           <Route path="/settings" element={<Settings />} />

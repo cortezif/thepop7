@@ -272,6 +272,28 @@ export const api = {
   mercApproveQuote: (id: string) => post<{ ok: boolean }>(`/mercadologica/quotes/${id}/approve`, {}),
   mercRejectQuote: (id: string, reason?: string) => post<{ ok: boolean }>(`/mercadologica/quotes/${id}/reject`, { reason }),
   mercPanel: () => get<MercPanel>(`/mercadologica/panel`),
+
+  // ── Mídia paga / Theo (ADR-028) ──
+  adsStatus: () => get<IntegrationStatus>(`/ads/status`),
+  adsAudiences: () => get<AdAudience[]>(`/ads/audiences`),
+  adsCampaigns: () => get<AdCampaign[]>(`/ads/campaigns`),
+  adsGenerateCreative: (payload: { objective: string; productOrOffer: string; audienceLabel?: string }) =>
+    post<{ ok: boolean; creative?: { headline: string; primaryText: string; cta: string }; error?: string }>(`/ads/creative`, payload),
+  adsCreateCampaign: (payload: { name: string; objective: string; dailyBudgetBRL: number; audience?: { label?: string; definition?: Record<string, unknown> }; creative?: { headline?: string; primaryText?: string; cta?: string } }) =>
+    post<{ ok: boolean; id?: string; externalId?: string | null; status?: string }>(`/ads/campaigns`, payload),
+  adsSetStatus: (id: string, status: "ativa" | "pausada") =>
+    post<{ ok: boolean; status?: string }>(`/ads/campaigns/${id}/status`, { status }),
+  adsRefreshInsights: (id: string) =>
+    post<{ ok: boolean; metrics?: AdMetrics; reason?: string }>(`/ads/campaigns/${id}/insights`, {}),
+};
+
+export type AdAudience = { key: string; label: string; size: number; definition: Record<string, unknown> };
+export type AdMetrics = { impressions: number; clicks: number; spendBRL: number; conversions: number; ctr: number; roas: number; updatedAt?: string };
+export type AdCampaign = {
+  id: string; name: string; objective: string; status: string; dailyBudgetBRL: number;
+  audience: { label?: string } | null;
+  creative: { headline?: string; primaryText?: string; cta?: string } | null;
+  metrics: AdMetrics | null; externalId: string | null; createdAt: string;
 };
 
 /** Abre um anexo de proposta (com token de auth) numa nova aba. */

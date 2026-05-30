@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Outlet, NavLink } from "react-router-dom";
-import { LayoutDashboard, MessageSquare, Package, ShoppingCart, ClipboardList, Settings as SettingsIcon, LogOut, Barcode, Sparkles, Scale } from "lucide-react";
+import { LayoutDashboard, MessageSquare, Package, ShoppingCart, ClipboardList, Settings as SettingsIcon, LogOut, Barcode, Sparkles, Scale, Megaphone } from "lucide-react";
 import { cn } from "./lib/utils";
 import { auth, brandName, tenantSlug, fetchMe } from "./lib/api";
 import { applyBrandTheme } from "./lib/theme";
@@ -15,6 +15,7 @@ const NAV = [
   { to: "/estoque",  label: "Estoque",       Icon: Barcode },
   { to: "/compras",  label: "Compras",       Icon: ShoppingCart },
   { to: "/mercadologica", label: "Mercadológica", Icon: Scale },
+  { to: "/midia-paga", label: "Mídia paga", Icon: Megaphone },
   { to: "/settings", label: "Configurações", Icon: SettingsIcon },
 ];
 

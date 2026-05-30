@@ -132,3 +132,29 @@ export type NfeResult = {
 export interface MessagingConnector {
   send(msg: OutgoingMessage): Promise<{ externalId: string }>;
 }
+
+// ============================================================
+// ADS / MÍDIA PAGA (ADR-028 — Theo). Meta Marketing API.
+// ============================================================
+export interface AdsConnector {
+  createCampaign(input: AdCampaignInput): Promise<{ externalId: string; status: string }>;
+  setStatus(externalId: string, status: "ativa" | "pausada"): Promise<{ ok: boolean }>;
+  getInsights(externalId: string): Promise<AdInsights>;
+}
+
+export type AdCampaignInput = {
+  name: string;
+  objective: "mensagens" | "trafego" | "vendas" | "reconhecimento";
+  dailyBudgetBRL: number;
+  audience?: { label?: string; definition?: Record<string, unknown> };
+  creative?: { headline?: string; primaryText?: string; cta?: string; imageUrl?: string };
+};
+
+export type AdInsights = {
+  impressions: number;
+  clicks: number;
+  spendBRL: number;
+  conversions: number;
+  ctr: number;   // 0..1
+  roas: number;  // retorno sobre investimento
+};

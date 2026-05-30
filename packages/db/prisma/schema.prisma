@@ -85,8 +85,33 @@ model Tenant {
   priceResearchInvites PriceResearchInvite[]
   priceQuotes      PriceQuote[]
   researchAttachments ResearchAttachment[]
+  adCampaigns      AdCampaign[]
 
   @@map("tenants")
+}
+
+// Campanha de mídia paga (ADR-028 — Theo). Meta Ads (Facebook + Instagram).
+model AdCampaign {
+  id             String   @id @default(cuid())
+  tenantId       String
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name           String
+  objective      String   // mensagens | trafego | vendas | reconhecimento
+  platform       String   @default("meta")
+  status         String   @default("rascunho") // rascunho | ativa | pausada | encerrada
+  dailyBudgetBRL Decimal  @default(0) @db.Decimal(10, 2)
+  audience       Json?    // { label, definition }
+  creative       Json?    // { headline, primaryText, cta, imageUrl }
+  externalId     String?  // id na Meta
+  metrics        Json?    // { impressions, clicks, spendBRL, conversions, ctr, roas, updatedAt }
+  createdBy      String?
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([tenantId, status])
+  @@map("ad_campaigns")
 }
 
 // Razão de movimentação de estoque (ADR-009/barcode F2). Espelho/auditoria local

@@ -15,7 +15,9 @@ import { PlugNotas }          from "./fiscal/plug-notas.js";
 import { CplugFiscal }        from "./fiscal/cplug.js";
 import { WhatsappCloud, whatsappConfigured } from "./messaging/whatsapp-cloud.js";
 import { InstagramMessaging, instagramConfigured } from "./messaging/instagram.js";
+import { MetaAds, MockAds, metaAdsConfigured } from "./ads/meta-ads.js";
 import { createFailover }     from "./failover.js";
+import type { AdsConnector } from "./types.js";
 
 const forceMocks = () => process.env.USE_MOCK_CONNECTORS === "true";
 const log = (msg: string) => console.warn(msg);
@@ -76,6 +78,11 @@ export function getFiscalConnector(): FiscalConnector {
   if (forceMocks()) return new MockFiscal();
   const primary: FiscalConnector = fiscalProvider() === "plugnotas" ? new PlugNotas() : new CplugFiscal();
   return createFailover<FiscalConnector>([primary, new MockFiscal()], { label: `fiscal:${fiscalProvider()}`, log });
+}
+
+export function getAdsConnector(): AdsConnector {
+  if (forceMocks()) return new MockAds();
+  return metaAdsConfigured() ? new MetaAds() : new MockAds();
 }
 
 export function getMessagingConnector(channel?: "whatsapp" | "instagram"): MessagingConnector {
