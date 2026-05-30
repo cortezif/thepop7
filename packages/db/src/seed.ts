@@ -720,7 +720,88 @@ async function main() {
   }
   console.log("✅ NPS");
 
-  console.log("\n✅ Seed completo — 10 produtos · 5 contatos · 8 pedidos · 5 conversas · 2 requisições de compra · NPS");
+  // ── Mercadológica: tabela de preços + pesquisa com cotações (ADR-029) ─────────
+  // Tabela de preços (oferta) por fornecedor
+  const offerDefs = [
+    { supplier: "Confecções Brás",      item: "Cabide acrílico (cx 100)",     priceBRL: 78.0,  unit: "cx" },
+    { supplier: "Confecções Brás",      item: "Saco TNT para embalagem",      priceBRL: 0.95,  unit: "un" },
+    { supplier: "Atacado Goiânia Moda", item: "Cabide acrílico (cx 100)",     priceBRL: 84.0,  unit: "cx" },
+    { supplier: "Malharia 25 de Março", item: "Etiqueta de tecido (milheiro)", priceBRL: 120.0, unit: "milheiro" },
+    { supplier: "Studio Moda Feira",    item: "Saco TNT para embalagem",      priceBRL: 1.10,  unit: "un" },
+  ];
+  for (const o of offerDefs) {
+    const supplierId = supplierMap[o.supplier];
+    if (!supplierId) continue;
+    const already = await prisma.supplierOffer.findFirst({ where: { tenantId: tenant.id, supplierId, item: o.item } });
+    if (!already) {
+      await prisma.supplierOffer.create({
+        data: { tenantId: tenant.id, supplierId, item: o.item, priceBRL: o.priceBRL, unit: o.unit },
+      });
+    }
+  }
+
+  // Pesquisa de preços de demonstração (em coleta), com cotações já aprovadas
+  // para 2 itens → o mapa comparativo aparece preenchido.
+  const researchTitle = "Insumos de loja — reposição mensal (demo)";
+  let research = await prisma.priceResearch.findFirst({ where: { tenantId: tenant.id, title: researchTitle } });
+  if (!research) {
+    research = await prisma.priceResearch.create({
+      data: {
+        tenantId: tenant.id, title: researchTitle, method: "mediana", deadlineDays: 5, status: "em-coleta",
+        items: [
+          { description: "Cabide acrílico (cx 100)", quantity: 5 },
+          { description: "Saco TNT para embalagem", quantity: 2000 },
+        ],
+      },
+    });
+    // Convites (alguns respondidos)
+    const inviteDefs = [
+      { supplier: "Confecções Brás",      state: "respondido" },
+      { supplier: "Atacado Goiânia Moda", state: "respondido" },
+      { supplier: "Malharia 25 de Março", state: "enviado" },
+      { supplier: "Studio Moda Feira",    state: "respondido" },
+    ];
+    let tok = 0;
+    for (const inv of inviteDefs) {
+      const supplierId = supplierMap[inv.supplier];
+      await prisma.priceResearchInvite.create({
+        data: {
+          researchId: research.id, tenantId: tenant.id, supplierId, supplierName: inv.supplier,
+          token: `demo-token-${tenant.slug}-${tok++}`, state: inv.state,
+          sentAt: d(3), respondedAt: inv.state === "respondido" ? d(2) : null,
+        },
+      });
+    }
+    // Cotações aprovadas (entram no mapa comparativo)
+    const quoteDefs = [
+      { supplier: "Confecções Brás",      item: "Cabide acrílico (cx 100)", price: 78.0 },
+      { supplier: "Atacado Goiânia Moda", item: "Cabide acrílico (cx 100)", price: 84.0 },
+      { supplier: "Studio Moda Feira",    item: "Cabide acrílico (cx 100)", price: 81.5 },
+      { supplier: "Confecções Brás",      item: "Saco TNT para embalagem", price: 0.95 },
+      { supplier: "Studio Moda Feira",    item: "Saco TNT para embalagem", price: 1.10 },
+      { supplier: "Atacado Goiânia Moda", item: "Saco TNT para embalagem", price: 0.89 },
+    ];
+    for (const q of quoteDefs) {
+      await prisma.priceQuote.create({
+        data: {
+          tenantId: tenant.id, researchId: research.id, supplierId: supplierMap[q.supplier],
+          supplierName: q.supplier, item: q.item, unitPriceBRL: q.price, quantity: 1,
+          origin: "form-web", approvedAt: d(2), approvedBy: "operador",
+        },
+      });
+    }
+    // Uma cotação PENDENTE (para a aba Pendentes ter conteúdo)
+    await prisma.priceQuote.create({
+      data: {
+        tenantId: tenant.id, researchId: research.id, supplierId: supplierMap["Malharia 25 de Março"],
+        supplierName: "Malharia 25 de Março", item: "Cabide acrílico (cx 100)", unitPriceBRL: 79.9,
+        quantity: 1, origin: "form-web",
+      },
+    });
+  }
+  console.log("✅ mercadológica (ofertas + pesquisa + cotações)");
+
+  console.log("\n✅ Seed completo — 10 produtos · 5 contatos · 8 pedidos · 5 conversas · compras · NPS · mercadológica");
 }
 
 main()
