@@ -29,6 +29,7 @@ export function Catalog() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isFashion, setIsFashion] = useState(true); // segmento do tenant (ADR-029)
 
   useEffect(() => {
     fetch("/api/catalog/products")
@@ -36,6 +37,7 @@ export function Catalog() {
       .then((data: Product[]) => setProducts(data))
       .catch((e) => setError(String(e)))
       .finally(() => setLoading(false));
+    api.getConfig().then((c) => setIsFashion((c.segment ?? "moda").toLowerCase() === "moda")).catch(() => {});
   }, []);
 
   return (
@@ -78,7 +80,7 @@ export function Catalog() {
           {products.map((p) => {
             const totalStock = p.variants.reduce((s, v) => s + v.stock, 0);
             const m = marginInfo(p.priceBRL, p.costBRL);
-            const hasMeasurements = p.measurements && Object.keys(p.measurements).length > 0;
+            const hasMeasurements = isFashion && p.measurements && Object.keys(p.measurements).length > 0;
             return (
               <Card key={p.externalId} hover padded={false} className="group flex flex-col overflow-hidden">
                 {/* Foto — herói visual */}

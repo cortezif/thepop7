@@ -175,7 +175,7 @@ export async function handleIncomingMessage(dto: IncomingDTO, log: FastifyBaseLo
     avoid: contact.avoid,
     usualSize: contact.usualSize ?? undefined,
     favoriteColors: contact.favoriteColors,
-  }, { autoApproveMaxBRL: Number(tenant.autoApproveMaxBRL), photoUrls: dto.photoUrls, trayCreds: await getTrayCreds(tenant.id) });
+  }, { autoApproveMaxBRL: Number(tenant.autoApproveMaxBRL), photoUrls: dto.photoUrls, trayCreds: await getTrayCreds(tenant.id), segment: tenant.segment, vocab: (tenant.catalogVocab as any) ?? undefined });
 
   // Se a cliente mandou foto, avisa o agente p/ chamar a busca visual (ele é text-only).
   let agentMessage = dto.text ?? "";
@@ -342,7 +342,7 @@ export async function suggestReply(tenantSlug: string, conversationId: string, l
     avoid: contact?.avoid ?? [],
     usualSize: contact?.usualSize ?? undefined,
     favoriteColors: contact?.favoriteColors ?? [],
-  }, { readOnly: true, trayCreds: await getTrayCreds(tenant.id) });
+  }, { readOnly: true, trayCreds: await getTrayCreds(tenant.id), segment: tenant.segment, vocab: (tenant.catalogVocab as any) ?? undefined });
 
   const turn = await runAgentTurn(cfg, ctx, userMessage, tools);
   return {
@@ -358,13 +358,15 @@ export async function suggestReply(tenantSlug: string, conversationId: string, l
  * Tudo o que o agente "decide fazer" passa por aqui — então este é o
  * lugar pra colocar guardrails (limites, regras de negócio, auditoria).
  */
-function buildAgentTools(tenantId: string, contactId: string, conversationId: string, log: FastifyBaseLogger, customerProfile: CustomerProfile = {}, opts: { readOnly?: boolean; autoApproveMaxBRL?: number; photoUrls?: string[]; trayCreds?: { apiUrl: string; accessToken: string } | null } = {}): AgentToolImpl {
+function buildAgentTools(tenantId: string, contactId: string, conversationId: string, log: FastifyBaseLogger, customerProfile: CustomerProfile = {}, opts: { readOnly?: boolean; autoApproveMaxBRL?: number; photoUrls?: string[]; trayCreds?: { apiUrl: string; accessToken: string } | null; segment?: string; vocab?: { styles?: string[]; occasions?: string[] } } = {}): AgentToolImpl {
   const erp       = buildErpForTenant({ trayCreds: opts.trayCreds });
   const logistics = getLogisticsConnector();
   const prisma    = getPrisma();
   const readOnly  = opts.readOnly ?? false;
   const autoApproveMaxBRL = opts.autoApproveMaxBRL;
   const photoUrls = opts.photoUrls ?? [];
+  const segment   = opts.segment;
+  const vocab     = opts.vocab;
 
   return {
     async buscarProduto(query) {
@@ -398,8 +400,10 @@ function buildAgentTools(tenantId: string, contactId: string, conversationId: st
       }
       // 1. Claude vision "lê" a peça da foto -> atributos estruturados (reusa o extractor do catálogo).
       const extraction = await extractProductAttributes({
-        productName: "peça enviada pela cliente",
+        productName: "item enviado pela cliente",
         photoUrls,
+        segment,
+        vocab,
       });
       if (!extraction.ok) {
         log.warn({ error: extraction.error }, "tool:buscar_por_foto — extração falhou");
