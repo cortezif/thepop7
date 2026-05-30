@@ -40,56 +40,59 @@ export type ExtractedProductAttributes = {
   reasoning: string;       // por que sugeriu isso (auditoria)
 };
 
-// ====== Tool schema — modelo "submit_*" como o adviser ======
-const PRODUCT_ATTRIBUTES_TOOL: Anthropic.Messages.Tool = {
-  name: "submit_product_attributes",
-  description:
-    "Submete os atributos enriquecidos extraídos de um produto de moda " +
-    "feminina. Use APENAS valores do vocabulário fornecido. Se incerto, " +
-    "reporte confidence baixo e priorize valores conservadores.",
-  input_schema: {
-    type: "object",
-    required: ["styles", "occasions", "neckline", "sheer", "length", "sleeveType", "confidence", "reasoning"],
-    properties: {
-      styles: {
-        type: "array",
-        items: { type: "string", enum: [...STYLES] },
-        minItems: 1, maxItems: 3,
-        description: `Até 3 estilos. Vocabulário: ${STYLES.join(", ")}.`,
-      },
-      occasions: {
-        type: "array",
-        items: { type: "string", enum: [...OCCASIONS] },
-        minItems: 1, maxItems: 3,
-        description: `Até 3 ocasiões de uso. Vocabulário: ${OCCASIONS.join(", ")}.`,
-      },
-      neckline: {
-        type: "string", enum: [...NECKLINES],
-        description: "alto = fechado/gola; medio = padrão; baixo = decotado",
-      },
-      sheer: {
-        type: "boolean",
-        description: "true se tem qualquer transparência/tule/véu visível",
-      },
-      length: {
-        type: "string", enum: [...LENGTHS],
-        description: "curto = acima do joelho; medio = altura do joelho; longo = abaixo",
-      },
-      sleeveType: {
-        type: "string", enum: [...SLEEVE_TYPES],
-        description: "sem | curta | 3-4 | longa",
-      },
-      confidence: {
-        type: "number", minimum: 0, maximum: 1,
-        description: "Confiança geral (0..1). Use <0.5 se foto for ruim ou peça ambígua.",
-      },
-      reasoning: {
-        type: "string",
-        description: "Uma frase explicando a inferência. Vai pra auditoria.",
-      },
+// ====== Vocabulário por tenant (ADR-029 — multi-segmento) ======
+// "moda" usa o vocabulário fixo; outros segmentos podem sobrescrever styles/
+// occasions via catalogVocab. Sem override, cai nos defaults de moda.
+export type CatalogVocab = { styles?: string[]; occasions?: string[] };
+export type SegmentConfig = { segment?: string; vocab?: CatalogVocab };
+
+export function resolveVocab(cfg?: SegmentConfig): { styles: string[]; occasions: string[]; fashion: boolean } {
+  const fashion = (cfg?.segment ?? "moda").toLowerCase() === "moda";
+  const styles = cfg?.vocab?.styles?.filter(Boolean) ?? [];
+  const occasions = cfg?.vocab?.occasions?.filter(Boolean) ?? [];
+  return {
+    styles: styles.length ? styles : [...STYLES],
+    occasions: occasions.length ? occasions : [...OCCASIONS],
+    fashion,
+  };
+}
+
+// ====== Tool schema — construído por vocabulário (modelo "submit_*") ======
+function buildAttributesTool(vocab: { styles: string[]; occasions: string[]; fashion: boolean }): Anthropic.Messages.Tool {
+  const props: any = {
+    styles: {
+      type: "array",
+      items: { type: "string", enum: vocab.styles },
+      minItems: 1, maxItems: 3,
+      description: `Até 3 estilos/categorias. Vocabulário: ${vocab.styles.join(", ")}.`,
     },
-  },
-};
+    occasions: {
+      type: "array",
+      items: { type: "string", enum: vocab.occasions },
+      minItems: 1, maxItems: 3,
+      description: `Até 3 ocasiões/usos. Vocabulário: ${vocab.occasions.join(", ")}.`,
+    },
+    confidence: { type: "number", minimum: 0, maximum: 1, description: "Confiança geral (0..1)." },
+    reasoning: { type: "string", description: "Uma frase explicando a inferência. Vai pra auditoria." },
+  };
+  const required = ["styles", "occasions", "confidence", "reasoning"];
+  // Atributos específicos de moda — só quando o segmento é moda.
+  if (vocab.fashion) {
+    props.neckline = { type: "string", enum: [...NECKLINES], description: "alto = fechado/gola; medio = padrão; baixo = decotado" };
+    props.sheer = { type: "boolean", description: "true se tem qualquer transparência/tule/véu visível" };
+    props.length = { type: "string", enum: [...LENGTHS], description: "curto = acima do joelho; medio = joelho; longo = abaixo" };
+    props.sleeveType = { type: "string", enum: [...SLEEVE_TYPES], description: "sem | curta | 3-4 | longa" };
+    required.push("neckline", "sheer", "length", "sleeveType");
+  }
+  return {
+    name: "submit_product_attributes",
+    description:
+      "Submete os atributos enriquecidos do produto. Use APENAS valores do " +
+      "vocabulário fornecido. Se incerto, reporte confidence baixo e priorize " +
+      "valores conservadores.",
+    input_schema: { type: "object", required, properties: props },
+  };
+}
 
 let _client: Anthropic | null = null;
 function client(): Anthropic {
@@ -101,13 +104,16 @@ export type ExtractInput = {
   productName: string;
   description?: string;
   photoUrls?: string[];   // Claude vision aceita até 20 imagens
+  // Multi-segmento (ADR-029): vocabulário/segmento do tenant. Ausente = moda.
+  segment?: string;
+  vocab?: CatalogVocab;
 };
 
 export type ExtractResult =
   | { ok: true; attributes: ExtractedProductAttributes; usage: { inputTokens: number; outputTokens: number } }
   | { ok: false; error: string };
 
-const SYSTEM = `Você é uma curadora de moda feminina brasileira. Sua função é
+const SYSTEM_FASHION = `Você é uma curadora de moda feminina brasileira. Sua função é
 analisar um produto (nome, descrição, foto) e classificá-lo com tags estruturadas
 que vão alimentar busca semântica e recomendação para clientes.
 
@@ -118,6 +124,17 @@ Regras:
 - Em caso de dúvida visual, prefira valores conservadores (decote medio, manga curta)
   e baixe o confidence.
 - Sempre forneça reasoning curto explicando a inferência.`;
+
+const SYSTEM_GENERIC = `Você é um(a) curador(a) de catálogo de varejo. Sua função é
+analisar um produto (nome, descrição, foto) e classificá-lo com tags estruturadas
+(estilos/categorias e ocasiões/usos) que alimentam busca e recomendação.
+
+Regras:
+- Use APENAS o vocabulário fornecido nas ferramentas. Nunca invente categorias.
+- Em caso de dúvida, escolha os valores mais prováveis e baixe o confidence.
+- Sempre forneça um reasoning curto explicando a inferência.`;
+
+const buildSystem = (fashion: boolean) => (fashion ? SYSTEM_FASHION : SYSTEM_GENERIC);
 
 // ====== Sanitização pós-resposta ======
 // tool_choice forçado garante que o modelo CHAME a tool, mas não força adesão
@@ -173,12 +190,15 @@ function validateScalar(
 
 export function sanitizeAttributes(
   raw: ExtractedProductAttributes,
-  productName: string
+  productName: string,
+  vocab?: { styles: string[]; occasions: string[] }
 ): ExtractedProductAttributes {
+  const styleVocab = vocab?.styles ?? [...STYLES];
+  const occasionVocab = vocab?.occasions ?? [...OCCASIONS];
   return {
     ...raw,
-    styles: filterToVocab(raw.styles, STYLES, "styles", "casual", productName),
-    occasions: filterToVocab(raw.occasions, OCCASIONS, "occasions", "dia-a-dia", productName),
+    styles: filterToVocab(raw.styles, styleVocab, "styles", styleVocab[0] ?? "casual", productName),
+    occasions: filterToVocab(raw.occasions, occasionVocab, "occasions", occasionVocab[0] ?? "dia-a-dia", productName),
     // fallbacks conservadores, alinhados com o SYSTEM ("decote medio, manga curta")
     neckline: validateScalar(raw.neckline, NECKLINES, "neckline", "medio", productName),
     length: validateScalar(raw.length, LENGTHS, "length", "medio", productName),
@@ -214,6 +234,9 @@ async function extractViaAnthropic(
   opts: { model?: string; maxTokens?: number } = {}
 ): Promise<ExtractResult> {
   const model = opts.model ?? process.env.CLAUDE_MODEL_FAST ?? "claude-haiku-4-5-20251001";
+  const vocab = resolveVocab({ segment: input.segment, vocab: input.vocab });
+  const tool = buildAttributesTool(vocab);
+  const system = buildSystem(vocab.fashion);
 
   // Constrói mensagem user com texto + imagens
   // (SDK 0.27 não exporta ContentBlockParam — usamos any controlado)
@@ -241,8 +264,8 @@ async function extractViaAnthropic(
     const response = await client().messages.create({
       model,
       max_tokens: opts.maxTokens ?? 1024,
-      system: SYSTEM,
-      tools: [PRODUCT_ATTRIBUTES_TOOL],
+      system,
+      tools: [tool],
       tool_choice: { type: "tool", name: "submit_product_attributes" },
       messages: [{ role: "user", content: contentBlocks }],
     });
@@ -253,7 +276,7 @@ async function extractViaAnthropic(
     if (!toolUse) return { ok: false, error: "Modelo não retornou tool_use" };
 
     const raw = toolUse.input as ExtractedProductAttributes;
-    const attrs = sanitizeAttributes(raw, input.productName);
+    const attrs = sanitizeAttributes(raw, input.productName, vocab);
     return {
       ok: true,
       attributes: attrs,
@@ -279,6 +302,9 @@ async function extractViaGemini(
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return { ok: false, error: "GEMINI_API_KEY ausente" };
   const model = process.env.GEMINI_MODEL ?? "gemini-2.0-flash";
+  const vocab = resolveVocab({ segment: input.segment, vocab: input.vocab });
+  const tool = buildAttributesTool(vocab);
+  const system = buildSystem(vocab.fashion);
 
   const content: any[] = [
     {
@@ -301,18 +327,18 @@ async function extractViaGemini(
         model,
         max_tokens: opts.maxTokens ?? 1024,
         messages: [
-          { role: "system", content: SYSTEM },
+          { role: "system", content: system },
           { role: "user", content },
         ],
         tools: [{
           type: "function",
           function: {
-            name: PRODUCT_ATTRIBUTES_TOOL.name,
-            description: PRODUCT_ATTRIBUTES_TOOL.description,
-            parameters: PRODUCT_ATTRIBUTES_TOOL.input_schema,
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.input_schema,
           },
         }],
-        tool_choice: { type: "function", function: { name: PRODUCT_ATTRIBUTES_TOOL.name } },
+        tool_choice: { type: "function", function: { name: tool.name } },
       }),
     });
     if (!res.ok) return { ok: false, error: `Gemini ${res.status}: ${await res.text()}` };
@@ -330,7 +356,7 @@ async function extractViaGemini(
       return { ok: false, error: "Gemini retornou arguments não-JSON" };
     }
 
-    const attrs = sanitizeAttributes(raw, input.productName);
+    const attrs = sanitizeAttributes(raw, input.productName, vocab);
     return {
       ok: true,
       attributes: attrs,

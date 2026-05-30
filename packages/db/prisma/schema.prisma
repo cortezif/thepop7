@@ -28,6 +28,12 @@ model Tenant {
   name        String
   status      TenantStatus @default(active)
 
+  // Segmento da loja (ADR-029 — multi-segmento). "moda" mantém o vocabulário
+  // de moda; qualquer outro valor usa enriquecimento genérico. `catalogVocab`
+  // sobrescreve o vocabulário de estilos/ocasiões/tags por tenant (opcional).
+  segment      String  @default("moda")
+  catalogVocab Json?   // { styles?: string[], occasions?: string[] }
+
   // Configuração do agente
   agentPersona String  @default("Maya")
   agentTone    String? // Tom de voz, brand voice — texto livre, vai pro system prompt

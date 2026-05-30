@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { Power, Users, GitMerge, Store, CreditCard, Truck, MessageCircle, Instagram, FileText, Bot } from "lucide-react";
+import { Power, Users, GitMerge, Store, CreditCard, Truck, MessageCircle, Instagram, FileText, Bot, Tag } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { api, type DuplicateGroup, type TrayStatus, type IntegrationStatus } from "../lib/api";
+import { inputClass } from "../components/ui";
 import { cn } from "../lib/utils";
 
 export function Settings() {
@@ -9,6 +10,7 @@ export function Settings() {
     <div className="mx-auto max-w-6xl p-10">
       <PageHeader eyebrow="CONFIGURAÇÕES" title="Automação & Integrações" />
       <KillSwitch />
+      <SegmentConfig />
       <Retention />
       <IdentityMerge />
       <TrayIntegration />
@@ -430,6 +432,66 @@ function KillSwitch() {
         </div>
       </div>
       {error && <p className="mt-2 text-sm text-primary">Erro: {error}</p>}
+    </div>
+  );
+}
+
+// ── Segmento da loja (ADR-029, multi-segmento) ───────────────────────────────
+function SegmentConfig() {
+  const [segment, setSegment] = useState("");
+  const [styles, setStyles] = useState("");
+  const [occasions, setOccasions] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.getConfig().then((c) => {
+      setSegment(c.segment ?? "moda");
+      setStyles((c.catalogVocab?.styles ?? []).join(", "));
+      setOccasions((c.catalogVocab?.occasions ?? []).join(", "));
+    }).catch(() => {});
+  }, []);
+
+  async function save() {
+    setBusy(true); setMsg(null);
+    try {
+      const toList = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
+      const r = await api.setSegment({ segment: segment.trim() || "moda", styles: toList(styles), occasions: toList(occasions) });
+      setMsg(`Segmento salvo: ${r.segment}.`);
+    } catch (e) { setMsg(String(e)); } finally { setBusy(false); }
+  }
+
+  const isFashion = (segment || "moda").toLowerCase() === "moda";
+  return (
+    <div className="mt-6 rounded-lg border border-border bg-background p-6">
+      <div className="flex items-center gap-2">
+        <Tag size={18} className="text-primary" />
+        <h2 className="font-serif text-lg font-bold">Segmento da loja</h2>
+      </div>
+      <p className="mb-4 mt-1 text-xs text-muted-foreground">
+        Define como a IA classifica seu catálogo. <strong>moda</strong> usa o vocabulário de moda
+        (decote, comprimento, manga, medidas). Qualquer outro segmento (ex.: <em>farmácia, pet, autopeças</em>)
+        usa classificação genérica com o vocabulário que você definir abaixo.
+      </p>
+      <div className="space-y-3">
+        <label className="block text-sm font-medium">Segmento
+          <input value={segment} onChange={(e) => setSegment(e.target.value)} placeholder="moda" className={inputClass + " mt-1"} />
+        </label>
+        <label className="block text-sm font-medium">
+          Estilos / categorias {isFashion && <span className="font-normal text-muted-foreground">(vazio = usa o padrão de moda)</span>}
+          <input value={styles} onChange={(e) => setStyles(e.target.value)} placeholder="ex: higiene, medicamento, infantil, banho" className={inputClass + " mt-1"} />
+        </label>
+        <label className="block text-sm font-medium">
+          Ocasiões / usos
+          <input value={occasions} onChange={(e) => setOccasions(e.target.value)} placeholder="ex: dia-a-dia, presente, emergência" className={inputClass + " mt-1"} />
+        </label>
+        <div className="flex items-center gap-3">
+          <button onClick={save} disabled={busy} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">
+            {busy ? "Salvando…" : "Salvar segmento"}
+          </button>
+          {msg && <span className="text-sm text-muted-foreground">{msg}</span>}
+        </div>
+      </div>
     </div>
   );
 }

@@ -30,7 +30,32 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       autoApproveMaxBRL: Number(tenant.autoApproveMaxBRL),
       retentionDays: tenant.retentionDays,
       orderRetentionDays: tenant.orderRetentionDays,
+      segment: tenant.segment,
+      catalogVocab: tenant.catalogVocab ?? null,
     };
+  });
+
+  // POST /admin/segment-config — segmento da loja + vocabulário de catálogo (ADR-029)
+  app.post("/segment-config", async (req, reply) => {
+    const body = z.object({
+      tenantSlug: z.string(),
+      segment: z.string().min(2).max(40),
+      styles: z.array(z.string()).optional(),
+      occasions: z.array(z.string()).optional(),
+    }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+    const tenant = await resolveTenant(body.data.tenantSlug);
+    if (!tenant) return reply.code(404).send({ error: "tenant not found" });
+    const styles = (body.data.styles ?? []).map((s) => s.trim()).filter(Boolean);
+    const occasions = (body.data.occasions ?? []).map((s) => s.trim()).filter(Boolean);
+    const catalogVocab = styles.length || occasions.length ? { styles, occasions } : null;
+    await withTenant(tenant.id, async (tx) => {
+      await tx.tenant.update({ where: { id: tenant.id }, data: { segment: body.data.segment.toLowerCase(), catalogVocab: catalogVocab as any } });
+      await tx.domainEvent.create({
+        data: { tenantId: tenant.id, type: "segment.configured", aggregateType: "tenant", aggregateId: tenant.id, payload: { segment: body.data.segment, catalogVocab } as any, actor: "operator" },
+      });
+    });
+    return { ok: true, segment: body.data.segment.toLowerCase(), catalogVocab };
   });
 
   // POST /admin/retention-config — política de retenção diferenciada (ADR-013). null = desativa.

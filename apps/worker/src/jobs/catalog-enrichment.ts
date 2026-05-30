@@ -18,6 +18,10 @@ export async function catalogEnrichmentProcessor(job: Job<EnrichmentJobData>): P
   const { tenantId, productId, limit = 10 } = job.data;
   const prisma = getPrisma();
 
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+  const segment = tenant?.segment ?? "moda";
+  const vocab = (tenant?.catalogVocab as { styles?: string[]; occasions?: string[] } | null) ?? undefined;
+
   await withTenant(tenantId, async (tx) => {
     const products = await tx.product.findMany({
       where: productId
@@ -42,6 +46,8 @@ export async function catalogEnrichmentProcessor(job: Job<EnrichmentJobData>): P
         productName: p.name,
         description: p.description ?? undefined,
         photoUrls,
+        segment,
+        vocab,
       });
 
       if (!result.ok) {
