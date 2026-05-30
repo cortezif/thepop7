@@ -8,6 +8,7 @@ import { MockPayment }        from "./payment/mock-payment.js";
 import { MockFiscal }         from "./fiscal/mock-fiscal.js";
 import { MockMessaging }      from "./messaging/mock-messaging.js";
 import { BlingErp }           from "./erp/bling.js";
+import { OmieErp }            from "./erp/omie.js";
 import { TrayErp }            from "./erp/tray.js";
 import { MelhorEnvio }        from "./logistics/melhor-envio.js";
 import { LalamoveCourier }    from "./courier/lalamove.js";
@@ -30,26 +31,33 @@ const log = (msg: string) => console.warn(msg);
 // USE_MOCK_CONNECTORS=true força mocks independente das credenciais (útil em CI).
 // ──────────────────────────────────────────────────────────────────────────────
 
-export function erpProvider(): "tray" | "bling" {
-  return (process.env.ERP_PROVIDER ?? "tray").toLowerCase() === "bling" ? "bling" : "tray";
+export function erpProvider(): "tray" | "bling" | "omie" {
+  const p = (process.env.ERP_PROVIDER ?? "tray").toLowerCase();
+  return p === "bling" ? "bling" : p === "omie" ? "omie" : "tray";
 }
 
 export function getErpConnector(): ErpConnector {
   if (forceMocks()) return new MockErp();
-  const primary: ErpConnector = erpProvider() === "bling" ? new BlingErp() : new TrayErp();
-  return createFailover<ErpConnector>([primary, new MockErp()], { label: `erp:${erpProvider()}`, log });
+  const p = erpProvider();
+  const primary: ErpConnector = p === "bling" ? new BlingErp() : p === "omie" ? new OmieErp() : new TrayErp();
+  return createFailover<ErpConnector>([primary, new MockErp()], { label: `erp:${p}`, log });
 }
 
 export function buildErpForTenant(opts: {
-  provider?: "tray" | "bling";
+  provider?: "tray" | "bling" | "omie";
   trayCreds?: { apiUrl: string; accessToken: string } | null;
   blingCreds?: { accessToken: string } | null;
+  omieCreds?: { appKey: string; appSecret: string } | null;
 }): ErpConnector {
   if (forceMocks()) return new MockErp();
   const provider = opts.provider ?? erpProvider();
   if (provider === "bling") {
     const bling = opts.blingCreds ? new BlingErp(opts.blingCreds) : new BlingErp();
     return createFailover<ErpConnector>([bling, new MockErp()], { label: "erp:bling", log });
+  }
+  if (provider === "omie") {
+    const omie = opts.omieCreds ? new OmieErp(opts.omieCreds) : new OmieErp();
+    return createFailover<ErpConnector>([omie, new MockErp()], { label: "erp:omie", log });
   }
   const tray = opts.trayCreds ? new TrayErp(opts.trayCreds) : new TrayErp();
   return createFailover<ErpConnector>([tray, new MockErp()], { label: "erp:tray", log });

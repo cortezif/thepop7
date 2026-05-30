@@ -364,8 +364,8 @@ export async function suggestReply(tenantSlug: string, conversationId: string, l
  * Tudo o que o agente "decide fazer" passa por aqui — então este é o
  * lugar pra colocar guardrails (limites, regras de negócio, auditoria).
  */
-function buildAgentTools(tenantId: string, contactId: string, conversationId: string, log: FastifyBaseLogger, customerProfile: CustomerProfile = {}, opts: { readOnly?: boolean; autoApproveMaxBRL?: number; photoUrls?: string[]; erpCreds?: { trayCreds: { apiUrl: string; accessToken: string } | null; blingCreds: { accessToken: string } | null }; segment?: string; vocab?: { styles?: string[]; occasions?: string[] }; productionEnabled?: boolean; storeZip?: string } = {}): AgentToolImpl {
-  const erp       = buildErpForTenant({ trayCreds: opts.erpCreds?.trayCreds ?? null, blingCreds: opts.erpCreds?.blingCreds ?? null });
+function buildAgentTools(tenantId: string, contactId: string, conversationId: string, log: FastifyBaseLogger, customerProfile: CustomerProfile = {}, opts: { readOnly?: boolean; autoApproveMaxBRL?: number; photoUrls?: string[]; erpCreds?: { trayCreds: { apiUrl: string; accessToken: string } | null; blingCreds: { accessToken: string } | null; omieCreds?: { appKey: string; appSecret: string } | null }; segment?: string; vocab?: { styles?: string[]; occasions?: string[] }; productionEnabled?: boolean; storeZip?: string } = {}): AgentToolImpl {
+  const erp       = buildErpForTenant({ trayCreds: opts.erpCreds?.trayCreds ?? null, blingCreds: opts.erpCreds?.blingCreds ?? null, omieCreds: opts.erpCreds?.omieCreds ?? null });
   const logistics = getLogisticsConnector();
   const prisma    = getPrisma();
   const readOnly  = opts.readOnly ?? false;

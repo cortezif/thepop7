@@ -124,14 +124,14 @@ export const catalogRoutes: FastifyPluginAsync = async (app) => {
   // (upsert por externalId, source=erp; NÃO toca nos manuais).
   app.post("/sync", async (req, reply) => {
     const tenantId = req.auth!.tenantId;
-    const { provider, trayCreds, blingCreds, connected } = await resolveErpCreds(tenantId);
+    const { provider, trayCreds, blingCreds, omieCreds, connected } = await resolveErpCreds(tenantId);
     // Sem ERP real conectado não há o que importar — e NÃO injetamos o mock
     // (senão uma loja de bolos receberia produtos de moda de demonstração).
     if (!connected) {
-      const nome = provider === "bling" ? "a Bling" : "a Tray";
+      const nome = provider === "bling" ? "a Bling" : provider === "omie" ? "a Omie" : "a Tray";
       return reply.code(400).send({ error: `Conecte ${nome} em Configurações antes de sincronizar — sem ERP conectado não há catálogo para importar.` });
     }
-    const erp = buildErpForTenant({ trayCreds, blingCreds });
+    const erp = buildErpForTenant({ trayCreds, blingCreds, omieCreds });
     const products = await erp.listProducts();
     let upserted = 0;
     await withTenant(tenantId, async (tx) => {
@@ -245,8 +245,8 @@ export const catalogRoutes: FastifyPluginAsync = async (app) => {
 
   app.get("/products/:id", async (req, reply) => {
     const id = (req.params as any).id;
-    const { trayCreds, blingCreds } = await resolveErpCreds(req.auth!.tenantId);
-    const erp = buildErpForTenant({ trayCreds, blingCreds });
+    const { trayCreds, blingCreds, omieCreds } = await resolveErpCreds(req.auth!.tenantId);
+    const erp = buildErpForTenant({ trayCreds, blingCreds, omieCreds });
     const product = await erp.getProduct(id);
     if (!product) return reply.code(404).send({ error: "not found" });
     return product;

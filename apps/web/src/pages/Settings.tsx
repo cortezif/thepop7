@@ -15,6 +15,7 @@ export function Settings() {
       <IdentityMerge />
       <TrayIntegration />
       <BlingIntegration />
+      <OmieIntegration />
       <MercadoPagoIntegration />
       <MelhorEnvioIntegration />
       <WhatsAppStatus />
@@ -373,6 +374,18 @@ function BlingIntegration() {
       authorizeUrlFn={() => api.integrationAuthorize("bling")}
       refreshFn={() => api.integrationRefresh("bling")}
       disconnectFn={() => api.integrationDisconnect("bling")}
+    />
+  );
+}
+
+function OmieIntegration() {
+  return (
+    <EnvIntegration
+      icon={<Store className="h-5 w-5 text-muted-foreground" />}
+      title="Omie (ERP)"
+      description="ERP de gestão (produtos, estoque, pedidos). Informe App Key e App Secret. Requer ERP_PROVIDER=omie."
+      provider="omie"
+      loadFn={() => api.integrationStatus("omie")}
     />
   );
 }

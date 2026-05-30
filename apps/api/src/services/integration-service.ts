@@ -53,6 +53,10 @@ export const PROVIDER_FIELDS: Record<string, CredField[]> = {
     { key: "clientId", label: "Client ID", secret: false, env: "BLING_CLIENT_ID", required: true },
     { key: "clientSecret", label: "Client Secret", secret: true, env: "BLING_CLIENT_SECRET", required: true },
   ],
+  omie: [
+    { key: "appKey", label: "App Key", secret: true, env: "OMIE_APP_KEY", required: true },
+    { key: "appSecret", label: "App Secret", secret: true, env: "OMIE_APP_SECRET", required: true },
+  ],
   mercadopago: [
     { key: "appId", label: "App ID", secret: false, env: "MERCADOPAGO_APP_ID", required: true },
     { key: "appSecret", label: "App Secret", secret: true, env: "MERCADOPAGO_APP_SECRET", required: true },
@@ -604,6 +608,24 @@ export async function getOpenDeliveryStatus(tenantId: string) {
     appConfigured: configured,
     note: configured ? "Open Delivery configurado (Pedidos10/ABRASEL — cobre interior)." : "Informe Client ID/Secret e Base URL do operador logístico (padrão Open Delivery).",
   };
+}
+
+// ── OMIE (ERP — JSON-RPC, app_key/secret no corpo; sem OAuth) ────────────────
+export async function getOmieStatus(tenantId: string) {
+  const configured = await isAppConfigured(tenantId, "omie");
+  return {
+    provider: "omie" as const,
+    connected: configured,
+    status: configured ? "connected" : "disconnected",
+    appConfigured: configured,
+    note: configured ? "Omie configurada (ERP). Requer ERP_PROVIDER=omie." : "Informe App Key e App Secret da Omie.",
+  };
+}
+
+export async function getOmieCreds(tenantId: string): Promise<{ appKey: string; appSecret: string } | null> {
+  const cfg = await getProviderConfig(tenantId, "omie");
+  if (!cfg.appKey || !cfg.appSecret) return null;
+  return { appKey: cfg.appKey, appSecret: cfg.appSecret };
 }
 
 /** Credenciais de courier do tenant (banco→env), p/ buildCourierForTenant. */
