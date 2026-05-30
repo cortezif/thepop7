@@ -117,6 +117,22 @@ export function buildWholesaleQuote(products: RawWholesaleProduct[], lines: Quot
 const round2 = (x: number) => Number(x.toFixed(2));
 
 // ============================================================
+// Comissão da plataforma (ADR-024 — monetização)
+// ============================================================
+/** Taxa de comissão B2B (fração 0..1). Env `B2B_COMMISSION_PCT`, default 5%. */
+export function commissionRate(): number {
+  const v = Number(process.env.B2B_COMMISSION_PCT);
+  if (!Number.isFinite(v) || v < 0) return 0.05;
+  return Math.min(v, 1);
+}
+
+/** Comissão e líquido do vendedor a partir do total (função pura). */
+export function computeCommission(totalBRL: number, rate = commissionRate()) {
+  const commissionBRL = round2(totalBRL * rate);
+  return { commissionPct: rate, commissionBRL, sellerNetBRL: round2(totalBRL - commissionBRL) };
+}
+
+// ============================================================
 // Camada de dados (consumida pelo MCP Server)
 // ============================================================
 
@@ -200,15 +216,23 @@ export async function placeWholesaleOrder(quoteId: string, buyerRef: string) {
     await prisma.wholesaleQuote.update({ where: { id: quoteId }, data: { status: "expired" } });
     return { ok: false as const, reason: "cotação expirada" };
   }
+  const total = Number(quote.totalBRL);
+  const { commissionPct, commissionBRL, sellerNetBRL } = computeCommission(total);
   const order = await prisma.wholesaleOrder.create({
-    data: { quoteId, sellerTenantId: quote.sellerTenantId, buyerRef, totalBRL: quote.totalBRL, status: "placed" },
+    data: { quoteId, sellerTenantId: quote.sellerTenantId, buyerRef, totalBRL: quote.totalBRL, commissionPct, commissionBRL, status: "placed" },
   });
   await prisma.wholesaleQuote.update({ where: { id: quoteId }, data: { status: "ordered" } });
-  return { ok: true as const, orderId: order.id, status: order.status, totalBRL: Number(order.totalBRL) };
+  return { ok: true as const, orderId: order.id, status: order.status, totalBRL: total, commissionPct, commissionBRL, sellerNetBRL };
 }
 
 export async function trackWholesaleOrder(orderId: string, buyerRef: string) {
   const order = await getPrisma().wholesaleOrder.findUnique({ where: { id: orderId } });
   if (!order || order.buyerRef !== buyerRef) return null;
-  return { orderId: order.id, status: order.status, trackingCode: order.trackingCode, totalBRL: Number(order.totalBRL), createdAt: order.createdAt.toISOString() };
+  const totalBRL = Number(order.totalBRL);
+  const commissionBRL = Number(order.commissionBRL);
+  return {
+    orderId: order.id, status: order.status, trackingCode: order.trackingCode,
+    totalBRL, commissionPct: order.commissionPct, commissionBRL, sellerNetBRL: round2(totalBRL - commissionBRL),
+    createdAt: order.createdAt.toISOString(),
+  };
 }

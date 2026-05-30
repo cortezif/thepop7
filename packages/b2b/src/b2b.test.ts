@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildWholesaleQuote, wholesaleUnitPrice, availableStock, hashApiKey, type RawWholesaleProduct } from "./index.js";
+import { buildWholesaleQuote, wholesaleUnitPrice, availableStock, hashApiKey, computeCommission, commissionRate, type RawWholesaleProduct } from "./index.js";
 
 const prod = (over: Partial<RawWholesaleProduct>): RawWholesaleProduct => ({
   id: "p1", tenantId: "t1", name: "Vestido", priceBRL: 200, wholesalePriceBRL: 120,
@@ -58,6 +58,23 @@ test("buildWholesaleQuote: itens de vendedores diferentes → erro (pedido é po
 test("buildWholesaleQuote: sem itens → erro", () => {
   const r = buildWholesaleQuote([], []);
   assert.equal(r.ok, false);
+});
+
+test("computeCommission: comissão + líquido do vendedor (5% default)", () => {
+  const r = computeCommission(600, 0.05);
+  assert.deepEqual(r, { commissionPct: 0.05, commissionBRL: 30, sellerNetBRL: 570 });
+});
+
+test("commissionRate: default 5%; env override; negativo cai no default; cap 100%", () => {
+  delete process.env.B2B_COMMISSION_PCT;
+  assert.equal(commissionRate(), 0.05);
+  process.env.B2B_COMMISSION_PCT = "0.08";
+  assert.equal(commissionRate(), 0.08);
+  process.env.B2B_COMMISSION_PCT = "-1";
+  assert.equal(commissionRate(), 0.05);
+  process.env.B2B_COMMISSION_PCT = "2";
+  assert.equal(commissionRate(), 1);
+  delete process.env.B2B_COMMISSION_PCT;
 });
 
 test("hashApiKey: determinístico, hex de 64 chars, sensível à key", () => {

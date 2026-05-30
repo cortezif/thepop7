@@ -756,6 +756,9 @@ model WholesaleOrder {
   sellerTenantId String
   buyerRef       String
   totalBRL       Decimal  @db.Decimal(12, 2)
+  // Comissão da plataforma (ADR-024 — monetização). Snapshot no fechamento.
+  commissionPct  Float    @default(0)
+  commissionBRL  Decimal  @default(0) @db.Decimal(12, 2)
   status         String   @default("placed") // placed | confirmed | shipped | delivered | canceled
   trackingCode   String?
   createdAt      DateTime @default(now())
