@@ -200,6 +200,9 @@ export const api = {
       { channel: "manual", contact: { name: contactName, phone }, text }
     ),
   listProducts: () => get<any[]>(`/catalog/products`).catch(() => []),
+  // Igual ao acima, mas propaga o erro (a tela de Catálogo mostra; 401 já
+  // dispara o logout global em `get`). Inclui Authorization + tenantSlug.
+  listCatalogProducts: () => get<any[]>(`/catalog/products`),
   cacheStats: () => get<any>(`/admin/cache/stats`),
   getConfig: () => get<{ aiEnabled: boolean; monthlyAIBudgetBRL: number; autoApproveMaxBRL: number; retentionDays: number | null; orderRetentionDays: number | null; segment?: string; catalogVocab?: { styles?: string[]; occasions?: string[] } | null }>(`/admin/config`),
   segmentPresets: () => get<SegmentPreset[]>(`/admin/segment-presets`),

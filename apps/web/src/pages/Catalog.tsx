@@ -32,9 +32,10 @@ export function Catalog() {
   const [isFashion, setIsFashion] = useState(true); // segmento do tenant (ADR-029)
 
   useEffect(() => {
-    fetch("/api/catalog/products")
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then((data: Product[]) => setProducts(data))
+    // Usa o cliente `api` (injeta Authorization + tenantSlug e trata 401);
+    // o fetch cru anterior não mandava o token → 401 sob requireAuth.
+    api.listCatalogProducts()
+      .then((data) => setProducts(data as Product[]))
       .catch((e) => setError(String(e)))
       .finally(() => setLoading(false));
     api.getConfig().then((c) => setIsFashion((c.segment ?? "moda").toLowerCase() === "moda")).catch(() => {});
