@@ -227,7 +227,8 @@ export const api = {
   deleteProduct: (id: string) => del<{ ok: boolean }>(`/catalog/products/${id}`),
   syncCatalog: () => post<{ ok: boolean; upserted: number }>(`/catalog/sync`, {}),
   cacheStats: () => get<any>(`/admin/cache/stats`),
-  getConfig: () => get<{ aiEnabled: boolean; monthlyAIBudgetBRL: number; autoApproveMaxBRL: number; retentionDays: number | null; orderRetentionDays: number | null; segment?: string; catalogVocab?: { styles?: string[]; occasions?: string[] } | null; productionEnabled?: boolean }>(`/admin/config`),
+  getConfig: () => get<{ aiEnabled: boolean; monthlyAIBudgetBRL: number; autoApproveMaxBRL: number; retentionDays: number | null; orderRetentionDays: number | null; segment?: string; catalogVocab?: { styles?: string[]; occasions?: string[] } | null; productionEnabled?: boolean; storeZip?: string | null }>(`/admin/config`),
+  setStoreZip: (storeZip: string | null) => post<{ ok: boolean; storeZip: string | null }>(`/admin/store-config`, { storeZip }),
   segmentPresets: () => get<SegmentPreset[]>(`/admin/segment-presets`),
   setSegment: (payload: { segment: string; styles?: string[]; occasions?: string[]; applyVoice?: boolean }) =>
     post<{ ok: boolean; segment: string; catalogVocab: { styles: string[]; occasions: string[] } | null; voiceApplied?: boolean }>(`/admin/segment-config`, payload),

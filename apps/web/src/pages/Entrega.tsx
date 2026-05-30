@@ -54,6 +54,17 @@ function CourierEstimator() {
   const [modal, setModal] = useState<"moto" | "carro">("moto");
   const [res, setRes] = useState<import("../lib/api").CourierQuoteResult | null>(null);
   const [busy, setBusy] = useState(false);
+  const [savedZip, setSavedZip] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.getConfig().then((c) => { if (c.storeZip) { setFromCep(c.storeZip); setSavedZip(c.storeZip); } }).catch(() => {});
+  }, []);
+
+  async function saveStoreZip() {
+    const zip = fromCep.replace(/\D/g, "").slice(0, 8);
+    const r = await api.setStoreZip(zip || null).catch(() => null);
+    if (r) setSavedZip(r.storeZip);
+  }
 
   async function run() {
     if (fromCep.replace(/\D/g, "").length < 8 || toCep.replace(/\D/g, "").length < 8) {
@@ -77,6 +88,9 @@ function CourierEstimator() {
         <label className="block">
           <span className="mb-1.5 block text-xs font-medium text-muted-foreground">CEP da loja (origem)</span>
           <input className={inputClass} value={fromCep} onChange={(e) => setFromCep(e.target.value)} placeholder="01310-100" />
+          <button type="button" onClick={saveStoreZip} className="mt-1 text-xs text-primary hover:underline">
+            {savedZip && savedZip === fromCep.replace(/\D/g, "").slice(0, 8) ? "✓ CEP da loja salvo" : "Salvar como CEP da loja"}
+          </button>
         </label>
         <label className="block">
           <span className="mb-1.5 block text-xs font-medium text-muted-foreground">CEP do cliente (destino)</span>

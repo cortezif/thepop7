@@ -34,7 +34,23 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       segment: tenant.segment,
       catalogVocab: tenant.catalogVocab ?? null,
       productionEnabled: tenant.productionEnabled,
+      storeZip: (tenant.policies as any)?.storeZip ?? null,
     };
+  });
+
+  // POST /admin/store-config — CEP de origem da loja (entregas on-demand). ADR-030.
+  app.post("/store-config", async (req, reply) => {
+    const body = z.object({ tenantSlug: z.string(), storeZip: z.string().nullable() }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+    const tenant = await resolveTenant(body.data.tenantSlug);
+    if (!tenant) return reply.code(404).send({ error: "tenant not found" });
+    const zip = (body.data.storeZip ?? "").replace(/\D/g, "").slice(0, 8) || null;
+    const policies = { ...((tenant.policies as Record<string, unknown>) ?? {}) };
+    if (zip) policies.storeZip = zip; else delete policies.storeZip;
+    await withTenant(tenant.id, async (tx) => {
+      await tx.tenant.update({ where: { id: tenant.id }, data: { policies: policies as any } });
+    });
+    return { ok: true, storeZip: zip };
   });
 
   // GET /admin/segment-presets — tipos de negócio disponíveis (ADR-029)
