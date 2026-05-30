@@ -17,7 +17,12 @@ DECLARE
   t text;
   tables text[] := ARRAY[
     'users','contacts','products','conversations','orders',
-    'stock_reservations','suppliers','domain_events','integrations','product_barcodes','stock_movements'
+    'stock_reservations','suppliers','domain_events','integrations','product_barcodes','stock_movements',
+    'raw_materials','bills_of_materials','production_batches','delivery_tariffs',
+    -- Defesa em profundidade: tabelas tenant-scoped que dependiam só do código.
+    -- (NÃO inclui wholesale_*/b2b_buyers: são marketplace cross-tenant — ADR-024.)
+    'purchase_requests','quotes','supplier_offers','price_researches','price_research_invites',
+    'price_quotes','research_attachments','nps_responses','ad_campaigns','audit_logs'
   ];
 BEGIN
   FOREACH t IN ARRAY tables LOOP
@@ -52,5 +57,13 @@ DROP POLICY IF EXISTS tenant_isolation_returns ON returns;
 CREATE POLICY tenant_isolation_returns ON returns
   USING ("orderId" IN (SELECT id FROM orders))
   WITH CHECK ("orderId" IN (SELECT id FROM orders));
+
+-- bom_items: filtra via FK para bills_of_materials (não tem tenantId direto) — ADR-030
+ALTER TABLE bom_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bom_items FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation_bom_items ON bom_items;
+CREATE POLICY tenant_isolation_bom_items ON bom_items
+  USING ("bomId" IN (SELECT id FROM bills_of_materials))
+  WITH CHECK ("bomId" IN (SELECT id FROM bills_of_materials));
 
 COMMIT;

@@ -194,10 +194,16 @@ export function sanitizeAttributes(
 ): ExtractedProductAttributes {
   const styleVocab = vocab?.styles ?? [...STYLES];
   const occasionVocab = vocab?.occasions ?? [...OCCASIONS];
+  // Fallback conservador/neutro quando vazio. Prefere o neutro ("casual"/"dia-a-dia")
+  // se ele existe no vocabulário (caso moda); senão usa o 1º item do vocabulário
+  // — garante que o fallback seja sempre um valor VÁLIDO mesmo em segmentos custom
+  // (ADR-029), onde o neutro pode não existir.
+  const styleFallback = styleVocab.includes("casual") ? "casual" : (styleVocab[0] ?? "casual");
+  const occasionFallback = occasionVocab.includes("dia-a-dia") ? "dia-a-dia" : (occasionVocab[0] ?? "dia-a-dia");
   return {
     ...raw,
-    styles: filterToVocab(raw.styles, styleVocab, "styles", styleVocab[0] ?? "casual", productName),
-    occasions: filterToVocab(raw.occasions, occasionVocab, "occasions", occasionVocab[0] ?? "dia-a-dia", productName),
+    styles: filterToVocab(raw.styles, styleVocab, "styles", styleFallback, productName),
+    occasions: filterToVocab(raw.occasions, occasionVocab, "occasions", occasionFallback, productName),
     // fallbacks conservadores, alinhados com o SYSTEM ("decote medio, manga curta")
     neckline: validateScalar(raw.neckline, NECKLINES, "neckline", "medio", productName),
     length: validateScalar(raw.length, LENGTHS, "length", "medio", productName),

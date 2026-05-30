@@ -4,10 +4,13 @@ import { getPrisma, withTenant, type Prisma } from "@hubadvisor/db";
 // — a verdade do saldo continua na Tray/CPlug. Cada in/out vira um lançamento
 // identificado por código de barras.
 
-export type MovementType = "purchase_in" | "sale_out" | "return_in" | "adjust_in" | "adjust_out";
-const IN_TYPES: MovementType[] = ["purchase_in", "return_in", "adjust_in"];
+export type MovementType =
+  | "purchase_in" | "sale_out" | "return_in" | "adjust_in" | "adjust_out"
+  | "production_in" | "production_out" | "scrap_out"; // ADR-030 (Fase 2)
+const IN_TYPES: MovementType[] = ["purchase_in", "return_in", "adjust_in", "production_in"];
 const DELTA_SIGN: Record<MovementType, number> = {
-  purchase_in: 1, return_in: 1, adjust_in: 1, sale_out: -1, adjust_out: -1,
+  purchase_in: 1, return_in: 1, adjust_in: 1, production_in: 1,
+  sale_out: -1, adjust_out: -1, production_out: -1, scrap_out: -1,
 };
 
 export type MovementInput = {
