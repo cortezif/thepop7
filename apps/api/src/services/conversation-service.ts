@@ -1,5 +1,5 @@
 import { runAgentTurn, summarizeConversation, extractProductAttributes, DEFAULT_CASCADE, PRODUCTION_TOOL_DEFS, type AgentConfig, type ConversationContext, type AgentToolImpl } from "@hubadvisor/agent";
-import { getTariff, quoteDelivery } from "./delivery-service.js";
+import { getTariff, quoteDelivery, courierQuoteForTenant } from "./delivery-service.js";
 import { getPrisma, withTenant, decryptPII, resolveTenantCredentials } from "@hubadvisor/db";
 import { buildErpForTenant, getLogisticsConnector, getMessagingConnector } from "@hubadvisor/connectors";
 import { resolveErpCreds } from "../lib/erp.js";
@@ -180,7 +180,7 @@ export async function handleIncomingMessage(dto: IncomingDTO, log: FastifyBaseLo
     avoid: contact.avoid,
     usualSize: contact.usualSize ?? undefined,
     favoriteColors: contact.favoriteColors,
-  }, { autoApproveMaxBRL: Number(tenant.autoApproveMaxBRL), photoUrls: dto.photoUrls, erpCreds: await resolveErpCreds(tenant.id), segment: tenant.segment, vocab: (tenant.catalogVocab as any) ?? undefined, productionEnabled: tenant.productionEnabled });
+  }, { autoApproveMaxBRL: Number(tenant.autoApproveMaxBRL), photoUrls: dto.photoUrls, erpCreds: await resolveErpCreds(tenant.id), segment: tenant.segment, vocab: (tenant.catalogVocab as any) ?? undefined, productionEnabled: tenant.productionEnabled, storeZip: (tenant.policies as any)?.storeZip });
 
   // Se a cliente mandou foto, avisa o agente p/ chamar a busca visual (ele é text-only).
   let agentMessage = dto.text ?? "";
@@ -348,7 +348,7 @@ export async function suggestReply(tenantSlug: string, conversationId: string, l
     avoid: contact?.avoid ?? [],
     usualSize: contact?.usualSize ?? undefined,
     favoriteColors: contact?.favoriteColors ?? [],
-  }, { readOnly: true, erpCreds: await resolveErpCreds(tenant.id), segment: tenant.segment, vocab: (tenant.catalogVocab as any) ?? undefined, productionEnabled: tenant.productionEnabled });
+  }, { readOnly: true, erpCreds: await resolveErpCreds(tenant.id), segment: tenant.segment, vocab: (tenant.catalogVocab as any) ?? undefined, productionEnabled: tenant.productionEnabled, storeZip: (tenant.policies as any)?.storeZip });
 
   const turn = await runAgentTurn(cfg, ctx, userMessage, tools, undefined, tenant.productionEnabled ? PRODUCTION_TOOL_DEFS : []);
   return {
@@ -364,7 +364,7 @@ export async function suggestReply(tenantSlug: string, conversationId: string, l
  * Tudo o que o agente "decide fazer" passa por aqui — então este é o
  * lugar pra colocar guardrails (limites, regras de negócio, auditoria).
  */
-function buildAgentTools(tenantId: string, contactId: string, conversationId: string, log: FastifyBaseLogger, customerProfile: CustomerProfile = {}, opts: { readOnly?: boolean; autoApproveMaxBRL?: number; photoUrls?: string[]; erpCreds?: { trayCreds: { apiUrl: string; accessToken: string } | null; blingCreds: { accessToken: string } | null }; segment?: string; vocab?: { styles?: string[]; occasions?: string[] }; productionEnabled?: boolean } = {}): AgentToolImpl {
+function buildAgentTools(tenantId: string, contactId: string, conversationId: string, log: FastifyBaseLogger, customerProfile: CustomerProfile = {}, opts: { readOnly?: boolean; autoApproveMaxBRL?: number; photoUrls?: string[]; erpCreds?: { trayCreds: { apiUrl: string; accessToken: string } | null; blingCreds: { accessToken: string } | null }; segment?: string; vocab?: { styles?: string[]; occasions?: string[] }; productionEnabled?: boolean; storeZip?: string } = {}): AgentToolImpl {
   const erp       = buildErpForTenant({ trayCreds: opts.erpCreds?.trayCreds ?? null, blingCreds: opts.erpCreds?.blingCreds ?? null });
   const logistics = getLogisticsConnector();
   const prisma    = getPrisma();
@@ -567,6 +567,19 @@ function buildAgentTools(tenantId: string, contactId: string, conversationId: st
         const q = quoteDelivery({ distanceKm: input.distanciaKm, volume: orderVol, tariff });
         shipBRL = q.priceBRL;
         shipCarrier = `Entrega própria (${q.modal})`;
+      } else if (input.entregadorOnDemand) {
+        // Entregador sob demanda: geocoda os CEPs e cota; modal automático por volume.
+        const fromCep = opts.storeZip ?? process.env.STORE_DEFAULT_ZIP ?? "01310-100";
+        const tariff = await getTariff(tenantId);
+        const modal = orderVol <= tariff.motoVolumeLimit ? "moto" : "carro";
+        const itemsValueBRL = items.reduce((s, i) => s + i.unitPriceBRL * i.quantity, 0);
+        const cq = await courierQuoteForTenant(tenantId, { fromCep, toCep: input.cep, modal, itemsValueBRL });
+        if (!cq.ok) {
+          log.warn({ reason: cq.reason }, "tool:criar_pedido — cotação de entregador falhou");
+          return { error: `Não consegui cotar o entregador (${cq.reason}). Ofereça outra forma de entrega (própria ou transportadora).` } as any;
+        }
+        shipBRL = cq.priceBRL;
+        shipCarrier = `Entregador ${cq.modal}${cq.mock ? " (simulado)" : ` (${cq.provider})`}`;
       } else {
         const quotes = await logistics.quote({
           fromZip: "01310-100", toZip: input.cep,

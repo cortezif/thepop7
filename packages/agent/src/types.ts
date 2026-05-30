@@ -82,6 +82,8 @@ export interface AgentToolImpl {
     // Fabricação (ADR-030 — Fase 4): entrega própria no lugar da transportadora.
     entregaPropria?: boolean;
     distanciaKm?: number;
+    // Entrega por entregador sob demanda (Lalamove/Open Delivery): geocoda + cota.
+    entregadorOnDemand?: boolean;
   }): Promise<{ pedidoId: string; totalBRL: number; pixCopiaCola?: string; expiraEm?: string }>;
 
   statusPedido(pedidoId: string): Promise<unknown>;
