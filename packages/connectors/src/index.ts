@@ -20,3 +20,5 @@ export * from "./fiscal/mock-fiscal.js";
 export * from "./messaging/whatsapp-cloud.js";
 export * from "./messaging/instagram.js";
 export * from "./messaging/mock-messaging.js";
+
+export * from "./email/resend.js";

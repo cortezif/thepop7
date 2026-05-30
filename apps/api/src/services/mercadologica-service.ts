@@ -1,7 +1,31 @@
 import crypto from "node:crypto";
 import { getPrisma, withTenant } from "@hubadvisor/db";
-import { getMessagingConnector } from "@hubadvisor/connectors";
+import { getMessagingConnector, sendEmail, emailConfigured, inboundReplyTo } from "@hubadvisor/connectors";
+import { parseSupplierQuote } from "@hubadvisor/agent";
 import { consolidatePrices, type EstimationMethod } from "./price-consolidation.js";
+
+const onlyDigits = (s: string) => s.replace(/\D/g, "");
+
+/** Casa as descrições da pesquisa com os preços extraídos pela IA. */
+function matchExtracted(
+  researchItems: Array<{ description: string }>,
+  parsed: Array<{ description: string; unitPriceBRL: number }>,
+): Array<{ item: string; unitPriceBRL: number }> {
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const out: Array<{ item: string; unitPriceBRL: number }> = [];
+  if (researchItems.length === 0) {
+    // Sem itens de referência: usa as descrições do próprio fornecedor.
+    return parsed.map((p) => ({ item: p.description, unitPriceBRL: p.unitPriceBRL }));
+  }
+  researchItems.forEach((ri, i) => {
+    const target = norm(ri.description);
+    let hit = parsed.find((p) => { const n = norm(p.description); return n && (target.includes(n) || n.includes(target)); });
+    if (!hit && parsed.length === researchItems.length) hit = parsed[i];
+    if (!hit && researchItems.length === 1 && parsed.length === 1) hit = parsed[0];
+    if (hit && hit.unitPriceBRL > 0) out.push({ item: ri.description, unitPriceBRL: hit.unitPriceBRL });
+  });
+  return out;
+}
 
 /* ============================================================================
    Mercadológica / rede de fornecedores (ADR-029).
@@ -155,20 +179,31 @@ export async function sendInvites(tenantId: string, researchId: string) {
       continue;
     }
     const link = publicQuoteLink(inv.token);
-    let sentVia = "link";
+    const itemsTxt = (research.items as any[]).map((i) => `• ${i.description}${i.quantity ? ` (${i.quantity})` : ""}`).join("\n");
+    const body = `Olá! ${research.title}\n\nGostaríamos da sua cotação para:\n${itemsTxt}\n\nResponda pelo link (prazo ${research.deadlineDays} dias): ${link}`;
+    const vias: string[] = [];
+
     if (inv.phone) {
-      const itemsTxt = (research.items as any[]).map((i) => `• ${i.description}${i.quantity ? ` (${i.quantity})` : ""}`).join("\n");
-      const text = `Olá! ${research.title}\n\nGostaríamos da sua cotação para:\n${itemsTxt}\n\nResponda pelo link (prazo ${research.deadlineDays} dias): ${link}`;
       try {
-        await messaging.send({ tenantId, conversationId: `rfq-${inv.id}`, type: "text", text, to: inv.phone, channel: "whatsapp" });
-        sentVia = "whatsapp";
-      } catch { sentVia = "link (falha no envio — encaminhe manualmente)"; }
+        await messaging.send({ tenantId, conversationId: `rfq-${inv.id}`, type: "text", text: body, to: inv.phone, channel: "whatsapp" });
+        vias.push("whatsapp");
+      } catch { /* segue — link continua disponível */ }
     }
+    if (inv.email && emailConfigured()) {
+      const r = await sendEmail({
+        to: inv.email,
+        subject: `Pedido de cotação — ${research.title}`,
+        text: `${body}\n\nVocê também pode responder este e-mail informando os preços.`,
+        replyTo: inboundReplyTo(inv.token), // captura inbound por e-mail (plus-addressing)
+      });
+      if (r.ok) vias.push("e-mail");
+    }
+
     await prisma.priceResearchInvite.update({
       where: { id: inv.id },
       data: { state: "enviado", sentAt: new Date(), attempts: { increment: 1 } },
     });
-    links.push({ supplierName: inv.supplierName, link, sentVia });
+    links.push({ supplierName: inv.supplierName, link, sentVia: vias.length ? vias.join(" + ") : "link (encaminhe manualmente)" });
   }
 
   await prisma.priceResearch.update({ where: { id: researchId }, data: { status: "em-coleta" } });
@@ -213,6 +248,156 @@ export async function submitPublicQuote(token: string, input: {
     where: { id: invite.id }, data: { state: "respondido", respondedAt: new Date() },
   });
   return { ok: true as const, quoteId: q.id };
+}
+
+// ── Extração por IA + captura inbound (WhatsApp / e-mail / texto colado) ────────
+
+type ExtractContext = {
+  tenantId: string;
+  researchId?: string | null;
+  inviteId?: string | null;
+  supplierId?: string | null;
+  supplierName: string;
+  origin: "ia" | "whatsapp-inbound" | "email-inbound";
+};
+
+/**
+ * Núcleo da captura por IA: lê o texto livre do fornecedor (WhatsApp/e-mail/colado),
+ * extrai preço(s) + condições via Claude (parseSupplierQuote), casa com os itens da
+ * pesquisa e grava cotações PENDENTES (aprovação humana antes de entrar no comparativo).
+ */
+export async function extractAndRecordQuotes(ctx: ExtractContext, rawText: string) {
+  const prisma = getPrisma();
+  let researchItems: Array<{ description: string }> = [];
+  if (ctx.researchId) {
+    const r = await prisma.priceResearch.findFirst({ where: { id: ctx.researchId, tenantId: ctx.tenantId } });
+    researchItems = (r?.items as any[] | undefined)?.map((i) => ({ description: i.description })) ?? [];
+  }
+
+  const parsed = await parseSupplierQuote(rawText, {
+    itemsRequested: researchItems.map((i) => i.description).join("; ") || undefined,
+  });
+  if (!parsed.ok) return { ok: false as const, reason: `IA não extraiu: ${parsed.error}` };
+
+  const details = {
+    leadTimeDays: parsed.quote.leadTimeDays ?? undefined,
+    paymentTerms: parsed.quote.paymentTerms ?? undefined,
+    confidence: parsed.quote.confidence,
+    extraidoPor: "claude",
+    raw: rawText.slice(0, 2000),
+  };
+
+  const matched = matchExtracted(researchItems, parsed.quote.items.map((i) => ({ description: i.description, unitPriceBRL: i.unitPriceBRL })));
+  if (matched.length === 0) return { ok: false as const, reason: "nenhum preço reconhecido no texto" };
+
+  const ids: string[] = [];
+  for (const m of matched) {
+    const q = await prisma.priceQuote.create({
+      data: {
+        tenantId: ctx.tenantId, researchId: ctx.researchId ?? null, inviteId: ctx.inviteId ?? null,
+        supplierId: ctx.supplierId ?? null, supplierName: ctx.supplierName,
+        item: m.item, unitPriceBRL: m.unitPriceBRL, quantity: 1,
+        origin: ctx.origin, details: details as any,
+      },
+    });
+    ids.push(q.id);
+  }
+  return { ok: true as const, quoteIds: ids, count: ids.length, details };
+}
+
+/** Rota do operador: cola o texto da proposta → IA extrai → cotações pendentes. */
+export async function extractQuoteFromText(tenantId: string, input: {
+  researchId?: string; supplierId?: string; supplierName: string; text: string;
+}) {
+  return extractAndRecordQuotes(
+    { tenantId, researchId: input.researchId ?? null, supplierId: input.supplierId ?? null, supplierName: input.supplierName, origin: "ia" },
+    input.text,
+  );
+}
+
+/** Acha um convite aguardando resposta pelo telefone do remetente (WhatsApp inbound). */
+async function findOpenInviteByPhone(phone: string) {
+  const prisma = getPrisma();
+  const digits = onlyDigits(phone);
+  if (!digits) return null;
+  const candidates = await prisma.priceResearchInvite.findMany({
+    where: { phone: { not: null }, state: { in: ["enviado", "reenviado"] } },
+    orderBy: { sentAt: "desc" }, take: 50,
+  });
+  return candidates.find((c) => onlyDigits(c.phone ?? "").endsWith(digits.slice(-10))) ?? null;
+}
+
+/**
+ * Captura inbound por WhatsApp: chamada pelo webhook Meta quando o remetente casa
+ * com um convite de cotação aberto. Retorna matched=false se não for um fornecedor
+ * em cotação (aí o webhook segue o fluxo normal de atendimento).
+ */
+export async function captureWhatsappInbound(phone: string, text: string) {
+  const prisma = getPrisma();
+  const invite = await findOpenInviteByPhone(phone);
+  if (!invite) return { matched: false as const };
+  const r = await extractAndRecordQuotes(
+    { tenantId: invite.tenantId, researchId: invite.researchId, inviteId: invite.id, supplierId: invite.supplierId, supplierName: invite.supplierName, origin: "whatsapp-inbound" },
+    text,
+  );
+  await prisma.priceResearchInvite.update({
+    where: { id: invite.id },
+    data: r.ok ? { state: "respondido", respondedAt: new Date() } : { state: "recebimento-confirmado" as any, respondedAt: new Date() },
+  });
+  return { matched: true as const, ...r };
+}
+
+/** Captura inbound por e-mail (handler do /webhooks/email-inbound), via token plus-address. */
+export async function captureEmailInbound(token: string, text: string) {
+  const prisma = getPrisma();
+  const invite = await prisma.priceResearchInvite.findUnique({ where: { token } });
+  if (!invite) return { ok: false as const, reason: "convite não encontrado" };
+  const r = await extractAndRecordQuotes(
+    { tenantId: invite.tenantId, researchId: invite.researchId, inviteId: invite.id, supplierId: invite.supplierId, supplierName: invite.supplierName, origin: "email-inbound" },
+    text,
+  );
+  await prisma.priceResearchInvite.update({
+    where: { id: invite.id }, data: { state: "respondido", respondedAt: new Date() },
+  });
+  return r;
+}
+
+/**
+ * Reenvio/cobrança automática (cron): convites enviados/reenviados além do prazo,
+ * sem resposta. Reenvia até 3 tentativas; depois marca "sem-resposta". Roda por
+ * todos os tenants (chamado pelo worker).
+ */
+export async function processResends() {
+  const prisma = getPrisma();
+  const open = await prisma.priceResearchInvite.findMany({
+    where: { state: { in: ["enviado", "reenviado"] }, sentAt: { not: null } },
+    include: { research: true },
+  });
+  const now = Date.now();
+  let resent = 0, gaveUp = 0;
+  for (const inv of open) {
+    if (!inv.research) continue;
+    const deadlineMs = inv.research.deadlineDays * 86_400_000;
+    if (!inv.sentAt || now - inv.sentAt.getTime() < deadlineMs) continue; // ainda no prazo
+    if (inv.attempts >= 3) {
+      await prisma.priceResearchInvite.update({ where: { id: inv.id }, data: { state: "sem-resposta" } });
+      gaveUp++;
+      continue;
+    }
+    const link = publicQuoteLink(inv.token);
+    const body = `Lembrete: ainda aguardamos sua cotação para "${inv.research.title}". Responda pelo link: ${link}`;
+    if (inv.phone) {
+      try { await getMessagingConnector("whatsapp").send({ tenantId: inv.tenantId, conversationId: `rfq-${inv.id}`, type: "text", text: body, to: inv.phone, channel: "whatsapp" }); } catch { /* segue */ }
+    }
+    if (inv.email && emailConfigured()) {
+      await sendEmail({ to: inv.email, subject: `Lembrete de cotação — ${inv.research.title}`, text: body, replyTo: inboundReplyTo(inv.token) });
+    }
+    await prisma.priceResearchInvite.update({
+      where: { id: inv.id }, data: { state: "reenviado", attempts: { increment: 1 }, sentAt: new Date() },
+    });
+    resent++;
+  }
+  return { resent, gaveUp };
 }
 
 /** Dados públicos do convite (para a tela /cotacao/<token>). Sem PII da loja. */

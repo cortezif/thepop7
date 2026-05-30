@@ -19,7 +19,7 @@ import { authRoutes } from "./routes/auth.js";
 import { integrationRoutes } from "./routes/integrations.js";
 import { stockRoutes } from "./routes/stock.js";
 import { platformRoutes } from "./routes/platform.js";
-import { mercadologicaRoutes, cotacaoPublicaRoutes } from "./routes/mercadologica.js";
+import { mercadologicaRoutes, cotacaoPublicaRoutes, cronRoutes } from "./routes/mercadologica.js";
 import { requireAuth } from "./auth.js";
 
 export function buildApp() {
@@ -63,6 +63,7 @@ export function buildApp() {
   app.register(webhookRoutes,      { prefix: "/webhooks" });      // Meta/MP/Melhor Envio
   app.register(platformRoutes,     { prefix: "/platform" });       // painel da plataforma (chave própria, ADR-024)
   app.register(cotacaoPublicaRoutes, { prefix: "/cotacao-publica" }); // resposta de cotação por token (ADR-029)
+  app.register(cronRoutes,           { prefix: "/cron" });             // reenvio de cotações (worker, segredo)
 
   // Rotas PROTEGIDAS (painel do operador): exigem JWT válido (F2).
   app.register(async (secure) => {

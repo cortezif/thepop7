@@ -6,7 +6,7 @@ import {
   createResearch, listResearches, addInvites, sendInvites,
   recordPriceQuote, listPendingQuotes, approveQuote, rejectQuote,
   consolidateResearch, closeResearch, mercadologicaPanel,
-  submitPublicQuote, getPublicInvite,
+  submitPublicQuote, getPublicInvite, extractQuoteFromText, processResends,
 } from "../services/mercadologica-service.js";
 
 async function tid(slug: string) {
@@ -115,6 +115,18 @@ export const mercadologicaRoutes: FastifyPluginAsync = async (app) => {
     return recordPriceQuote(id, b.data);
   });
 
+  // IA extrai a proposta de um texto colado (e-mail/WhatsApp/PDF transcrito) → pendente
+  app.post("/quotes/extract", async (req, reply) => {
+    const b = z.object({
+      tenantSlug: z.string(), supplierName: z.string().min(1), text: z.string().min(3),
+      researchId: z.string().optional(), supplierId: z.string().optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: b.error.flatten() });
+    const id = await tid(b.data.tenantSlug);
+    if (!id) return reply.code(404).send({ error: "tenant not found" });
+    return extractQuoteFromText(id, b.data);
+  });
+
   app.get("/quotes/pending", async (req, reply) => {
     const id = await tid((req.query as any).tenantSlug);
     if (!id) return reply.code(404).send({ error: "tenant not found" });
@@ -137,6 +149,17 @@ export const mercadologicaRoutes: FastifyPluginAsync = async (app) => {
     const id = await tid((req.query as any).tenantSlug);
     if (!id) return reply.code(404).send({ error: "tenant not found" });
     return mercadologicaPanel(id);
+  });
+};
+
+// ── Rota de CRON (aberta, protegida por segredo): reenvio de convites ───────────
+export const cronRoutes: FastifyPluginAsync = async (app) => {
+  app.post("/mercadologica-resend", async (req, reply) => {
+    const secret = process.env.CRON_SECRET;
+    if (secret && (req.headers["x-cron-key"] ?? "") !== secret) {
+      return reply.code(403).send({ error: "forbidden" });
+    }
+    return processResends();
   });
 };
 

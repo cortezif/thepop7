@@ -1,6 +1,8 @@
 import type { FastifyPluginAsync } from "fastify";
 import { getPrisma, withTenant } from "@hubadvisor/db";
+import { tokenFromAddress } from "@hubadvisor/connectors";
 import { handleIncomingMessage } from "../services/conversation-service.js";
+import { captureWhatsappInbound, captureEmailInbound } from "../services/mercadologica-service.js";
 
 // Webhooks externos. GET = verification handshake (Meta). POST = evento real.
 // Cada handler processa o evento ou delega ao serviço correspondente.
@@ -40,6 +42,16 @@ export const webhookRoutes: FastifyPluginAsync = async (app) => {
           const text = msg.text?.body ?? (msg.type === "image" ? "[imagem]" : "");
           // Detectar tenant pelo número de destino
           const toPhone = value?.metadata?.display_phone_number ?? "";
+          // Mercadológica (ADR-029): se o remetente é um fornecedor com cotação
+          // aberta, captura a proposta (IA) em vez de acionar o atendimento.
+          try {
+            const captured = await captureWhatsappInbound(from, text);
+            if (captured.matched) {
+              app.log.info({ from, ok: (captured as any).ok }, "WA inbound capturado como cotação (RFQ)");
+              continue;
+            }
+          } catch (e) { app.log.warn({ e: String(e) }, "captura RFQ WA falhou — segue atendimento"); }
+
           const tenantSlug = await resolveTenantByPhone(toPhone);
           if (!tenantSlug) { app.log.warn({ toPhone }, "nenhum tenant para o número WA"); continue; }
           await handleIncomingMessage(
@@ -179,6 +191,26 @@ export const webhookRoutes: FastifyPluginAsync = async (app) => {
       app.log.info({ orderId: order.id, newStatus, trackingCode }, "✅ Status do pedido atualizado via ME webhook");
     } catch (e) {
       app.log.error(e, "ME webhook erro interno");
+    }
+  });
+
+  // ── E-mail inbound (Mercadológica, ADR-029) ─────────────────────────────────--
+  // Provedor de inbound (Resend/Cloudflare Email Routing/SendGrid Inbound Parse)
+  // posta aqui. Casa o token via plus-addressing cotacao+<token>@ e extrai por IA.
+  app.post("/email-inbound", async (req, reply) => {
+    reply.send({ received: true });
+    const body = req.body as any;
+    try {
+      // Campos tolerantes a diferentes provedores
+      const to = body?.to ?? body?.recipient ?? body?.envelope?.to ?? "";
+      const toStr = Array.isArray(to) ? to.join(",") : String(to);
+      const text = body?.text ?? body?.["body-plain"] ?? body?.stripped_text ?? body?.html ?? "";
+      const token = body?.token ?? tokenFromAddress(toStr);
+      if (!token || !text) { app.log.info({ toStr }, "email-inbound: sem token/texto"); return; }
+      const r = await captureEmailInbound(String(token), String(text));
+      app.log.info({ token, ok: (r as any).ok }, "email-inbound processado");
+    } catch (e) {
+      app.log.error(e, "email-inbound erro interno");
     }
   });
 };

@@ -13,6 +13,7 @@ import { postSaleProcessor } from "./jobs/post-sale.js";
 import { catalogSyncProcessor } from "./jobs/catalog-sync.js";
 import { productEmbeddingProcessor } from "./jobs/product-embedding.js";
 import { catalogEnrichmentProcessor } from "./jobs/catalog-enrichment.js";
+import { mercadologicaResendProcessor } from "./jobs/mercadologica-resend.js";
 
 const log = pino({ name: "worker", transport: { target: "pino-pretty", options: { translateTime: "HH:MM:ss" } } });
 
@@ -27,6 +28,7 @@ const queues = {
   "catalog-sync":       new Queue("catalog-sync", { connection }),
   "product-embedding":  new Queue("product-embedding", { connection }),
   "catalog-enrichment": new Queue("catalog-enrichment", { connection }),
+  "mercadologica-resend": new Queue("mercadologica-resend", { connection }),
 };
 
 new Worker("reservation-expiry", reservationExpiryProcessor, { connection })
@@ -49,11 +51,22 @@ new Worker("catalog-enrichment", catalogEnrichmentProcessor, { connection })
   .on("completed", (job) => log.info({ id: job.id }, "catalog-enrichment done"))
   .on("failed", (job, err) => log.error({ id: job?.id, err }, "catalog-enrichment failed"));
 
+new Worker("mercadologica-resend", mercadologicaResendProcessor, { connection })
+  .on("completed", (job) => log.info({ id: job.id }, "mercadologica-resend done"))
+  .on("failed", (job, err) => log.error({ id: job?.id, err }, "mercadologica-resend failed"));
+
 // Recorrência: limpa reservas expiradas a cada minuto
 queues["reservation-expiry"].add(
   "sweep",
   {},
   { repeat: { every: 60_000 }, removeOnComplete: 50, removeOnFail: 100 }
+);
+
+// Recorrência: reenvio de cotações vencidas (ADR-029) — de hora em hora
+queues["mercadologica-resend"].add(
+  "sweep",
+  {},
+  { repeat: { every: 3_600_000 }, removeOnComplete: 24, removeOnFail: 50 }
 );
 
 log.info("Worker iniciado, queues registradas");

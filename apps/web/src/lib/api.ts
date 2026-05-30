@@ -262,6 +262,8 @@ export const api = {
   mercCloseResearch: (researchId: string) => post<{ ok: boolean }>(`/mercadologica/researches/${researchId}/close`, {}),
   mercRecordQuote: (payload: { researchId?: string; supplierId?: string; supplierName: string; item: string; unitPriceBRL: number; quantity?: number }) =>
     post<{ ok: boolean; quoteId?: string }>(`/mercadologica/quotes`, payload),
+  mercExtractQuote: (payload: { supplierName: string; text: string; researchId?: string; supplierId?: string }) =>
+    post<{ ok: boolean; count?: number; reason?: string }>(`/mercadologica/quotes/extract`, payload),
   mercPendingQuotes: () => get<MercPendingQuote[]>(`/mercadologica/quotes/pending`),
   mercApproveQuote: (id: string) => post<{ ok: boolean }>(`/mercadologica/quotes/${id}/approve`, {}),
   mercRejectQuote: (id: string, reason?: string) => post<{ ok: boolean }>(`/mercadologica/quotes/${id}/reject`, { reason }),

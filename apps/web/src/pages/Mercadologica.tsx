@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Store, Search, ClipboardCheck, Plus, Send, Trophy, AlertTriangle, Copy, CheckCircle2, XCircle } from "lucide-react";
+import { Store, Search, ClipboardCheck, Plus, Send, Trophy, AlertTriangle, Copy, CheckCircle2, XCircle, Sparkles } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { Page, Card, CardHeader, Button, Badge, EmptyState, Skeleton, Tabs, inputClass } from "../components/ui";
 import { api, type MercSupplier, type MercResearch, type MercConsolidation, type MercPendingQuote, type MercPanel } from "../lib/api";
@@ -381,26 +381,93 @@ function Pendentes() {
   function load() { api.mercPendingQuotes().then(setList).catch(() => setList([])); }
   useEffect(load, []);
 
-  if (!list) return <Skeleton className="h-40 w-full" />;
-  if (list.length === 0) return <EmptyState icon={ClipboardCheck} title="Nada pendente" description="Cotações recebidas dos fornecedores (formulário/WhatsApp) aparecem aqui para você aprovar antes de entrarem no comparativo." />;
+  return (
+    <div className="space-y-6">
+      <ExtractBox onDone={load} />
+      {!list ? (
+        <Skeleton className="h-40 w-full" />
+      ) : list.length === 0 ? (
+        <EmptyState icon={ClipboardCheck} title="Nada pendente" description="Cotações recebidas (formulário, WhatsApp, e-mail ou extração por IA) aparecem aqui para aprovar antes de entrarem no comparativo." />
+      ) : (
+        <div className="space-y-3">{list.map((q) => <PendingCard key={q.id} q={q} onChange={load} />)}</div>
+      )}
+    </div>
+  );
+}
+
+function ExtractBox({ onDone }: { onDone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [supplierName, setSupplierName] = useState("");
+  const [text, setText] = useState("");
+  const [researchId, setResearchId] = useState("");
+  const [researches, setResearches] = useState<MercResearch[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  useEffect(() => { if (open) api.mercResearches().then(setResearches).catch(() => {}); }, [open]);
+
+  async function run() {
+    if (!supplierName.trim() || text.trim().length < 3) return;
+    setBusy(true); setMsg(null);
+    try {
+      const r = await api.mercExtractQuote({ supplierName: supplierName.trim(), text: text.trim(), researchId: researchId || undefined });
+      setMsg(r.ok ? `IA extraiu ${r.count} preço(s) → foram para a fila de aprovação.` : `Não consegui extrair: ${r.reason ?? "texto sem preço reconhecível"}`);
+      if (r.ok) { setText(""); setSupplierName(""); onDone(); }
+    } catch (e: any) { setMsg(String(e?.message ?? e)); }
+    finally { setBusy(false); }
+  }
 
   return (
-    <div className="space-y-3">
-      {list.map((q) => (
-        <Card key={q.id}>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium">{q.item}</p>
-              <p className="text-xs text-muted-foreground">{q.supplierName} · {q.origin} · {new Date(q.createdAt).toLocaleString("pt-BR")}</p>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="font-serif text-lg font-semibold">{formatBRL(q.unitPriceBRL)}</span>
-              <Button size="sm" variant="soft" Icon={CheckCircle2} onClick={async () => { await api.mercApproveQuote(q.id); load(); }}>Aprovar</Button>
-              <Button size="sm" variant="danger" Icon={XCircle} onClick={async () => { await api.mercRejectQuote(q.id); load(); }}>Recusar</Button>
-            </div>
+    <Card>
+      <CardHeader
+        icon={Sparkles}
+        title="Extrair proposta com IA"
+        subtitle="Cole o texto da proposta (e-mail, WhatsApp, ou transcrição de PDF). A IA identifica preços, prazo, frete e pagamento."
+        action={<Button size="sm" variant="ghost" onClick={() => setOpen((o) => !o)}>{open ? "Fechar" : "Abrir"}</Button>}
+      />
+      {open && (
+        <div className="mt-4 space-y-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <input className={inputClass} placeholder="Nome do fornecedor" value={supplierName} onChange={(e) => setSupplierName(e.target.value)} />
+            <select className={inputClass} value={researchId} onChange={(e) => setResearchId(e.target.value)}>
+              <option value="">Vincular a uma pesquisa (opcional)</option>
+              {researches.map((r) => <option key={r.id} value={r.id}>{r.title}</option>)}
+            </select>
           </div>
-        </Card>
-      ))}
-    </div>
+          <textarea className={`${inputClass} min-h-28`} placeholder={'Ex: "Boa tarde! O cabide cx100 sai a R$ 79,90, prazo 4 dias úteis, pix antecipado."'} value={text} onChange={(e) => setText(e.target.value)} />
+          <div className="flex items-center gap-3">
+            <Button Icon={Sparkles} onClick={run} disabled={busy}>{busy ? "Extraindo…" : "Extrair com IA"}</Button>
+            {msg && <span className="text-sm text-muted-foreground">{msg}</span>}
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function PendingCard({ q, onChange }: { q: MercPendingQuote; onChange: () => void }) {
+  const d = (q.details ?? {}) as Record<string, any>;
+  const extras = [
+    d.leadTimeDays != null ? `prazo ${d.leadTimeDays}d` : "",
+    d.paymentTerms ? `pgto ${d.paymentTerms}` : "",
+    d.frete ? `frete ${d.frete}` : "",
+  ].filter(Boolean).join(" · ");
+  return (
+    <Card>
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="font-medium">{q.item}</p>
+          <p className="text-xs text-muted-foreground">
+            {q.supplierName} · {q.origin} · {new Date(q.createdAt).toLocaleString("pt-BR")}
+            {extras ? ` · ${extras}` : ""}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="font-serif text-lg font-semibold">{formatBRL(q.unitPriceBRL)}</span>
+          <Button size="sm" variant="soft" Icon={CheckCircle2} onClick={async () => { await api.mercApproveQuote(q.id); onChange(); }}>Aprovar</Button>
+          <Button size="sm" variant="danger" Icon={XCircle} onClick={async () => { await api.mercRejectQuote(q.id); onChange(); }}>Recusar</Button>
+        </div>
+      </div>
+    </Card>
   );
 }
