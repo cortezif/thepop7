@@ -8,6 +8,7 @@ import {
   consolidateResearch, closeResearch, mercadologicaPanel,
   submitPublicQuote, getPublicInvite, extractQuoteFromText, extractQuoteFromAttachments, processResends,
 } from "../services/mercadologica-service.js";
+import { readAttachment } from "../services/attachment-storage.js";
 
 async function tid(slug: string) {
   const t = await getPrisma().tenant.findUnique({ where: { slug } });
@@ -146,6 +147,17 @@ export const mercadologicaRoutes: FastifyPluginAsync = async (app) => {
     const id = await tid((req.query as any).tenantSlug);
     if (!id) return reply.code(404).send({ error: "tenant not found" });
     return listPendingQuotes(id);
+  });
+
+  // Download de anexo de proposta (auditável, tenant-scoped)
+  app.get("/attachments/:id", async (req, reply) => {
+    const id = await tid((req.query as any).tenantSlug);
+    if (!id) return reply.code(404).send({ error: "tenant not found" });
+    const att = await readAttachment(id, (req.params as any).id);
+    if (!att) return reply.code(404).send({ error: "anexo não encontrado" });
+    reply.header("Content-Type", att.mimeType);
+    reply.header("Content-Disposition", `inline; filename="${att.fileName.replace(/"/g, "")}"`);
+    return reply.send(att.data);
   });
 
   app.post("/quotes/:id/approve", async (req, reply) => {

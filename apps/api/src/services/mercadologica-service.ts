@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { getPrisma, withTenant } from "@hubadvisor/db";
 import { getMessagingConnector, sendEmail, emailConfigured, inboundReplyTo } from "@hubadvisor/connectors";
 import { parseSupplierQuote, parseSupplierQuoteFromAttachments, type QuoteAttachment } from "@hubadvisor/agent";
+import { storeAttachment } from "./attachment-storage.js";
 import { consolidatePrices, type EstimationMethod } from "./price-consolidation.js";
 
 const onlyDigits = (s: string) => s.replace(/\D/g, "");
@@ -330,10 +331,20 @@ export async function extractQuoteFromAttachments(tenantId: string, input: {
   });
   if (!parsed.ok) return { ok: false as const, reason: `IA não extraiu do anexo: ${parsed.error}` };
 
+  // Persiste os anexos (auditável) e referencia nas cotações geradas.
+  const attachmentIds: string[] = [];
+  for (const a of input.attachments) {
+    try {
+      const stored = await storeAttachment({ tenantId, researchId: input.researchId ?? null, fileName: a.fileName, mimeType: a.mimeType, dataBase64: a.dataBase64 });
+      attachmentIds.push(stored.id);
+    } catch { /* falha de storage não impede a cotação */ }
+  }
+
   const details = {
     leadTimeDays: parsed.quote.leadTimeDays ?? undefined,
     paymentTerms: parsed.quote.paymentTerms ?? undefined,
     confidence: parsed.quote.confidence, extraidoPor: "claude", fonte: "anexo",
+    attachmentIds,
   };
   const matched = matchExtracted(researchItems, parsed.quote.items.map((i) => ({ description: i.description, unitPriceBRL: i.unitPriceBRL })));
   if (matched.length === 0) return { ok: false as const, reason: "nenhum preço reconhecido no anexo" };

@@ -78,6 +78,7 @@ model Tenant {
   priceResearches  PriceResearch[]
   priceResearchInvites PriceResearchInvite[]
   priceQuotes      PriceQuote[]
+  researchAttachments ResearchAttachment[]
 
   @@map("tenants")
 }
@@ -745,6 +746,24 @@ model PriceQuote {
   @@index([tenantId, item])
   @@index([researchId])
   @@map("price_quotes")
+}
+
+// Anexo de proposta (PDF/imagem/planilha) — auditável (ADR-029). Armazenado no
+// Postgres (bytea) por padrão; trocável por S3/R2 no storage-service depois.
+model ResearchAttachment {
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  researchId String?
+  fileName   String
+  mimeType   String
+  sizeBytes  Int
+  data       Bytes
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([tenantId, researchId])
+  @@map("research_attachments")
 }
 
 // ==========================================================

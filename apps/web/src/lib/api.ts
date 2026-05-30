@@ -272,6 +272,16 @@ export const api = {
   mercPanel: () => get<MercPanel>(`/mercadologica/panel`),
 };
 
+/** Abre um anexo de proposta (com token de auth) numa nova aba. */
+export async function openMercAttachment(id: string) {
+  const res = await fetch(`/api/mercadologica/attachments/${id}?tenantSlug=${tenantSlug()}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`anexo → ${res.status}`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  window.open(url, "_blank");
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
 // ── Cotação pública (sem auth) — usada na tela /cotacao/:token ──
 export async function fetchPublicInvite(token: string) {
   const res = await fetch(`/api/cotacao-publica/${token}`);

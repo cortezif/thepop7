@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Store, Search, ClipboardCheck, Plus, Send, Trophy, AlertTriangle, Copy, CheckCircle2, XCircle, Sparkles } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { Page, Card, CardHeader, Button, Badge, EmptyState, Skeleton, Tabs, inputClass } from "../components/ui";
-import { api, type MercSupplier, type MercResearch, type MercConsolidation, type MercPendingQuote, type MercPanel } from "../lib/api";
+import { api, openMercAttachment, type MercSupplier, type MercResearch, type MercConsolidation, type MercPendingQuote, type MercPanel } from "../lib/api";
 import { formatBRL } from "../lib/utils";
 
 type Tab = "painel" | "fornecedores" | "pesquisas" | "pendentes";
@@ -472,6 +472,7 @@ function PendingCard({ q, onChange }: { q: MercPendingQuote; onChange: () => voi
     d.paymentTerms ? `pgto ${d.paymentTerms}` : "",
     d.frete ? `frete ${d.frete}` : "",
   ].filter(Boolean).join(" · ");
+  const attachmentIds: string[] = Array.isArray(d.attachmentIds) ? d.attachmentIds : [];
   return (
     <Card>
       <div className="flex items-center justify-between">
@@ -481,6 +482,11 @@ function PendingCard({ q, onChange }: { q: MercPendingQuote; onChange: () => voi
             {q.supplierName} · {q.origin} · {new Date(q.createdAt).toLocaleString("pt-BR")}
             {extras ? ` · ${extras}` : ""}
           </p>
+          {attachmentIds.length > 0 && (
+            <button onClick={() => openMercAttachment(attachmentIds[0]!)} className="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline">
+              📎 ver anexo da proposta
+            </button>
+          )}
         </div>
         <div className="flex items-center gap-3">
           <span className="font-serif text-lg font-semibold">{formatBRL(q.unitPriceBRL)}</span>
