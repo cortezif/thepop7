@@ -218,11 +218,60 @@ export async function placeWholesaleOrder(quoteId: string, buyerRef: string) {
   }
   const total = Number(quote.totalBRL);
   const { commissionPct, commissionBRL, sellerNetBRL } = computeCommission(total);
-  const order = await prisma.wholesaleOrder.create({
-    data: { quoteId, sellerTenantId: quote.sellerTenantId, buyerRef, totalBRL: quote.totalBRL, commissionPct, commissionBRL, status: "placed" },
+  const lines = (quote.items as Array<{ productId: string; name: string; sku: string | null; qty: number }>) ?? [];
+
+  // Tudo numa transação: cria o pedido, baixa o estoque do vendedor e grava
+  // `sale_out` no razão. Re-valida estoque AGORA (pode ter mudado desde a cotação);
+  // se faltar, a transação inteira faz rollback (pedido não é criado).
+  try {
+    const order = await prisma.$transaction(async (tx) => {
+      const order = await tx.wholesaleOrder.create({
+        data: { quoteId, sellerTenantId: quote.sellerTenantId, buyerRef, totalBRL: quote.totalBRL, commissionPct, commissionBRL, status: "placed" },
+      });
+      for (const line of lines) await consumeWholesaleStock(tx, quote.sellerTenantId, line, order.id);
+      await tx.wholesaleQuote.update({ where: { id: quoteId }, data: { status: "ordered" } });
+      return order;
+    });
+    return { ok: true as const, orderId: order.id, status: order.status, totalBRL: total, commissionPct, commissionBRL, sellerNetBRL };
+  } catch (e) {
+    if (e instanceof StockShortage) return { ok: false as const, reason: e.message };
+    throw e;
+  }
+}
+
+class StockShortage extends Error {}
+
+/** Baixa o estoque do vendedor para uma linha do pedido B2B e grava `sale_out`. */
+async function consumeWholesaleStock(
+  tx: any, sellerTenantId: string,
+  line: { productId: string; name: string; sku: string | null; qty: number }, orderId: string,
+) {
+  const product = await tx.product.findUnique({ where: { id: line.productId } });
+  if (!product) throw new StockShortage(`produto ${line.productId} indisponível`);
+  const variants = (product.variants as Array<{ sku: string; stock?: number }>) ?? [];
+
+  if (line.sku) {
+    const v = variants.find((x) => x.sku === line.sku);
+    if (!v || num(v.stock) < line.qty) throw new StockShortage(`${product.name}: estoque insuficiente`);
+    v.stock = num(v.stock) - line.qty;
+  } else {
+    if (variants.reduce((s, v) => s + num(v.stock), 0) < line.qty) throw new StockShortage(`${product.name}: estoque insuficiente`);
+    let remaining = line.qty;
+    for (const v of variants) { if (remaining <= 0) break; const take = Math.min(num(v.stock), remaining); v.stock = num(v.stock) - take; remaining -= take; }
+  }
+  await tx.product.update({ where: { id: product.id }, data: { variants: variants as any } });
+
+  const bc = await tx.productBarcode.findFirst({
+    where: { tenantId: sellerTenantId, productId: product.id, ...(line.sku ? { variantSku: line.sku } : {}) },
+    select: { barcode: true },
   });
-  await prisma.wholesaleQuote.update({ where: { id: quoteId }, data: { status: "ordered" } });
-  return { ok: true as const, orderId: order.id, status: order.status, totalBRL: total, commissionPct, commissionBRL, sellerNetBRL };
+  await tx.stockMovement.create({
+    data: {
+      tenantId: sellerTenantId, barcode: bc?.barcode ?? "", productId: product.id,
+      variantSku: line.sku ?? variants[0]?.sku ?? "", type: "sale_out", quantity: line.qty,
+      refType: "wholesale_order", refId: orderId, actor: "b2b",
+    },
+  });
 }
 
 /**
