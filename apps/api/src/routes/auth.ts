@@ -6,6 +6,7 @@ import {
   connectTrayFromCallback,
   connectMpFromCallback,
   connectMeFromCallback,
+  connectBlingFromCallback,
 } from "../services/integration-service.js";
 
 export const authRoutes: FastifyPluginAsync = async (app) => {
@@ -147,6 +148,26 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     } catch (e: any) {
       req.log.error(e, "mercadopago callback falhou");
       return reply.redirect(`${redirectBase}?mp=erro&motivo=${encodeURIComponent(e?.message ?? "falha")}`);
+    }
+  });
+
+  // GET /auth/bling/callback — callback OAuth2 do Bling (ADR-004). O tenant vem
+  // no `state` (slug). Troca o code por tokens, persiste cifrado e volta ao painel.
+  app.get("/bling/callback", async (req, reply) => {
+    const q = z.object({ code: z.string().min(1), state: z.string().optional() }).safeParse(req.query);
+    const redirectBase = "/settings";
+    if (!q.success) return reply.redirect(`${redirectBase}?bling=erro&motivo=callback_invalido`);
+    const slug = (q.data.state ?? "thepop7").toLowerCase();
+    const tenant = await getPrisma().tenant.findUnique({ where: { slug } });
+    if (!tenant) return reply.redirect(`${redirectBase}?bling=erro&motivo=loja_nao_encontrada`);
+    try {
+      const base = process.env.APP_PUBLIC_URL ?? `${(req as any).protocol}://${(req.headers as any)["host"]}`;
+      const redirectUri = `${base.replace(/\/$/, "")}/api/auth/bling/callback`;
+      await connectBlingFromCallback(tenant.id, q.data.code, redirectUri);
+      return reply.redirect(`${redirectBase}?bling=ok`);
+    } catch (e: any) {
+      req.log.error(e, "bling callback falhou");
+      return reply.redirect(`${redirectBase}?bling=erro&motivo=${encodeURIComponent(e?.message ?? "falha")}`);
     }
   });
 

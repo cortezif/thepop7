@@ -14,6 +14,7 @@ export function Settings() {
       <Retention />
       <IdentityMerge />
       <TrayIntegration />
+      <BlingIntegration />
       <MercadoPagoIntegration />
       <MelhorEnvioIntegration />
       <WhatsAppStatus />
@@ -355,6 +356,22 @@ function TrayIntegration() {
       {err && <p className="mt-3 text-sm text-red-600">{err}</p>}
       {st?.lastError && !err && <p className="mt-2 text-xs text-red-500">Último erro: {st.lastError}</p>}
     </section>
+  );
+}
+
+function BlingIntegration() {
+  return (
+    <OAuthIntegration
+      icon={<Store className="h-5 w-5 text-muted-foreground" />}
+      title="Bling (ERP)"
+      description="ERP alternativo à Tray (produtos, estoque, pedidos, NFe). Conecte via OAuth para sincronizar o catálogo. Requer ERP_PROVIDER=bling."
+      provider="bling"
+      paramKey="bling"
+      loadFn={() => api.integrationStatus("bling")}
+      authorizeUrlFn={() => api.integrationAuthorize("bling")}
+      refreshFn={() => api.integrationRefresh("bling")}
+      disconnectFn={() => api.integrationDisconnect("bling")}
+    />
   );
 }
 

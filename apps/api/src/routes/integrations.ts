@@ -6,6 +6,7 @@ import {
   getTrayStatus, refreshTray, disconnectTray,
   getMpStatus, refreshMp, disconnectMp, buildMpUrl,
   getMeStatus, refreshMe, disconnectMe, buildMeUrl,
+  getBlingStatus, refreshBling, disconnectBling, buildBlingUrl,
   getWhatsAppStatus, getInstagramStatus, getCplugStatus, getAnthropicStatus,
   getProviderConfig, isAppConfigured, saveProviderConfig, getMaskedConfig, PROVIDER_FIELDS,
 } from "../services/integration-service.js";
@@ -114,6 +115,37 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
     const tenant = await resolveTenant((req.body as any)?.tenantSlug);
     if (!tenant) return reply.code(404).send({ error: "tenant not found" });
     return disconnectMe(tenant.id);
+  });
+
+  // ── BLING (ERP — OAuth2) ─────────────────────────────────────────────────────
+  app.get("/bling", async (req, reply) => {
+    const tenant = await resolveTenant((req.query as any).tenantSlug);
+    if (!tenant) return reply.code(404).send({ error: "tenant not found" });
+    return getBlingStatus(tenant.id);
+  });
+
+  app.get("/bling/authorize", async (req, reply) => {
+    const q = z.object({ tenantSlug: z.string() }).safeParse(req.query);
+    if (!q.success) return reply.code(400).send({ error: q.error.flatten() });
+    const tenant = await resolveTenant(q.data.tenantSlug);
+    if (!tenant) return reply.code(404).send({ error: "tenant not found" });
+    if (!(await isAppConfigured(tenant.id, "bling"))) return reply.code(400).send({ error: "Credenciais Bling não configuradas" });
+    const redirectUri = `${publicBase(req as any).replace(/\/$/, "")}/api/auth/bling/callback`;
+    const url = await buildBlingUrl(tenant.id, redirectUri, tenant.slug);
+    return { url };
+  });
+
+  app.post("/bling/refresh", async (req, reply) => {
+    const tenant = await resolveTenant((req.body as any)?.tenantSlug);
+    if (!tenant) return reply.code(404).send({ error: "tenant not found" });
+    try { return await refreshBling(tenant.id); }
+    catch (e: any) { return reply.code(502).send({ error: e?.message ?? "falha ao renovar" }); }
+  });
+
+  app.post("/bling/disconnect", async (req, reply) => {
+    const tenant = await resolveTenant((req.body as any)?.tenantSlug);
+    if (!tenant) return reply.code(404).send({ error: "tenant not found" });
+    return disconnectBling(tenant.id);
   });
 
   // ── STATUS: WhatsApp / Instagram / CPlug / Anthropic (token, por loja) ───────

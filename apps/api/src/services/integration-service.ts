@@ -3,6 +3,7 @@ import {
   exchangeTrayCode, refreshTrayToken, type TrayTokens,
   exchangeMpCode, refreshMpToken, buildMpAuthorizeUrl,
   exchangeMeCode, refreshMeToken, buildMeAuthorizeUrl,
+  exchangeBlingCode, refreshBlingToken, buildBlingAuthorizeUrl, type BlingTokens,
 } from "@hubadvisor/connectors";
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -47,6 +48,10 @@ export const PROVIDER_FIELDS: Record<string, CredField[]> = {
   tray: [
     { key: "consumerKey", label: "Consumer Key", secret: true, env: "TRAY_CONSUMER_KEY", required: true },
     { key: "consumerSecret", label: "Consumer Secret", secret: true, env: "TRAY_CONSUMER_SECRET", required: true },
+  ],
+  bling: [
+    { key: "clientId", label: "Client ID", secret: false, env: "BLING_CLIENT_ID", required: true },
+    { key: "clientSecret", label: "Client Secret", secret: true, env: "BLING_CLIENT_SECRET", required: true },
   ],
   mercadopago: [
     { key: "appId", label: "App ID", secret: false, env: "MERCADOPAGO_APP_ID", required: true },
@@ -416,6 +421,87 @@ export async function getMeAccessToken(tenantId: string): Promise<string | null>
   if (row?.status === "connected" && row.accessToken) return decryptPII(row.accessToken);
   const cfg = await getProviderConfig(tenantId, "melhor-envio");
   return cfg.accessToken ?? null;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// BLING (ERP — OAuth2 Authorization Code, ADR-004)
+// ──────────────────────────────────────────────────────────────────────────────
+
+export type BlingStatus = {
+  provider: "bling"; connected: boolean; status: string;
+  connectedAt: string | null; accessExpiresAt: string | null;
+  appConfigured: boolean; lastError: string | null;
+};
+
+async function blingAppCreds(tenantId: string) {
+  const cfg = await getProviderConfig(tenantId, "bling");
+  return { clientId: cfg.clientId ?? "", clientSecret: cfg.clientSecret ?? "" };
+}
+
+async function persistBlingTokens(tenantId: string, tokens: BlingTokens) {
+  await upsertIntegration(tenantId, "bling", {
+    status: "connected",
+    accessToken: encryptPII(tokens.accessToken),
+    refreshToken: encryptPII(tokens.refreshToken),
+    accessExpiresAt: new Date(Date.now() + tokens.expiresIn * 1000),
+    lastError: null,
+    connectedAt: new Date(),
+  });
+}
+
+export async function buildBlingUrl(tenantId: string, redirectUri: string, state: string) {
+  const { clientId } = await blingAppCreds(tenantId);
+  return buildBlingAuthorizeUrl({ clientId, state, redirectUri });
+}
+
+export async function connectBlingFromCallback(tenantId: string, code: string, redirectUri: string) {
+  const creds = await blingAppCreds(tenantId);
+  if (!creds.clientId || !creds.clientSecret) throw new Error("Credenciais Bling (Client ID/Secret) não configuradas");
+  const tokens = await exchangeBlingCode({ code, creds, redirectUri });
+  await persistBlingTokens(tenantId, tokens);
+  return { ok: true as const };
+}
+
+export async function refreshBling(tenantId: string) {
+  const row = await getIntegration(tenantId, "bling");
+  const refreshToken = decryptPII(row?.refreshToken);
+  if (!refreshToken) throw new Error("Bling não conectado");
+  try {
+    const creds = await blingAppCreds(tenantId);
+    const tokens = await refreshBlingToken(refreshToken, creds);
+    await persistBlingTokens(tenantId, tokens);
+    return { ok: true as const };
+  } catch (e: any) {
+    await withTenant(tenantId, async (tx) => {
+      await tx.integration.update({
+        where: { tenantId_provider: { tenantId, provider: "bling" } },
+        data: { status: "error", lastError: String(e?.message ?? e) },
+      });
+    });
+    throw e;
+  }
+}
+
+export async function disconnectBling(tenantId: string) {
+  await withTenant(tenantId, async (tx) => {
+    await tx.integration.updateMany({
+      where: { tenantId, provider: "bling" },
+      data: { status: "disconnected", accessToken: null, refreshToken: null, connectedAt: null, lastError: null },
+    });
+  });
+  return { ok: true as const };
+}
+
+export async function getBlingStatus(tenantId: string): Promise<BlingStatus> {
+  const row = await getIntegration(tenantId, "bling");
+  const connected = !!row && row.status === "connected" && !!row.accessToken;
+  return {
+    provider: "bling", connected, status: row?.status ?? "disconnected",
+    connectedAt: row?.connectedAt?.toISOString() ?? null,
+    accessExpiresAt: row?.accessExpiresAt?.toISOString() ?? null,
+    appConfigured: await isAppConfigured(tenantId, "bling"),
+    lastError: row?.lastError ?? null,
+  };
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
