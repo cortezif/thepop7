@@ -1,34 +1,207 @@
 import type { FastifyPluginAsync } from "fastify";
+import { getPrisma, withTenant } from "@thepop/db";
+import { handleIncomingMessage } from "../services/conversation-service.js";
 
-// Stubs prontos para receber webhooks externos quando as credenciais chegarem.
-// GET é o verification handshake do Meta; POST é o evento real.
+// Webhooks externos. GET = verification handshake (Meta). POST = evento real.
+// Cada handler processa o evento ou delega ao serviço correspondente.
 
 export const webhookRoutes: FastifyPluginAsync = async (app) => {
-  // ----- Meta (WhatsApp + Instagram) -----
+
+  // ── Meta (WhatsApp + Instagram) ─────────────────────────────────────────────
+  // GET: Meta verifica a URL com hub.verify_token antes de enviar eventos.
   app.get("/meta", async (req, reply) => {
     const mode      = (req.query as any)["hub.mode"];
     const token     = (req.query as any)["hub.verify_token"];
     const challenge = (req.query as any)["hub.challenge"];
     if (mode === "subscribe" && token === process.env.META_WEBHOOK_VERIFY_TOKEN) {
+      app.log.info("Meta webhook verificado ✓");
       return reply.send(challenge);
     }
     return reply.code(403).send("forbidden");
   });
 
+  // POST: mensagem/evento real chegando do WhatsApp ou Instagram.
   app.post("/meta", async (req, reply) => {
-    app.log.info({ body: req.body }, "Meta webhook received (not yet implemented)");
-    return reply.send({ received: true });
+    const body = req.body as any;
+    // Confirma recebimento imediato (Meta exige 200 em < 5s)
+    reply.send({ received: true });
+
+    try {
+      const entry = body?.entry?.[0];
+      const changes = entry?.changes?.[0];
+      const value = changes?.value;
+
+      // WhatsApp Cloud API
+      if (value?.messaging_product === "whatsapp") {
+        const msgs = value?.messages ?? [];
+        for (const msg of msgs) {
+          if (msg.type !== "text" && msg.type !== "image") continue;
+          const from = msg.from; // E.164 sem +
+          const text = msg.text?.body ?? (msg.type === "image" ? "[imagem]" : "");
+          // Detectar tenant pelo número de destino
+          const toPhone = value?.metadata?.display_phone_number ?? "";
+          const tenantSlug = await resolveTenantByPhone(toPhone);
+          if (!tenantSlug) { app.log.warn({ toPhone }, "nenhum tenant para o número WA"); continue; }
+          await handleIncomingMessage(
+            { tenantSlug, channel: "whatsapp", contact: { phone: `+${from}` }, text },
+            app.log,
+          );
+        }
+        // Confirmações de entrega e leitura — apenas log
+        const statuses = value?.statuses ?? [];
+        if (statuses.length) app.log.info({ statuses }, "WA status update");
+        return;
+      }
+
+      // Instagram Messenger
+      const messagingEvents = value?.messages ?? entry?.messaging ?? [];
+      if (messagingEvents.length > 0) {
+        for (const event of messagingEvents) {
+          const senderId = event.sender?.id ?? event.from?.id;
+          const text = event.message?.text ?? "";
+          if (!senderId || !text) continue;
+          const tenantSlug = await resolveTenantByIgAccount(entry?.id);
+          if (!tenantSlug) { app.log.warn({ pageId: entry?.id }, "nenhum tenant para a página IG"); continue; }
+          await handleIncomingMessage(
+            { tenantSlug, channel: "instagram", contact: { igHandle: senderId }, text },
+            app.log,
+          );
+        }
+        return;
+      }
+
+      app.log.info({ body }, "Meta webhook — evento não tratado");
+    } catch (e) {
+      app.log.error(e, "Meta webhook erro interno");
+    }
   });
 
-  // ----- Mercado Pago -----
+  // ── Mercado Pago ─────────────────────────────────────────────────────────────
   app.post("/mercadopago", async (req, reply) => {
-    app.log.info({ body: req.body }, "Mercado Pago webhook received (not yet implemented)");
-    return reply.send({ received: true });
+    reply.send({ received: true });
+    const body = req.body as any;
+    try {
+      // MP envia { action: "payment.updated", data: { id: "123456" } }
+      if (body?.action !== "payment.updated" && body?.type !== "payment") return;
+      const paymentId = String(body?.data?.id ?? "");
+      if (!paymentId) return;
+
+      // Consulta o pagamento na MP API (não confiamos apenas no webhook)
+      const mpToken = process.env.MERCADOPAGO_ACCESS_TOKEN ?? "";
+      if (!mpToken) { app.log.warn("MP webhook: MERCADOPAGO_ACCESS_TOKEN não configurado"); return; }
+
+      const res = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+        headers: { Authorization: `Bearer ${mpToken}` },
+      });
+      if (!res.ok) { app.log.warn({ paymentId, status: res.status }, "MP: falha ao buscar pagamento"); return; }
+      const payment: any = await res.json();
+
+      if (payment.status !== "approved") return;
+
+      const orderId = payment.external_reference as string | undefined;
+      if (!orderId) return;
+
+      // Encontra o pedido e marca como pago
+      const prisma = getPrisma();
+      const order = await prisma.order.findUnique({ where: { id: orderId } });
+      if (!order) { app.log.warn({ orderId }, "MP webhook: pedido não encontrado"); return; }
+      if (order.status !== "created") { app.log.info({ orderId, status: order.status }, "MP webhook: pedido já processado"); return; }
+
+      await withTenant(order.tenantId, async (tx) => {
+        await tx.order.update({
+          where: { id: orderId },
+          data: {
+            status: "paid",
+            paidAt: payment.date_approved ? new Date(payment.date_approved) : new Date(),
+            paymentExternalId: paymentId,
+          },
+        });
+        await tx.domainEvent.create({
+          data: {
+            tenantId: order.tenantId,
+            type: "order.paid",
+            aggregateType: "order",
+            aggregateId: orderId,
+            payload: { paymentId, source: "mercadopago_webhook" } as any,
+            actor: "external",
+          },
+        });
+      });
+      app.log.info({ orderId, paymentId }, "✅ Pedido marcado como pago via MP webhook");
+    } catch (e) {
+      app.log.error(e, "MP webhook erro interno");
+    }
   });
 
-  // ----- Melhor Envio (tracking events) -----
+  // ── Melhor Envio ─────────────────────────────────────────────────────────────
   app.post("/melhor-envio", async (req, reply) => {
-    app.log.info({ body: req.body }, "Melhor Envio webhook received (not yet implemented)");
-    return reply.send({ received: true });
+    reply.send({ received: true });
+    const body = req.body as any;
+    try {
+      // ME envia eventos de rastreamento com status e tracking code
+      const trackingCode = body?.tracking ?? body?.tracking_code ?? body?.order?.tracking ?? "";
+      const status = body?.status ?? body?.order?.status ?? "";
+      if (!trackingCode || !status) { app.log.info({ body }, "ME webhook: sem tracking/status"); return; }
+
+      const prisma = getPrisma();
+      const order = await prisma.order.findFirst({ where: { trackingCode } });
+      if (!order) { app.log.warn({ trackingCode }, "ME webhook: pedido não encontrado"); return; }
+
+      const statusMap: Record<string, string> = {
+        "posted": "shipped",
+        "in_transit": "in_transit",
+        "out_for_delivery": "out_for_delivery",
+        "delivered": "delivered",
+        "failed": "in_transit",
+      };
+      const newStatus = statusMap[status.toLowerCase()];
+      if (!newStatus) return;
+
+      await withTenant(order.tenantId, async (tx) => {
+        await tx.order.update({
+          where: { id: order.id },
+          data: {
+            status: newStatus as any,
+            ...(newStatus === "delivered" ? { deliveredAt: new Date() } : {}),
+          },
+        });
+        await tx.domainEvent.create({
+          data: {
+            tenantId: order.tenantId,
+            type: `order.${newStatus}`,
+            aggregateType: "order",
+            aggregateId: order.id,
+            payload: { trackingCode, meStatus: status } as any,
+            actor: "external",
+          },
+        });
+      });
+      app.log.info({ orderId: order.id, newStatus, trackingCode }, "✅ Status do pedido atualizado via ME webhook");
+    } catch (e) {
+      app.log.error(e, "ME webhook erro interno");
+    }
   });
 };
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Tenta descobrir o tenantSlug pelo número de telefone WA (display_phone_number).
+ * Em produção: cada loja tem seu próprio número; aqui retorna o primeiro tenant
+ * que tiver WHATSAPP_PHONE_NUMBER_ID configurado globalmente (multi-tenant via env). */
+async function resolveTenantByPhone(_phone: string): Promise<string | null> {
+  // Se há um único tenant (MVP), retorna o primeiro tenant ativo.
+  // Para multi-tenant real: manter tabela phone→tenant.
+  const tenant = await getPrisma().tenant.findFirst({
+    where: { status: "active" },
+    orderBy: { createdAt: "asc" },
+  });
+  return tenant?.slug ?? null;
+}
+
+async function resolveTenantByIgAccount(_pageId: string): Promise<string | null> {
+  const tenant = await getPrisma().tenant.findFirst({
+    where: { status: "active" },
+    orderBy: { createdAt: "asc" },
+  });
+  return tenant?.slug ?? null;
+}

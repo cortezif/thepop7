@@ -202,6 +202,11 @@ export const api = {
     get<{ url: string }>(`/integrations/tray/authorize?apiAddress=${encodeURIComponent(apiAddress)}`),
   trayRefresh: () => post<{ ok: boolean }>(`/integrations/tray/refresh`, {}),
   trayDisconnect: () => post<{ ok: boolean }>(`/integrations/tray/disconnect`, {}),
+  // Integrações genéricas (MP, ME, WA, IG, CPlug, Anthropic)
+  integrationStatus: (provider: string) => get<IntegrationStatus>(`/integrations/${provider}`),
+  integrationAuthorize: (provider: string) => get<{ url: string }>(`/integrations/${provider}/authorize`),
+  integrationRefresh: (provider: string) => post<{ ok: boolean }>(`/integrations/${provider}/refresh`, {}),
+  integrationDisconnect: (provider: string) => post<{ ok: boolean }>(`/integrations/${provider}/disconnect`, {}),
   // Estoque / código de barras (F1/F2)
   backfillBarcodes: () => post<BackfillResult>(`/catalog/barcodes/backfill`, {}),
   stockTrace: (code: string) => get<StockTrace>(`/stock/trace?code=${encodeURIComponent(code)}`),
@@ -252,6 +257,16 @@ export type StockMovement = {
 export type StockTrace = {
   barcode: string; productName: string; variantSku: string; photo?: string | null;
   saldoRazao: number; porTipo: Record<string, number>; movimentos: StockMovement[];
+};
+
+export type IntegrationStatus = {
+  provider: string;
+  connected: boolean;
+  status: string;
+  note?: string;
+  appConfigured?: boolean;
+  envToken?: boolean;
+  lastError?: string | null;
 };
 
 export type TrayStatus = {

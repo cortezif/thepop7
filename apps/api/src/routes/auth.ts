@@ -2,7 +2,11 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { getPrisma } from "@thepop/db";
 import { verifyPassword, hashPassword, signJwt, requireAuth } from "../auth.js";
-import { connectTrayFromCallback } from "../services/integration-service.js";
+import {
+  connectTrayFromCallback,
+  connectMpFromCallback,
+  connectMeFromCallback,
+} from "../services/integration-service.js";
 
 export const authRoutes: FastifyPluginAsync = async (app) => {
   // POST /auth/login — { tenantSlug, email, password } → { token, user }
@@ -91,6 +95,44 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     } catch (e: any) {
       req.log.error(e, "tray callback falhou");
       return reply.redirect(`${redirectBase}?tray=erro&motivo=${encodeURIComponent(e?.message ?? "falha")}`);
+    }
+  });
+
+  // GET /auth/mercadopago/callback
+  app.get("/mercadopago/callback", async (req, reply) => {
+    const q = z.object({ code: z.string().min(1), state: z.string().optional() }).safeParse(req.query);
+    const redirectBase = "/settings";
+    if (!q.success) return reply.redirect(`${redirectBase}?mp=erro&motivo=callback_invalido`);
+    const slug = (q.data.state ?? "thepop7").toLowerCase();
+    const tenant = await getPrisma().tenant.findUnique({ where: { slug } });
+    if (!tenant) return reply.redirect(`${redirectBase}?mp=erro&motivo=loja_nao_encontrada`);
+    try {
+      const base = process.env.APP_PUBLIC_URL ?? `${(req as any).protocol}://${(req.headers as any)["host"]}`;
+      const redirectUri = `${base.replace(/\/$/, "")}/api/auth/mercadopago/callback`;
+      await connectMpFromCallback(tenant.id, q.data.code, redirectUri);
+      return reply.redirect(`${redirectBase}?mp=ok`);
+    } catch (e: any) {
+      req.log.error(e, "mercadopago callback falhou");
+      return reply.redirect(`${redirectBase}?mp=erro&motivo=${encodeURIComponent(e?.message ?? "falha")}`);
+    }
+  });
+
+  // GET /auth/melhor-envio/callback
+  app.get("/melhor-envio/callback", async (req, reply) => {
+    const q = z.object({ code: z.string().min(1), state: z.string().optional() }).safeParse(req.query);
+    const redirectBase = "/settings";
+    if (!q.success) return reply.redirect(`${redirectBase}?me=erro&motivo=callback_invalido`);
+    const slug = (q.data.state ?? "thepop7").toLowerCase();
+    const tenant = await getPrisma().tenant.findUnique({ where: { slug } });
+    if (!tenant) return reply.redirect(`${redirectBase}?me=erro&motivo=loja_nao_encontrada`);
+    try {
+      const base = process.env.APP_PUBLIC_URL ?? `${(req as any).protocol}://${(req.headers as any)["host"]}`;
+      const redirectUri = `${base.replace(/\/$/, "")}/api/auth/melhor-envio/callback`;
+      await connectMeFromCallback(tenant.id, q.data.code, redirectUri);
+      return reply.redirect(`${redirectBase}?me=ok`);
+    } catch (e: any) {
+      req.log.error(e, "melhor-envio callback falhou");
+      return reply.redirect(`${redirectBase}?me=erro&motivo=${encodeURIComponent(e?.message ?? "falha")}`);
     }
   });
 };

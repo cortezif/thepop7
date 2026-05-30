@@ -1,15 +1,45 @@
 import { getPrisma, withTenant, encryptPII, decryptPII } from "@thepop/db";
 import {
-  exchangeTrayCode,
-  refreshTrayToken,
-  type TrayTokens,
+  exchangeTrayCode, refreshTrayToken, type TrayTokens,
+  exchangeMpCode, refreshMpToken, buildMpAuthorizeUrl,
+  exchangeMeCode, refreshMeToken, buildMeAuthorizeUrl,
+  whatsappConfigured, instagramConfigured,
 } from "@thepop/connectors";
 
-// Onboarding/credenciais de integração externa (ADR-004). Hoje: Tray.
-// Tokens cifrados at-rest (mesmo cofre de PII, enc:v1:). A API só expõe um
-// STATUS redatado — nunca o token cru.
+// ──────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ──────────────────────────────────────────────────────────────────────────────
 
-const PROVIDER = "tray";
+async function upsertIntegration(tenantId: string, provider: string, data: Record<string, unknown>) {
+  await withTenant(tenantId, async (tx) => {
+    await tx.integration.upsert({
+      where: { tenantId_provider: { tenantId, provider } },
+      create: { tenantId, provider, ...data },
+      update: data,
+    });
+    await tx.domainEvent.create({
+      data: {
+        tenantId, type: "integration.connected", aggregateType: "integration",
+        aggregateId: provider, payload: { provider } as any, actor: "operator",
+      },
+    });
+  });
+}
+
+async function getIntegration(tenantId: string, provider: string) {
+  return getPrisma().integration.findUnique({
+    where: { tenantId_provider: { tenantId, provider } },
+  });
+}
+
+function safeStatus(row: Awaited<ReturnType<typeof getIntegration>>) {
+  if (!row) return "disconnected";
+  return row.status;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// TRAY
+// ──────────────────────────────────────────────────────────────────────────────
 
 function trayAppCreds() {
   return {
@@ -18,24 +48,15 @@ function trayAppCreds() {
   };
 }
 
-/** Status seguro pra UI — sem tokens. */
 export type TrayStatus = {
-  provider: "tray";
-  connected: boolean;
-  status: string;
-  storeId: string | null;
-  apiAddress: string | null;
-  connectedAt: string | null;
-  accessExpiresAt: string | null;
-  refreshExpiresAt: string | null;
-  /** true se faltam TRAY_CONSUMER_KEY/SECRET (não dá pra trocar code). */
-  appConfigured: boolean;
-  lastError: string | null;
+  provider: "tray"; connected: boolean; status: string;
+  storeId: string | null; apiAddress: string | null;
+  connectedAt: string | null; accessExpiresAt: string | null; refreshExpiresAt: string | null;
+  appConfigured: boolean; lastError: string | null;
 };
 
-async function persistTokens(tenantId: string, tokens: TrayTokens) {
-  const prisma = getPrisma();
-  const data = {
+async function persistTrayTokens(tenantId: string, tokens: TrayTokens) {
+  await upsertIntegration(tenantId, "tray", {
     status: "connected",
     apiAddress: tokens.apiAddress ?? null,
     storeId: tokens.storeId ?? null,
@@ -45,49 +66,29 @@ async function persistTokens(tenantId: string, tokens: TrayTokens) {
     refreshExpiresAt: tokens.refreshExpiresAt ?? null,
     lastError: null,
     connectedAt: new Date(),
-  };
-  await withTenant(tenantId, async (tx) => {
-    await tx.integration.upsert({
-      where: { tenantId_provider: { tenantId, provider: PROVIDER } },
-      create: { tenantId, provider: PROVIDER, ...data },
-      update: data,
-    });
-    await tx.domainEvent.create({
-      data: {
-        tenantId, type: "integration.connected", aggregateType: "integration",
-        aggregateId: PROVIDER, payload: { provider: PROVIDER, storeId: tokens.storeId } as any, actor: "operator",
-      },
-    });
   });
 }
 
-/** Passo 2 do OAuth: troca o `code` do callback por tokens e persiste. */
 export async function connectTrayFromCallback(tenantId: string, code: string, apiAddress: string) {
   const { consumerKey, consumerSecret } = trayAppCreds();
-  if (!consumerKey || !consumerSecret) {
-    throw new Error("TRAY_CONSUMER_KEY/SECRET não configurados — não dá pra trocar o code");
-  }
+  if (!consumerKey || !consumerSecret) throw new Error("TRAY_CONSUMER_KEY/SECRET não configurados");
   const tokens = await exchangeTrayCode({ apiAddress, consumerKey, consumerSecret, code });
-  await persistTokens(tenantId, tokens);
+  await persistTrayTokens(tenantId, tokens);
   return { ok: true as const, storeId: tokens.storeId ?? null };
 }
 
-/** Renova o access_token (passo 3). Marca status=error se falhar. */
 export async function refreshTray(tenantId: string) {
-  const prisma = getPrisma();
-  const row = await prisma.integration.findUnique({
-    where: { tenantId_provider: { tenantId, provider: PROVIDER } },
-  });
+  const row = await getIntegration(tenantId, "tray");
   const refreshToken = decryptPII(row?.refreshToken);
   if (!row?.apiAddress || !refreshToken) throw new Error("Tray não conectado");
   try {
     const tokens = await refreshTrayToken({ apiAddress: row.apiAddress, refreshToken });
-    await persistTokens(tenantId, tokens);
+    await persistTrayTokens(tenantId, tokens);
     return { ok: true as const };
   } catch (e: any) {
     await withTenant(tenantId, async (tx) => {
       await tx.integration.update({
-        where: { tenantId_provider: { tenantId, provider: PROVIDER } },
+        where: { tenantId_provider: { tenantId, provider: "tray" } },
         data: { status: "error", lastError: String(e?.message ?? e) },
       });
     });
@@ -95,36 +96,23 @@ export async function refreshTray(tenantId: string) {
   }
 }
 
-/** Desconecta — apaga os tokens. */
 export async function disconnectTray(tenantId: string) {
   await withTenant(tenantId, async (tx) => {
     await tx.integration.updateMany({
-      where: { tenantId, provider: PROVIDER },
+      where: { tenantId, provider: "tray" },
       data: { status: "disconnected", accessToken: null, refreshToken: null, connectedAt: null, lastError: null },
-    });
-    await tx.domainEvent.create({
-      data: {
-        tenantId, type: "integration.disconnected", aggregateType: "integration",
-        aggregateId: PROVIDER, payload: { provider: PROVIDER } as any, actor: "operator",
-      },
     });
   });
   return { ok: true as const };
 }
 
 export async function getTrayStatus(tenantId: string): Promise<TrayStatus> {
-  const prisma = getPrisma();
-  const row = await prisma.integration.findUnique({
-    where: { tenantId_provider: { tenantId, provider: PROVIDER } },
-  });
+  const row = await getIntegration(tenantId, "tray");
   const { consumerKey, consumerSecret } = trayAppCreds();
   const connected = !!row && row.status === "connected" && !!row.accessToken;
   return {
-    provider: "tray",
-    connected,
-    status: row?.status ?? "disconnected",
-    storeId: row?.storeId ?? null,
-    apiAddress: row?.apiAddress ?? null,
+    provider: "tray", connected, status: row?.status ?? "disconnected",
+    storeId: row?.storeId ?? null, apiAddress: row?.apiAddress ?? null,
     connectedAt: row?.connectedAt?.toISOString() ?? null,
     accessExpiresAt: row?.accessExpiresAt?.toISOString() ?? null,
     refreshExpiresAt: row?.refreshExpiresAt?.toISOString() ?? null,
@@ -133,5 +121,252 @@ export async function getTrayStatus(tenantId: string): Promise<TrayStatus> {
   };
 }
 
-// A credencial decifrada pro connector vive em @thepop/db (`getTrayCreds`),
-// reusada por api e worker via `buildErpForTenant`.
+// ──────────────────────────────────────────────────────────────────────────────
+// MERCADO PAGO
+// ──────────────────────────────────────────────────────────────────────────────
+
+export type MpStatus = {
+  provider: "mercadopago"; connected: boolean; status: string;
+  userId: string | null; connectedAt: string | null;
+  appConfigured: boolean; envToken: boolean; lastError: string | null;
+};
+
+export function mpAppConfigured() {
+  return !!(process.env.MERCADOPAGO_APP_ID && process.env.MERCADOPAGO_APP_SECRET);
+}
+
+export function buildMpUrl(redirectUri: string, state: string) {
+  return buildMpAuthorizeUrl(redirectUri, state);
+}
+
+export async function connectMpFromCallback(tenantId: string, code: string, redirectUri: string) {
+  const tokens = await exchangeMpCode({ code, redirectUri });
+  await upsertIntegration(tenantId, "mercadopago", {
+    status: "connected",
+    storeId: tokens.userId,
+    accessToken: encryptPII(tokens.accessToken),
+    refreshToken: encryptPII(tokens.refreshToken),
+    accessExpiresAt: new Date(Date.now() + tokens.expiresIn * 1000),
+    lastError: null,
+    connectedAt: new Date(),
+  });
+  return { ok: true as const, userId: tokens.userId };
+}
+
+export async function refreshMp(tenantId: string) {
+  const row = await getIntegration(tenantId, "mercadopago");
+  const refreshToken = decryptPII(row?.refreshToken);
+  if (!refreshToken) throw new Error("Mercado Pago não conectado");
+  try {
+    const tokens = await refreshMpToken(refreshToken);
+    await withTenant(tenantId, async (tx) => {
+      await tx.integration.update({
+        where: { tenantId_provider: { tenantId, provider: "mercadopago" } },
+        data: {
+          status: "connected",
+          accessToken: encryptPII(tokens.accessToken),
+          refreshToken: encryptPII(tokens.refreshToken),
+          accessExpiresAt: new Date(Date.now() + tokens.expiresIn * 1000),
+          lastError: null,
+        },
+      });
+    });
+    return { ok: true as const };
+  } catch (e: any) {
+    await withTenant(tenantId, async (tx) => {
+      await tx.integration.update({
+        where: { tenantId_provider: { tenantId, provider: "mercadopago" } },
+        data: { status: "error", lastError: String(e?.message ?? e) },
+      });
+    });
+    throw e;
+  }
+}
+
+export async function disconnectMp(tenantId: string) {
+  await withTenant(tenantId, async (tx) => {
+    await tx.integration.updateMany({
+      where: { tenantId, provider: "mercadopago" },
+      data: { status: "disconnected", accessToken: null, refreshToken: null, connectedAt: null, lastError: null },
+    });
+  });
+  return { ok: true as const };
+}
+
+export async function getMpStatus(tenantId: string): Promise<MpStatus> {
+  const row = await getIntegration(tenantId, "mercadopago");
+  const connected = (!!row && row.status === "connected" && !!row.accessToken)
+    || !!process.env.MERCADOPAGO_ACCESS_TOKEN;
+  return {
+    provider: "mercadopago", connected,
+    status: row?.status ?? (process.env.MERCADOPAGO_ACCESS_TOKEN ? "connected" : "disconnected"),
+    userId: row?.storeId ?? null,
+    connectedAt: row?.connectedAt?.toISOString() ?? null,
+    appConfigured: mpAppConfigured(),
+    envToken: !!process.env.MERCADOPAGO_ACCESS_TOKEN,
+    lastError: row?.lastError ?? null,
+  };
+}
+
+/** Retorna o access_token decifrado do tenant (ou o env var global). */
+export async function getMpAccessToken(tenantId: string): Promise<string | null> {
+  const row = await getIntegration(tenantId, "mercadopago");
+  if (row?.status === "connected" && row.accessToken) return decryptPII(row.accessToken);
+  return process.env.MERCADOPAGO_ACCESS_TOKEN ?? null;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// MELHOR ENVIO
+// ──────────────────────────────────────────────────────────────────────────────
+
+export type MeStatus = {
+  provider: "melhor-envio"; connected: boolean; status: string;
+  connectedAt: string | null; appConfigured: boolean; envToken: boolean; lastError: string | null;
+};
+
+export function meAppConfigured() {
+  return !!(process.env.MELHORENVIO_CLIENT_ID && process.env.MELHORENVIO_CLIENT_SECRET);
+}
+
+export function buildMeUrl(redirectUri: string, state: string) {
+  return buildMeAuthorizeUrl(redirectUri, state);
+}
+
+export async function connectMeFromCallback(tenantId: string, code: string, redirectUri: string) {
+  const tokens = await exchangeMeCode({ code, redirectUri });
+  await upsertIntegration(tenantId, "melhor-envio", {
+    status: "connected",
+    accessToken: encryptPII(tokens.accessToken),
+    refreshToken: encryptPII(tokens.refreshToken),
+    accessExpiresAt: new Date(Date.now() + tokens.expiresIn * 1000),
+    lastError: null,
+    connectedAt: new Date(),
+  });
+  return { ok: true as const };
+}
+
+export async function refreshMe(tenantId: string) {
+  const row = await getIntegration(tenantId, "melhor-envio");
+  const refreshToken = decryptPII(row?.refreshToken);
+  if (!refreshToken) throw new Error("Melhor Envio não conectado");
+  try {
+    const tokens = await refreshMeToken(refreshToken);
+    await withTenant(tenantId, async (tx) => {
+      await tx.integration.update({
+        where: { tenantId_provider: { tenantId, provider: "melhor-envio" } },
+        data: {
+          status: "connected",
+          accessToken: encryptPII(tokens.accessToken),
+          refreshToken: encryptPII(tokens.refreshToken),
+          accessExpiresAt: new Date(Date.now() + tokens.expiresIn * 1000),
+          lastError: null,
+        },
+      });
+    });
+    return { ok: true as const };
+  } catch (e: any) {
+    await withTenant(tenantId, async (tx) => {
+      await tx.integration.update({
+        where: { tenantId_provider: { tenantId, provider: "melhor-envio" } },
+        data: { status: "error", lastError: String(e?.message ?? e) },
+      });
+    });
+    throw e;
+  }
+}
+
+export async function disconnectMe(tenantId: string) {
+  await withTenant(tenantId, async (tx) => {
+    await tx.integration.updateMany({
+      where: { tenantId, provider: "melhor-envio" },
+      data: { status: "disconnected", accessToken: null, refreshToken: null, connectedAt: null, lastError: null },
+    });
+  });
+  return { ok: true as const };
+}
+
+export async function getMeStatus(tenantId: string): Promise<MeStatus> {
+  const row = await getIntegration(tenantId, "melhor-envio");
+  const connected = (!!row && row.status === "connected" && !!row.accessToken)
+    || !!process.env.MELHORENVIO_ACCESS_TOKEN;
+  return {
+    provider: "melhor-envio", connected,
+    status: row?.status ?? (process.env.MELHORENVIO_ACCESS_TOKEN ? "connected" : "disconnected"),
+    connectedAt: row?.connectedAt?.toISOString() ?? null,
+    appConfigured: meAppConfigured(),
+    envToken: !!process.env.MELHORENVIO_ACCESS_TOKEN,
+    lastError: row?.lastError ?? null,
+  };
+}
+
+export async function getMeAccessToken(tenantId: string): Promise<string | null> {
+  const row = await getIntegration(tenantId, "melhor-envio");
+  if (row?.status === "connected" && row.accessToken) return decryptPII(row.accessToken);
+  return process.env.MELHORENVIO_ACCESS_TOKEN ?? null;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// WHATSAPP / INSTAGRAM (env-var only — sem OAuth próprio)
+// ──────────────────────────────────────────────────────────────────────────────
+
+export function getWhatsAppStatus() {
+  const configured = whatsappConfigured();
+  return {
+    provider: "whatsapp" as const,
+    connected: configured,
+    status: configured ? "connected" : "disconnected",
+    phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID ?? null,
+    verifyTokenSet: !!process.env.META_WEBHOOK_VERIFY_TOKEN,
+    note: configured
+      ? "Credenciais configuradas. Webhook Meta deve apontar para /api/webhooks/meta"
+      : "Configure WHATSAPP_PHONE_NUMBER_ID e WHATSAPP_ACCESS_TOKEN no servidor",
+  };
+}
+
+export function getInstagramStatus() {
+  const configured = instagramConfigured();
+  return {
+    provider: "instagram" as const,
+    connected: configured,
+    status: configured ? "connected" : "disconnected",
+    note: configured
+      ? "Credenciais configuradas. Webhook Meta deve apontar para /api/webhooks/meta"
+      : "Configure INSTAGRAM_ACCESS_TOKEN no servidor",
+  };
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// CPLUG (fiscal — env-var only)
+// ──────────────────────────────────────────────────────────────────────────────
+
+export function getCplugStatus() {
+  const configured = !!(
+    process.env.CPLUG_API_URL &&
+    process.env.CPLUG_CLIENT_ID &&
+    process.env.CPLUG_CLIENT_SECRET &&
+    process.env.CPLUG_STORE_USER &&
+    process.env.CPLUG_STORE_PASSWORD
+  );
+  return {
+    provider: "cplug" as const,
+    connected: configured,
+    status: configured ? "connected" : "disconnected",
+    note: configured
+      ? "Credenciais CPlug configuradas. NFe habilitada."
+      : "Configure CPLUG_API_URL, CPLUG_CLIENT_ID, CPLUG_CLIENT_SECRET, CPLUG_STORE_USER e CPLUG_STORE_PASSWORD",
+  };
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// ANTHROPIC
+// ──────────────────────────────────────────────────────────────────────────────
+
+export function getAnthropicStatus() {
+  const configured = !!process.env.ANTHROPIC_API_KEY;
+  return {
+    provider: "anthropic" as const,
+    connected: configured,
+    status: configured ? "connected" : "disconnected",
+    note: configured ? "API Key configurada. Maya/Bia/Lia operacionais." : "Configure ANTHROPIC_API_KEY no servidor",
+  };
+}

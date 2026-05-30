@@ -1,6 +1,6 @@
 import { runAgentTurn, summarizeConversation, extractProductAttributes, DEFAULT_CASCADE, type AgentConfig, type ConversationContext, type AgentToolImpl } from "@thepop/agent";
-import { getPrisma, withTenant, getTrayCreds } from "@thepop/db";
-import { buildErpForTenant, getLogisticsConnector } from "@thepop/connectors";
+import { getPrisma, withTenant, getTrayCreds, decryptPII } from "@thepop/db";
+import { buildErpForTenant, getLogisticsConnector, getMessagingConnector } from "@thepop/connectors";
 import type { ContactProfileUpdate, ProductSummary } from "@thepop/shared";
 import type { FastifyBaseLogger } from "fastify";
 import { searchProducts, type CustomerProfile, type ProductFilter } from "./product-search.js";
@@ -206,6 +206,29 @@ export async function handleIncomingMessage(dto: IncomingDTO, log: FastifyBaseLo
         },
       });
     });
+  }
+
+  // FASE 4: entrega a resposta no canal real (WhatsApp / Instagram).
+  // Só para canais externos; "manual" é simulação no painel.
+  // Falha de envio é não-fatal: a resposta já está no DB.
+  if (turn.replyText && dto.channel !== "manual") {
+    try {
+      const phone = decryptPII(setup.contact.phone);
+      const igHandle = setup.contact.igHandle;
+      const to = dto.channel === "instagram" ? igHandle : phone;
+      if (to) {
+        await getMessagingConnector(dto.channel).send({
+          tenantId: tenant.id,
+          conversationId: conversation.id,
+          type: "text",
+          text: turn.replyText,
+          to: to ?? undefined,
+          channel: dto.channel,
+        });
+      }
+    } catch (e) {
+      log.warn({ error: String(e), channel: dto.channel }, "messaging.send falhou — não-fatal");
+    }
   }
 
   return {

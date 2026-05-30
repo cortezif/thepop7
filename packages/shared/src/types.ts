@@ -27,6 +27,10 @@ export type OutgoingMessage = {
   mediaUrl?: string;
   templateName?: string;
   templateParams?: Record<string, string>;
+  /** Destinatário: telefone E.164 (WhatsApp) ou PSID (Instagram). */
+  to?: string;
+  /** Canal de entrega. */
+  channel?: "whatsapp" | "instagram";
 };
 
 export type ProductSummary = {
