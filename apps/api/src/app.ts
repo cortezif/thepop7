@@ -19,6 +19,7 @@ import { authRoutes } from "./routes/auth.js";
 import { integrationRoutes } from "./routes/integrations.js";
 import { stockRoutes } from "./routes/stock.js";
 import { platformRoutes } from "./routes/platform.js";
+import { mercadologicaRoutes, cotacaoPublicaRoutes } from "./routes/mercadologica.js";
 import { requireAuth } from "./auth.js";
 
 export function buildApp() {
@@ -61,6 +62,7 @@ export function buildApp() {
   app.register(conversationRoutes, { prefix: "/conversations" }); // /incoming = mensagem da cliente
   app.register(webhookRoutes,      { prefix: "/webhooks" });      // Meta/MP/Melhor Envio
   app.register(platformRoutes,     { prefix: "/platform" });       // painel da plataforma (chave própria, ADR-024)
+  app.register(cotacaoPublicaRoutes, { prefix: "/cotacao-publica" }); // resposta de cotação por token (ADR-029)
 
   // Rotas PROTEGIDAS (painel do operador): exigem JWT válido (F2).
   app.register(async (secure) => {
@@ -76,6 +78,7 @@ export function buildApp() {
     secure.register(lgpdRoutes,               { prefix: "/lgpd" });
     secure.register(integrationRoutes,        { prefix: "/integrations" });
     secure.register(stockRoutes,              { prefix: "/stock" });
+    secure.register(mercadologicaRoutes,      { prefix: "/mercadologica" });
   });
 
   // Painel estático (produção/serviço único): serve o build do web + fallback SPA.

@@ -244,7 +244,68 @@ export const api = {
     post<{ ok: boolean; movementId: string }>(`/stock/adjust`, { barcode, type, quantity, note }),
   // Vínculo código ↔ imagem: foto da peça → códigos candidatos
   barcodesByPhoto: (photoUrls: string[]) => post<BarcodeByPhoto>(`/catalog/barcodes/by-photo`, { photoUrls }),
+
+  // ── Mercadológica / rede de fornecedores (ADR-029) ──
+  mercSuppliers: () => get<MercSupplier[]>(`/mercadologica/suppliers`),
+  mercCreateSupplier: (payload: { name: string; document?: string; email?: string; phone?: string; uf?: string; municipio?: string; categories?: string[]; shareable?: boolean }) =>
+    post<{ id: string }>(`/mercadologica/suppliers`, payload),
+  mercAddOffer: (payload: { supplierId: string; item: string; sku?: string; priceBRL: number; unit?: string; validUntil?: string; notes?: string }) =>
+    post<{ ok: boolean; offerId?: string }>(`/mercadologica/suppliers/offer`, payload),
+  mercResearches: () => get<MercResearch[]>(`/mercadologica/researches`),
+  mercCreateResearch: (payload: { title: string; items: Array<{ description: string; sku?: string; quantity?: number }>; method?: string; deadlineDays?: number }) =>
+    post<{ id: string }>(`/mercadologica/researches`, payload),
+  mercAddInvites: (researchId: string, invites: Array<{ supplierId?: string; supplierName: string; email?: string; phone?: string }>) =>
+    post<{ ok: boolean; invites?: Array<{ token: string; supplierName: string }> }>(`/mercadologica/researches/${researchId}/invites`, { invites }),
+  mercSendInvites: (researchId: string) =>
+    post<{ ok: boolean; links?: Array<{ supplierName: string; link: string; sentVia: string }>; reason?: string }>(`/mercadologica/researches/${researchId}/send`, {}),
+  mercConsolidation: (researchId: string) => get<MercConsolidation>(`/mercadologica/researches/${researchId}/consolidation`),
+  mercCloseResearch: (researchId: string) => post<{ ok: boolean }>(`/mercadologica/researches/${researchId}/close`, {}),
+  mercRecordQuote: (payload: { researchId?: string; supplierId?: string; supplierName: string; item: string; unitPriceBRL: number; quantity?: number }) =>
+    post<{ ok: boolean; quoteId?: string }>(`/mercadologica/quotes`, payload),
+  mercPendingQuotes: () => get<MercPendingQuote[]>(`/mercadologica/quotes/pending`),
+  mercApproveQuote: (id: string) => post<{ ok: boolean }>(`/mercadologica/quotes/${id}/approve`, {}),
+  mercRejectQuote: (id: string, reason?: string) => post<{ ok: boolean }>(`/mercadologica/quotes/${id}/reject`, { reason }),
+  mercPanel: () => get<MercPanel>(`/mercadologica/panel`),
 };
+
+// ── Cotação pública (sem auth) — usada na tela /cotacao/:token ──
+export async function fetchPublicInvite(token: string) {
+  const res = await fetch(`/api/cotacao-publica/${token}`);
+  if (!res.ok) throw new Error("convite não encontrado");
+  return res.json() as Promise<PublicInvite>;
+}
+export async function submitPublicQuote(token: string, body: { item: string; unitPriceBRL: number; quantity?: number; details?: Record<string, unknown> }) {
+  const res = await fetch(`/api/cotacao-publica/${token}`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error("não foi possível enviar a cotação");
+  return res.json() as Promise<{ ok: boolean }>;
+}
+
+export type MercSupplier = {
+  id: string; name: string; document: string | null; email: string | null; phone: string | null;
+  uf: string | null; municipio: string | null; shareable: boolean; categories: string[];
+  relationshipScore: number; avgLeadTimeDays: number | null;
+  offers: Array<{ id: string; item: string; sku: string | null; priceBRL: number; unit: string | null; validUntil: string | null; notes: string | null }>;
+};
+export type MercResearch = {
+  id: string; title: string; items: Array<{ description: string; sku?: string; quantity?: number }>;
+  method: string; deadlineDays: number; status: string; createdAt: string;
+  invitesTotal: number; invitesResponded: number; quotesCount: number;
+};
+export type MercConsolidationItem = {
+  item: string;
+  quotes: Array<{ supplierName: string; unitPriceBRL: number; origin: string; isCheapest: boolean }>;
+  consolidation: {
+    validPrices: number[]; discarded: Array<{ value: number; reason: string }>; count: number;
+    mean: number; median: number; min: number; max: number; stdDev: number; coefficientOfVariation: number;
+    method: string; estimate: number; meetsMinimumThree: boolean; dispersionAlert: boolean;
+  };
+};
+export type MercConsolidation = { researchId: string; title: string; method: string; status: string; items: MercConsolidationItem[] };
+export type MercPendingQuote = { id: string; supplierName: string; item: string; unitPriceBRL: number; quantity: number; origin: string; details: unknown; createdAt: string };
+export type MercPanel = { researchesByStatus: Record<string, number>; invitesByState: Record<string, number>; pendingQuotes: number; suppliers: number };
+export type PublicInvite = { supplierName: string; storeName: string; title: string; items: Array<{ description: string; sku?: string; quantity?: number }>; deadlineDays: number; alreadyResponded: boolean };
 
 export type BarcodeByPhoto = {
   ok: boolean;

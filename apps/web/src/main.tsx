@@ -11,6 +11,8 @@ import { Estoque } from "./pages/Estoque";
 import { Settings } from "./pages/Settings";
 import { Plataforma } from "./pages/Plataforma";
 import { Recursos } from "./pages/Recursos";
+import { Mercadologica } from "./pages/Mercadologica";
+import { CotacaoPublica } from "./pages/CotacaoPublica";
 import "./styles/globals.css";
 
 createRoot(document.getElementById("root")!).render(
@@ -23,11 +25,13 @@ createRoot(document.getElementById("root")!).render(
           <Route path="/inbox"    element={<Inbox />} />
           <Route path="/catalog"  element={<Catalog />} />
           <Route path="/compras"  element={<Compras />} />
+          <Route path="/mercadologica" element={<Mercadologica />} />
           <Route path="/pedidos"  element={<Pedidos />} />
           <Route path="/estoque"  element={<Estoque />} />
           <Route path="/settings" element={<Settings />} />
         </Route>
         <Route path="/plataforma" element={<Plataforma />} />
+        <Route path="/cotacao/:token" element={<CotacaoPublica />} />
       </Routes>
     </BrowserRouter>
   </StrictMode>

@@ -73,6 +73,12 @@ model Tenant {
   productBarcodes  ProductBarcode[]
   stockMovements   StockMovement[]
 
+  // Mercadológica / rede de fornecedores (ADR-029)
+  supplierOffers   SupplierOffer[]
+  priceResearches  PriceResearch[]
+  priceResearchInvites PriceResearchInvite[]
+  priceQuotes      PriceQuote[]
+
   @@map("tenants")
 }
 
@@ -607,6 +613,12 @@ model Supplier {
   contactEmail String?
   categories String[]
 
+  // Cadastro (ADR-029 — mercadológica)
+  document   String?  // CNPJ/CPF (opcional)
+  uf         String?  // sigla do estado (PA, SP, ...)
+  municipio  String?
+  shareable  Boolean  @default(false) // opt-in: aparece no pool regional cross-tenant
+
   // Score (ADR-021)
   avgLeadTimeDays Int?
   onTimeRate      Float?
@@ -616,10 +628,123 @@ model Supplier {
   active    Boolean @default(true)
   createdAt DateTime @default(now())
 
-  quotes    Quote[]
+  quotes      Quote[]
+  offers      SupplierOffer[]
+  priceQuotes PriceQuote[]
 
   @@index([tenantId])
   @@map("suppliers")
+}
+
+// ==========================================================
+// MERCADOLÓGICA / REDE DE FORNECEDORES (ADR-029)
+// Padrão portado do app C:\ple (pesquisa de preços), adaptado ao varejo privado
+// (sem a camada de conformidade pública IN 65 / CEIS / SICAF).
+// ==========================================================
+
+// Tabela de preços/oferta do fornecedor — a "vitrine" que a loja consulta.
+model SupplierOffer {
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supplierId String
+  supplier   Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  item       String   // descrição do item ofertado
+  sku        String?
+  priceBRL   Decimal  @db.Decimal(12, 2)
+  unit       String?  // un, cx, kg, ...
+  validUntil DateTime?
+  notes      String?
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([tenantId, supplierId])
+  @@index([tenantId, item])
+  @@map("supplier_offers")
+}
+
+// Pesquisa de preços (campanha de cotação): item(ns) + método + prazo.
+model PriceResearch {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  title        String
+  items        Json     // [{ description, sku?, quantity? }]
+  method       String   @default("mediana") // media | mediana | menor-preco
+  deadlineDays Int      @default(5)
+  status       String   @default("rascunho") // rascunho | em-coleta | encerrada
+  createdBy    String?
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  invites      PriceResearchInvite[]
+  quotes       PriceQuote[]
+
+  @@index([tenantId, status])
+  @@map("price_researches")
+}
+
+// Convite tokenizado: o pedido de cotação enviado a um fornecedor (cadastrado
+// ou não). O token permite resposta pública sem conta (formulário /cotacao/<token>).
+model PriceResearchInvite {
+  id           String   @id @default(cuid())
+  researchId   String
+  research     PriceResearch @relation(fields: [researchId], references: [id], onDelete: Cascade)
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  supplierId   String?  // se for fornecedor cadastrado
+  supplierName String
+  email        String?
+  phone        String?
+  token        String   @unique
+  state        String   @default("pendente") // pendente|enviado|respondido|sem-resposta|reenviado|recusado|expirado
+  attempts     Int      @default(0)
+  sentAt       DateTime?
+  respondedAt  DateTime?
+
+  createdAt    DateTime @default(now())
+
+  @@index([researchId])
+  @@index([token])
+  @@map("price_research_invites")
+}
+
+// Cotação capturada (uma proposta de preço de um fornecedor para um item).
+model PriceQuote {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  researchId   String?
+  research     PriceResearch? @relation(fields: [researchId], references: [id], onDelete: SetNull)
+  inviteId     String?
+  supplierId   String?
+  supplier     Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  supplierName String
+
+  item         String
+  unitPriceBRL Decimal  @db.Decimal(12, 2)
+  quantity     Int      @default(1)
+  origin       String   @default("manual") // manual|form-web|email-inbound|whatsapp-inbound|ia
+  details      Json?    // { validadeAte, prazoEntregaDias, condicaoPagamento, frete, marcaModelo, observacoes }
+
+  // Aprovação humana (cotações inbound entram pendentes)
+  approvedAt   DateTime?
+  approvedBy   String?
+  rejectedAt   DateTime?
+  rejectedBy   String?
+  rejectReason String?
+
+  createdAt    DateTime @default(now())
+
+  @@index([tenantId, item])
+  @@index([researchId])
+  @@map("price_quotes")
 }
 
 // ==========================================================
