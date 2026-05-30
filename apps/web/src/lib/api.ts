@@ -227,7 +227,7 @@ export const api = {
   deleteProduct: (id: string) => del<{ ok: boolean }>(`/catalog/products/${id}`),
   syncCatalog: () => post<{ ok: boolean; upserted: number }>(`/catalog/sync`, {}),
   cacheStats: () => get<any>(`/admin/cache/stats`),
-  getConfig: () => get<{ aiEnabled: boolean; monthlyAIBudgetBRL: number; autoApproveMaxBRL: number; retentionDays: number | null; orderRetentionDays: number | null; segment?: string; catalogVocab?: { styles?: string[]; occasions?: string[] } | null }>(`/admin/config`),
+  getConfig: () => get<{ aiEnabled: boolean; monthlyAIBudgetBRL: number; autoApproveMaxBRL: number; retentionDays: number | null; orderRetentionDays: number | null; segment?: string; catalogVocab?: { styles?: string[]; occasions?: string[] } | null; productionEnabled?: boolean }>(`/admin/config`),
   segmentPresets: () => get<SegmentPreset[]>(`/admin/segment-presets`),
   setSegment: (payload: { segment: string; styles?: string[]; occasions?: string[]; applyVoice?: boolean }) =>
     post<{ ok: boolean; segment: string; catalogVocab: { styles: string[]; occasions: string[] } | null; voiceApplied?: boolean }>(`/admin/segment-config`, payload),
@@ -333,6 +333,78 @@ export const api = {
   integrationConfig: (provider: string) => get<IntegrationConfig>(`/integrations/${provider}/config`),
   saveIntegrationConfig: (provider: string, values: Record<string, string>) =>
     post<IntegrationConfig>(`/integrations/${provider}/config`, { values }),
+
+  // ── Fabricação / ficha técnica (ADR-030) ──
+  listMaterials: (category?: string) =>
+    get<RawMaterial[]>(`/manufacturing/materials${category ? `?category=${category}` : ""}`),
+  createMaterial: (payload: RawMaterialInput) => post<RawMaterial>(`/manufacturing/materials`, payload as any),
+  updateMaterial: (id: string, payload: Partial<RawMaterialInput>) => put<RawMaterial>(`/manufacturing/materials/${id}`, payload as any),
+  deleteMaterial: (id: string) => del<{ ok: boolean }>(`/manufacturing/materials/${id}`),
+  listBoms: () => get<Bom[]>(`/manufacturing/boms`),
+  createBom: (payload: BomInput) => post<Bom>(`/manufacturing/boms`, payload as any),
+  updateBom: (id: string, payload: BomInput) => put<Bom>(`/manufacturing/boms/${id}`, payload as any),
+  deleteBom: (id: string) => del<{ ok: boolean }>(`/manufacturing/boms/${id}`),
+  // Produção (Fase 2)
+  listBatches: () => get<ProductionBatch[]>(`/manufacturing/production`),
+  previewProduction: (bomId: string, quantity: number) =>
+    post<ProductionPlan>(`/manufacturing/production/preview`, { bomId, quantity }),
+  createBatch: (payload: { bomId: string; quantity: number; addToStock?: boolean; note?: string | null }) =>
+    post<{ ok: boolean; batchId: string; addedToStock: boolean; unitCost: number; totalCost: number; hasShortfall: boolean }>(`/manufacturing/production`, payload as any),
+  // Entrega própria (Fase 3)
+  getDeliveryTariff: () => get<DeliveryTariff>(`/manufacturing/delivery/tariff`),
+  saveDeliveryTariff: (payload: { motoVolumeLimit: number; bands: DeliveryBand[] }) =>
+    post<{ ok: boolean; motoVolumeLimit: number; bands: DeliveryBand[] }>(`/manufacturing/delivery/tariff`, payload as any),
+  quoteDelivery: (distanceKm: number, volume: number) =>
+    post<DeliveryQuote>(`/manufacturing/delivery/quote`, { distanceKm, volume }),
+};
+
+export type DeliveryBand = { modal: "moto" | "carro"; maxKm: number; priceBRL: number };
+export type DeliveryTariff = { motoVolumeLimit: number; bands: DeliveryBand[]; configured: boolean };
+export type DeliveryQuote = {
+  modal: "moto" | "carro"; priceBRL: number; distanceKm: number; volume: number;
+  maxKm: number | null; outOfRange: boolean; noTariff: boolean;
+};
+
+export type ConsumptionLine = {
+  materialId: string; name: string; baseUnit: string;
+  needed: number; available: number; shortfall: number; costPerBaseUnit: number;
+};
+export type ProductionPlan = {
+  bomId: string; bomName: string; quantity: number;
+  lines: ConsumptionLine[]; unitCost: number; totalCost: number;
+  productId: string | null; variantSku: string | null;
+  canAddToStock: boolean; suggestedToStock: boolean; hasShortfall: boolean;
+};
+export type ProductionBatch = {
+  id: string; bomName: string; productId: string | null; variantSku: string | null;
+  quantity: number; addedToStock: boolean; unitCost: number; totalCost: number;
+  consumed: Array<{ name: string; baseUnit: string; quantity: number }>;
+  note: string | null; createdAt: string;
+};
+
+export type RawMaterial = {
+  id: string; name: string; category: string; baseUnit: string; sku: string | null;
+  costPerBaseUnit: number; purchaseUnit: string | null; purchaseQtyInBase: number | null;
+  stockQty: number; minStockQty: number | null; lowStock: boolean; supplierId: string | null; active: boolean;
+};
+export type RawMaterialInput = {
+  name: string; category?: string; baseUnit?: string; sku?: string | null;
+  costPerBaseUnit?: number; purchaseUnit?: string | null; purchaseQtyInBase?: number | null;
+  stockQty?: number; minStockQty?: number | null; supplierId?: string | null;
+};
+export type BomLine = {
+  materialId: string; materialName: string; baseUnit: string; category: string;
+  costPerBaseUnit: number; quantity: number; lineCost: number; note: string | null;
+};
+export type Bom = {
+  id: string; name: string; productId: string | null; variantSku: string | null;
+  yieldQty: number; yieldUnit: string | null; lossPct: number; notes: string | null;
+  items: BomLine[]; totalCost: number; unitCost: number;
+};
+export type BomInput = {
+  name: string; productId?: string | null; variantSku?: string | null;
+  yieldQty?: number; yieldUnit?: string | null; lossPct?: number; notes?: string | null;
+  items: Array<{ materialId: string; quantity: number; note?: string | null }>;
 };
 
 export type IntegrationConfigField = {

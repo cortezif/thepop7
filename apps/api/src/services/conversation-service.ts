@@ -1,6 +1,8 @@
-import { runAgentTurn, summarizeConversation, extractProductAttributes, DEFAULT_CASCADE, type AgentConfig, type ConversationContext, type AgentToolImpl } from "@hubadvisor/agent";
-import { getPrisma, withTenant, getTrayCreds, decryptPII, resolveTenantCredentials } from "@hubadvisor/db";
+import { runAgentTurn, summarizeConversation, extractProductAttributes, DEFAULT_CASCADE, PRODUCTION_TOOL_DEFS, type AgentConfig, type ConversationContext, type AgentToolImpl } from "@hubadvisor/agent";
+import { getTariff, quoteDelivery } from "./delivery-service.js";
+import { getPrisma, withTenant, decryptPII, resolveTenantCredentials } from "@hubadvisor/db";
 import { buildErpForTenant, getLogisticsConnector, getMessagingConnector } from "@hubadvisor/connectors";
+import { resolveErpCreds } from "../lib/erp.js";
 import { enterCredentials, type ContactProfileUpdate, type ProductSummary } from "@hubadvisor/shared";
 import type { FastifyBaseLogger } from "fastify";
 import { searchProducts, type CustomerProfile, type ProductFilter } from "./product-search.js";
@@ -178,7 +180,7 @@ export async function handleIncomingMessage(dto: IncomingDTO, log: FastifyBaseLo
     avoid: contact.avoid,
     usualSize: contact.usualSize ?? undefined,
     favoriteColors: contact.favoriteColors,
-  }, { autoApproveMaxBRL: Number(tenant.autoApproveMaxBRL), photoUrls: dto.photoUrls, trayCreds: await getTrayCreds(tenant.id), segment: tenant.segment, vocab: (tenant.catalogVocab as any) ?? undefined });
+  }, { autoApproveMaxBRL: Number(tenant.autoApproveMaxBRL), photoUrls: dto.photoUrls, erpCreds: await resolveErpCreds(tenant.id), segment: tenant.segment, vocab: (tenant.catalogVocab as any) ?? undefined, productionEnabled: tenant.productionEnabled });
 
   // Se a cliente mandou foto, avisa o agente p/ chamar a busca visual (ele é text-only).
   let agentMessage = dto.text ?? "";
@@ -187,7 +189,7 @@ export async function handleIncomingMessage(dto: IncomingDTO, log: FastifyBaseLo
       `Use a tool buscar_por_foto para analisar a imagem e encontrar produtos parecidos no nosso catálogo, depois apresente as opções de forma natural.]`;
     agentMessage = agentMessage.trim() ? `${agentMessage}\n\n${note}` : note;
   }
-  const turn = await runAgentTurn(cfg, ctx, agentMessage, tools, cascadeOverride);
+  const turn = await runAgentTurn(cfg, ctx, agentMessage, tools, cascadeOverride, tenant.productionEnabled ? PRODUCTION_TOOL_DEFS : []);
 
   // FASE 3 (transação curta): persiste a resposta.
   if (turn.replyText) {
@@ -346,9 +348,9 @@ export async function suggestReply(tenantSlug: string, conversationId: string, l
     avoid: contact?.avoid ?? [],
     usualSize: contact?.usualSize ?? undefined,
     favoriteColors: contact?.favoriteColors ?? [],
-  }, { readOnly: true, trayCreds: await getTrayCreds(tenant.id), segment: tenant.segment, vocab: (tenant.catalogVocab as any) ?? undefined });
+  }, { readOnly: true, erpCreds: await resolveErpCreds(tenant.id), segment: tenant.segment, vocab: (tenant.catalogVocab as any) ?? undefined, productionEnabled: tenant.productionEnabled });
 
-  const turn = await runAgentTurn(cfg, ctx, userMessage, tools);
+  const turn = await runAgentTurn(cfg, ctx, userMessage, tools, undefined, tenant.productionEnabled ? PRODUCTION_TOOL_DEFS : []);
   return {
     suggestion: turn.replyText ?? "",
     toolCalls: turn.toolCalls,
@@ -362,8 +364,8 @@ export async function suggestReply(tenantSlug: string, conversationId: string, l
  * Tudo o que o agente "decide fazer" passa por aqui — então este é o
  * lugar pra colocar guardrails (limites, regras de negócio, auditoria).
  */
-function buildAgentTools(tenantId: string, contactId: string, conversationId: string, log: FastifyBaseLogger, customerProfile: CustomerProfile = {}, opts: { readOnly?: boolean; autoApproveMaxBRL?: number; photoUrls?: string[]; trayCreds?: { apiUrl: string; accessToken: string } | null; segment?: string; vocab?: { styles?: string[]; occasions?: string[] } } = {}): AgentToolImpl {
-  const erp       = buildErpForTenant({ trayCreds: opts.trayCreds });
+function buildAgentTools(tenantId: string, contactId: string, conversationId: string, log: FastifyBaseLogger, customerProfile: CustomerProfile = {}, opts: { readOnly?: boolean; autoApproveMaxBRL?: number; photoUrls?: string[]; erpCreds?: { trayCreds: { apiUrl: string; accessToken: string } | null; blingCreds: { accessToken: string } | null }; segment?: string; vocab?: { styles?: string[]; occasions?: string[] }; productionEnabled?: boolean } = {}): AgentToolImpl {
+  const erp       = buildErpForTenant({ trayCreds: opts.erpCreds?.trayCreds ?? null, blingCreds: opts.erpCreds?.blingCreds ?? null });
   const logistics = getLogisticsConnector();
   const prisma    = getPrisma();
   const readOnly  = opts.readOnly ?? false;
@@ -371,6 +373,7 @@ function buildAgentTools(tenantId: string, contactId: string, conversationId: st
   const photoUrls = opts.photoUrls ?? [];
   const segment   = opts.segment;
   const vocab     = opts.vocab;
+  const productionEnabled = opts.productionEnabled ?? false;
 
   return {
     async buscarProduto(query) {
@@ -536,6 +539,7 @@ function buildAgentTools(tenantId: string, contactId: string, conversationId: st
       // Resolve SKUs → produtos + preço; calcula frete
       const products = await erp.listProducts();
       const items: Array<{ productId: string; variantSku: string; quantity: number; unitPriceBRL: number }> = [];
+      let orderVol = 0; // volume do pedido p/ entrega própria (ADR-030)
       for (const it of input.itens) {
         const product = products.find((p) => p.variants.some((v) => v.sku === it.sku));
         if (!product) {
@@ -546,27 +550,46 @@ function buildAgentTools(tenantId: string, contactId: string, conversationId: st
         const dbProduct = await prisma.product.findFirst({ where: { tenantId, externalId: product.externalId } });
         if (!dbProduct) throw new Error(`Produto não sincronizado: ${product.externalId}`);
         items.push({ productId: dbProduct.id, variantSku: it.sku, quantity: it.quantidade ?? 1, unitPriceBRL: product.priceBRL });
+        orderVol += (it.quantidade ?? 1) * (dbProduct.deliveryVolume ?? 1);
       }
 
-      const quotes = await logistics.quote({
-        fromZip: "01310-100", toZip: input.cep,
-        items: [{ weightG: 500, widthCm: 30, heightCm: 5, lengthCm: 30, valueBRL: 200 }],
-      });
-      const chosen = input.servicoFrete
-        ? quotes.find((q) => `${q.carrier} ${q.service}` === input.servicoFrete) ?? quotes[0]
-        : quotes[0];
+      // Frete: entrega própria (motoboy/carro da loja) OU transportadora (Melhor Envio).
+      let shipBRL = 0;
+      let shipCarrier: string | undefined;
+      if (input.entregaPropria) {
+        const tariff = await getTariff(tenantId);
+        if (!tariff.configured) {
+          return { error: "Entrega própria não está configurada nesta loja. Refaça o pedido com frete de transportadora (sem entregaPropria)." } as any;
+        }
+        if (input.distanciaKm == null) {
+          return { error: "Para entrega própria, informe a distância (distanciaKm) até a cliente. Pergunte o bairro/distância antes de fechar." } as any;
+        }
+        const q = quoteDelivery({ distanceKm: input.distanciaKm, volume: orderVol, tariff });
+        shipBRL = q.priceBRL;
+        shipCarrier = `Entrega própria (${q.modal})`;
+      } else {
+        const quotes = await logistics.quote({
+          fromZip: "01310-100", toZip: input.cep,
+          items: [{ weightG: 500, widthCm: 30, heightCm: 5, lengthCm: 30, valueBRL: 200 }],
+        });
+        const chosen = input.servicoFrete
+          ? quotes.find((q) => `${q.carrier} ${q.service}` === input.servicoFrete) ?? quotes[0]
+          : quotes[0];
+        shipBRL = chosen?.priceBRL ?? 0;
+        shipCarrier = chosen ? `${chosen.carrier} ${chosen.service}` : undefined;
+      }
 
       // Auto-aprovação (ADR-025): pedido acima do limite não fecha sozinho —
       // parqueia pra confirmação humana antes de gerar o PIX.
       const subtotal = items.reduce((s, i) => s + i.unitPriceBRL * i.quantity, 0);
-      const total = subtotal + (chosen?.priceBRL ?? 0);
+      const total = subtotal + shipBRL;
       if (autoApproveMaxBRL != null && total > autoApproveMaxBRL) {
         // Cria o pedido como PENDENTE (sem PIX) e parqueia pra aprovação humana.
         const pending = await createOrder({
           tenantId, contactId, items,
           shippingZip: input.cep,
-          shippingBRL: chosen?.priceBRL ?? 0,
-          carrier: chosen ? `${chosen.carrier} ${chosen.service}` : undefined,
+          shippingBRL: shipBRL,
+          carrier: shipCarrier,
           pendingApproval: true,
         });
         await prisma.conversation.update({
@@ -585,8 +608,8 @@ function buildAgentTools(tenantId: string, contactId: string, conversationId: st
       const result = await createOrder({
         tenantId, contactId, items,
         shippingZip: input.cep,
-        shippingBRL: chosen?.priceBRL ?? 0,
-        carrier: chosen ? `${chosen.carrier} ${chosen.service}` : undefined,
+        shippingBRL: shipBRL,
+        carrier: shipCarrier,
       });
       log.info({ orderId: result.orderId, total: result.totalBRL }, "tool:criar_pedido");
       return {
@@ -625,6 +648,64 @@ function buildAgentTools(tenantId: string, contactId: string, conversationId: st
       });
       log.warn({ motivo, conversationId }, "tool:escalar_para_humano");
       return { escalado: true };
+    },
+
+    // ── Fabricação (ADR-030 — Fase 4). Só fazem sentido em lojas que fabricam. ──
+    async consultarFicha(sku) {
+      // Acha o produto dono do SKU (variante) e a ficha técnica vinculada.
+      const products = await prisma.product.findMany({ where: { tenantId, active: true } });
+      const product = products.find((p) => ((p.variants as Array<{ sku: string }>) ?? []).some((v) => v.sku === sku));
+      if (!product) return { produto: "", sobEncomenda: false, prazoDias: null, ingredientes: [], semFicha: true, erro: `SKU não encontrado: ${sku}` };
+
+      const bom = await prisma.billOfMaterials.findFirst({
+        where: { tenantId, active: true, productId: product.id, OR: [{ variantSku: sku }, { variantSku: null }] },
+        include: { items: { include: { material: true } } },
+        orderBy: { variantSku: "desc" }, // prefere a ficha específica da variante
+      });
+      const ingredientes = bom
+        ? bom.items.filter((i) => i.material.category === "ingrediente").map((i) => i.material.name)
+        : [];
+      log.info({ sku, hasBom: !!bom }, "tool:consultar_ficha");
+      return {
+        produto: product.name,
+        sobEncomenda: product.madeToOrder,
+        prazoDias: product.leadTimeDays ?? null,
+        ingredientes,
+        semFicha: !bom,
+        observacao: bom ? undefined : "Sem ficha técnica cadastrada — não afirme ingredientes que você não tem.",
+      };
+    },
+
+    async calcularEntregaPropria(input = {}) {
+      const tariff = await getTariff(tenantId);
+      if (!tariff.configured) {
+        return { disponivel: false, observacao: "Entrega própria não configurada. Use consultar_frete (transportadora)." };
+      }
+      // Volume do pedido = Σ (quantidade × volume do produto).
+      let volume = 0;
+      if (input.itens?.length) {
+        const products = await prisma.product.findMany({ where: { tenantId } });
+        for (const it of input.itens) {
+          const p = products.find((pp) => ((pp.variants as Array<{ sku: string }>) ?? []).some((v) => v.sku === it.sku));
+          volume += (it.quantidade ?? 1) * (p?.deliveryVolume ?? 1);
+        }
+      }
+      const modalSugerido = volume <= tariff.motoVolumeLimit ? "moto" : "carro";
+      if (input.distanceKm == null) {
+        log.info({ volume, modalSugerido }, "tool:calcular_entrega_propria (sem distância)");
+        return {
+          disponivel: true, precisaDistancia: true, volume, modalSugerido,
+          faixas: tariff.bands,
+          observacao: "Pergunte o bairro/distância aproximada (km) da cliente para informar o valor exato.",
+        };
+      }
+      const q = quoteDelivery({ distanceKm: input.distanceKm, volume, tariff });
+      log.info({ distanceKm: input.distanceKm, volume, modal: q.modal, price: q.priceBRL }, "tool:calcular_entrega_propria");
+      return {
+        disponivel: true, modal: q.modal, precoBRL: q.priceBRL,
+        distanceKm: q.distanceKm, volume, foraDeFaixa: q.outOfRange,
+        ...(q.noTariff ? { observacao: "Sem faixa para esse modal — confirme com um atendente." } : {}),
+      };
     },
   };
 }

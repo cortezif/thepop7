@@ -53,6 +53,22 @@ export async function getTrayCreds(
 }
 
 /**
+ * Credencial Bling do tenant (token OAuth decifrado) pra injetar no connector ERP
+ * quando ERP_PROVIDER=bling. `null` se a loja não conectou a Bling. A base da API
+ * é fixa (api.bling.com.br/Api/v3), então só o access_token é necessário.
+ */
+export async function getBlingCreds(
+  tenantId: string
+): Promise<{ accessToken: string } | null> {
+  const row = await getPrisma().integration.findUnique({
+    where: { tenantId_provider: { tenantId, provider: "bling" } },
+  });
+  const accessToken = decryptPII(row?.accessToken);
+  if (!accessToken || row?.status !== "connected") return null;
+  return { accessToken };
+}
+
+/**
  * Credenciais de app salvas no painel POR LOJA (Integration.appConfig), por
  * provider, já decifradas. Formato: { provider: { campo: valor } }. Usado para
  * popular o contexto de credenciais (runWithCredentials/enterCredentials) em

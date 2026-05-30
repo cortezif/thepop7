@@ -8,6 +8,10 @@ import { Catalog } from "./pages/Catalog";
 import { Compras } from "./pages/Compras";
 import { Pedidos } from "./pages/Pedidos";
 import { Estoque } from "./pages/Estoque";
+import { Insumos } from "./pages/Insumos";
+import { Receitas } from "./pages/Receitas";
+import { Producao } from "./pages/Producao";
+import { Entrega } from "./pages/Entrega";
 import { Settings } from "./pages/Settings";
 import { Plataforma } from "./pages/Plataforma";
 import { Recursos } from "./pages/Recursos";
@@ -30,6 +34,10 @@ createRoot(document.getElementById("root")!).render(
           <Route path="/midia-paga" element={<MidiaPaga />} />
           <Route path="/pedidos"  element={<Pedidos />} />
           <Route path="/estoque"  element={<Estoque />} />
+          <Route path="/insumos"  element={<Insumos />} />
+          <Route path="/receitas" element={<Receitas />} />
+          <Route path="/producao" element={<Producao />} />
+          <Route path="/entrega"  element={<Entrega />} />
           <Route path="/settings" element={<Settings />} />
         </Route>
         <Route path="/plataforma" element={<Plataforma />} />

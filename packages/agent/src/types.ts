@@ -79,6 +79,9 @@ export interface AgentToolImpl {
     itens: Array<{ sku: string; quantidade: number }>;
     cep: string;
     servicoFrete?: string;
+    // Fabricação (ADR-030 — Fase 4): entrega própria no lugar da transportadora.
+    entregaPropria?: boolean;
+    distanciaKm?: number;
   }): Promise<{ pedidoId: string; totalBRL: number; pixCopiaCola?: string; expiraEm?: string }>;
 
   statusPedido(pedidoId: string): Promise<unknown>;
@@ -88,6 +91,34 @@ export interface AgentToolImpl {
   iniciarDevolucao(pedidoId: string, motivo: string): Promise<{ ok: boolean; motivo?: string; devolucaoId?: string }>;
 
   escalarParaHumano(motivo: string): Promise<{ escalado: boolean }>;
+
+  // Fabricação (ADR-030 — Fase 4). Opcionais: só implementadas/oferecidas a
+  // lojas com `productionEnabled`. Quando ausentes, o agent responde indisponível.
+  consultarFicha?(sku: string): Promise<{
+    produto: string;
+    sobEncomenda: boolean;
+    prazoDias: number | null;
+    ingredientes: string[];
+    semFicha: boolean;
+    observacao?: string;
+    erro?: string;
+  }>;
+
+  calcularEntregaPropria?(input: {
+    distanceKm?: number;
+    itens?: Array<{ sku: string; quantidade?: number }>;
+  }): Promise<{
+    disponivel: boolean;
+    modal?: "moto" | "carro";
+    modalSugerido?: "moto" | "carro";
+    precoBRL?: number;
+    distanceKm?: number;
+    volume?: number;
+    precisaDistancia?: boolean;
+    faixas?: Array<{ modal: "moto" | "carro"; maxKm: number; priceBRL: number }>;
+    foraDeFaixa?: boolean;
+    observacao?: string;
+  }>;
 }
 
 // Resultado de uma volta do agente

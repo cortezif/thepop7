@@ -33,6 +33,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       orderRetentionDays: tenant.orderRetentionDays,
       segment: tenant.segment,
       catalogVocab: tenant.catalogVocab ?? null,
+      productionEnabled: tenant.productionEnabled,
     };
   });
 
@@ -47,6 +48,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       styles: z.array(z.string()).optional(),
       occasions: z.array(z.string()).optional(),
       applyVoice: z.boolean().optional(), // setar agentTone = voz da IA do preset
+      productionEnabled: z.boolean().optional(), // ADR-030: override manual do modo fabricação
     }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
     const tenant = await resolveTenant(body.data.tenantSlug);
@@ -60,6 +62,9 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
     const data: Record<string, unknown> = { segment, catalogVocab: catalogVocab as any };
     let voiceApplied = false;
     if (body.data.applyVoice && preset) { data.agentTone = preset.aiVoice; voiceApplied = true; }
+    // Modo fabricação (ADR-030): override explícito tem prioridade; senão, deriva do preset.
+    const productionEnabled = body.data.productionEnabled ?? preset?.production ?? false;
+    data.productionEnabled = productionEnabled;
 
     await withTenant(tenant.id, async (tx) => {
       await tx.tenant.update({ where: { id: tenant.id }, data });
@@ -67,7 +72,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
         data: { tenantId: tenant.id, type: "segment.configured", aggregateType: "tenant", aggregateId: tenant.id, payload: { segment, catalogVocab, voiceApplied } as any, actor: "operator" },
       });
     });
-    return { ok: true, segment, catalogVocab, voiceApplied };
+    return { ok: true, segment, catalogVocab, voiceApplied, productionEnabled };
   });
 
   // POST /admin/retention-config — política de retenção diferenciada (ADR-013). null = desativa.

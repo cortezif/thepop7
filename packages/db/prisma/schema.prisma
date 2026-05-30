@@ -34,6 +34,11 @@ model Tenant {
   segment      String  @default("moda")
   catalogVocab Json?   // { styles?: string[], occasions?: string[] }
 
+  // Modo fabricação (ADR-030). Ortogonal ao segmento: liga as telas de Insumos/
+  // Receitas/Produção para lojas que FABRICAM o que vendem (confeitaria, marcenaria
+  // sob medida, cozinha) em vez de só revender. Default false (revenda pura).
+  productionEnabled Boolean @default(false)
+
   // Configuração do agente
   agentPersona String  @default("Maya")
   agentTone    String? // Tom de voz, brand voice — texto livre, vai pro system prompt
@@ -87,6 +92,12 @@ model Tenant {
   researchAttachments ResearchAttachment[]
   adCampaigns      AdCampaign[]
 
+  // Fabricação (ADR-030)
+  rawMaterials     RawMaterial[]
+  billsOfMaterials BillOfMaterials[]
+  productionBatches ProductionBatch[]
+  deliveryTariff   DeliveryTariff?
+
   @@map("tenants")
 }
 
@@ -123,6 +134,9 @@ enum StockMovementType {
   return_in    // devolução do comprador (reentra)
   adjust_in    // ajuste/balanço pra cima
   adjust_out   // perda/quebra/ajuste pra baixo
+  production_in  // entrada de produto acabado vindo da produção (ADR-030)
+  production_out // saída de produto acabado (consumo) — reservado p/ Fase 2
+  scrap_out      // refugo/perda de produção (ADR-030)
 }
 
 model StockMovement {
@@ -342,6 +356,19 @@ model Product {
   // pra ranking por atributos (ver apps/api/src/services/product-search.ts).
   // embedding    Unsupported("vector(1024)")?
   embeddedAt   DateTime?
+
+  // Fabricação (ADR-030): produto feito sob encomenda (não há estoque de
+  // vitrine — produz-se ao vender) vs pronta-entrega (produz pra estoque).
+  // Usado como default ao registrar produção (override por lote no painel).
+  madeToOrder  Boolean @default(false)
+
+  // Prazo de encomenda em dias (ADR-030 — Fase 4): antecedência para produtos
+  // sob encomenda (ex.: bolo encomendado com 2 dias). null = pronta-entrega/imediato.
+  leadTimeDays Int?
+
+  // Volume de entrega (ADR-030 — Fase 3): "tamanho" do item para decidir o modal
+  // (moto vs carro). Default 1 = conta por unidade (ex.: 1 bolo = 1, limite moto 6).
+  deliveryVolume Float @default(1)
 
   // Atacado B2B (ADR-024): lojista opta por expor o produto na rede de atacado,
   // com preço de atacado e quantidade mínima próprios.
@@ -958,4 +985,154 @@ model B2bBuyer {
   createdAt  DateTime @default(now())
 
   @@map("b2b_buyers")
+}
+
+// ==========================================================
+// FABRICAÇÃO (ADR-030) — insumos, embalagens e ficha técnica
+// ==========================================================
+
+// Insumo OU material de embalagem consumido na fabricação/venda. A `category`
+// distingue: "ingrediente" (farinha, açúcar — consumido ao PRODUZIR) vs
+// "embalagem" (caixa, sacola — consumido ao VENDER/ENTREGAR).
+//
+// Unidades: `baseUnit` é a unidade de CONSUMO (g, ml, un) — é nela que a receita
+// lança as quantidades e que o custo é cotado (`costPerBaseUnit`). `purchaseUnit`
+// + `purchaseQtyInBase` descrevem como o insumo é COMPRADO ("saco" = 5000 g), só
+// para conveniência de cadastro/recebimento. `stockQty` é o saldo atual na
+// `baseUnit` (Fase 1: editável direto; Fase 2: derivado do razão de movimentos).
+model RawMaterial {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name      String
+  category  String   @default("ingrediente") // ingrediente | embalagem
+  baseUnit  String   @default("g")           // g | kg | ml | L | un
+  sku       String?
+
+  // Custo por unidade-base (ex.: R$/g). Alimentado manualmente ou pela
+  // Mercadológica (melhor preço de fornecedor → custo do insumo).
+  costPerBaseUnit Decimal @default(0) @db.Decimal(12, 4)
+
+  // Compra (opcional, conveniência): "1 saco = 5000 g"
+  purchaseUnit      String?
+  purchaseQtyInBase Decimal? @db.Decimal(12, 4)
+
+  // Estoque atual + ponto de alerta, na baseUnit
+  stockQty    Decimal  @default(0) @db.Decimal(12, 3)
+  minStockQty Decimal? @db.Decimal(12, 3)
+
+  supplierId String?  // vínculo opcional com a rede de fornecedores (Mercadológica)
+
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bomItems  BomItem[]
+
+  @@index([tenantId, category])
+  @@index([tenantId, active])
+  @@map("raw_materials")
+}
+
+// Ficha técnica (Bill of Materials): a composição de um produto fabricado.
+// `productId` liga à variante/produto vendido (opcional — uma receita pode existir
+// antes do produto). `yieldQty` = quantas unidades de produto a receita rende;
+// `lossPct` = perda esperada (massa que sobra, quebra). O custo unitário do
+// produto = (Σ itens) × (1 + lossPct/100) ÷ yieldQty.
+model BillOfMaterials {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name       String
+  productId  String?  // FK lógica para Product (sem constraint: produto pode vir depois)
+  variantSku String?  // receita específica de uma variante (ex.: bolo 2kg vs 3kg)
+
+  yieldQty Decimal @default(1) @db.Decimal(12, 3)
+  yieldUnit String? // un | kg — só descritivo
+  lossPct  Float   @default(0)
+  notes    String?
+
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items     BomItem[]
+
+  @@index([tenantId, active])
+  @@index([tenantId, productId])
+  @@map("bills_of_materials")
+}
+
+// Linha da ficha técnica: um insumo/embalagem e a quantidade (na baseUnit do
+// insumo) que entra na receita.
+model BomItem {
+  id         String   @id @default(cuid())
+  bomId      String
+  bom        BillOfMaterials @relation(fields: [bomId], references: [id], onDelete: Cascade)
+  materialId String
+  material   RawMaterial     @relation(fields: [materialId], references: [id], onDelete: Restrict)
+
+  quantity Decimal @db.Decimal(12, 4) // na baseUnit do material
+  note     String?
+
+  @@index([bomId])
+  @@index([materialId])
+  @@map("bom_items")
+}
+
+// Lote de produção (ADR-030 — Fase 2). Registra a fabricação de N unidades de um
+// produto a partir de uma ficha técnica: consome os insumos (baixa em
+// RawMaterial.stockQty) e, se for pronta-entrega (`addedToStock`), soma o produto
+// acabado ao estoque de vitrine (StockMovement production_in). Sob encomenda
+// (`addedToStock=false`) só consome insumos. `consumed` é o snapshot do que foi
+// baixado (auditoria/rastreabilidade).
+model ProductionBatch {
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  bomId      String?  // FK lógica (a ficha pode ser removida depois)
+  bomName    String   // snapshot do nome da receita
+  productId  String?
+  variantSku String?
+
+  quantity     Decimal @db.Decimal(12, 3) // unidades de produto acabado
+  addedToStock Boolean @default(false)
+  unitCost     Decimal @default(0) @db.Decimal(12, 4)
+  totalCost    Decimal @default(0) @db.Decimal(12, 4)
+
+  consumed   Json     // [{ materialId, name, baseUnit, quantity, costPerBaseUnit }]
+  note       String?
+  actor      String   @default("operator")
+
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@map("production_batches")
+}
+
+// Tarifa de entrega própria (ADR-030 — Fase 3). Um registro por tenant. O modal
+// (moto vs carro) é escolhido automaticamente pelo volume do pedido vs
+// `motoVolumeLimit`; o preço vem da faixa de distância (`bands`) do modal
+// escolhido. Substitui a cotação de transportadora (Melhor Envio) para lojas
+// que entregam com motoboy/carro próprio.
+model DeliveryTariff {
+  id        String   @id @default(cuid())
+  tenantId  String   @unique
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Volume máximo que vai de moto (na mesma unidade de Product.deliveryVolume).
+  // Acima disso, o pedido vai de carro.
+  motoVolumeLimit Float @default(6)
+
+  // Faixas de distância por modal: [{ modal:"moto"|"carro", maxKm, priceBRL }]
+  bands     Json     @default("[]")
+
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("delivery_tariffs")
 }

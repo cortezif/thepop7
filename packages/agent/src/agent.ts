@@ -39,7 +39,9 @@ export async function runAgentTurn(
   ctx: ConversationContext,
   userMessage: string,
   tools: AgentToolImpl,
-  cascade?: ProviderModel[]
+  cascade?: ProviderModel[],
+  // Tools extras oferecidas só a este tenant (ex.: fabricação — ADR-030 Fase 4).
+  extraToolDefs: Anthropic.Messages.Tool[] = []
 ): Promise<AgentTurn> {
   // Smart routing: escolhe a cascade ideal baseado em intent + tamanho.
   // Caller pode forçar uma cascade específica (ex.: testes).
@@ -72,12 +74,13 @@ export async function runAgentTurn(
   let modelUsed = "unknown";
   let replyText: string | undefined;
 
+  const toolDefs = extraToolDefs.length ? [...TOOL_DEFS, ...extraToolDefs] : TOOL_DEFS;
   const MAX_TURNS = 8;
   for (let i = 0; i < MAX_TURNS; i++) {
     const { result, usedModel } = await cascadeCall(effectiveCascade, {
       systemBlocks,
       messages,
-      tools: TOOL_DEFS,
+      tools: toolDefs,
       maxTokens: 1024,
     });
 
@@ -138,6 +141,12 @@ async function executeTool(name: string, input: unknown, tools: AgentToolImpl): 
       case "cancelar_pedido":      return await tools.cancelarPedido(i.pedidoId, i.motivo);
       case "iniciar_devolucao":    return await tools.iniciarDevolucao(i.pedidoId, i.motivo);
       case "escalar_para_humano":  return await tools.escalarParaHumano(i.motivo);
+      case "consultar_ficha":
+        if (!tools.consultarFicha) return { erro: "Ficha técnica indisponível nesta loja." };
+        return await tools.consultarFicha(i.sku);
+      case "calcular_entrega_propria":
+        if (!tools.calcularEntregaPropria) return { erro: "Entrega própria indisponível nesta loja." };
+        return await tools.calcularEntregaPropria({ distanceKm: i.distanceKm, itens: i.itens });
       default: return { error: `Tool desconhecida: ${name}` };
     }
   } catch (e: any) {

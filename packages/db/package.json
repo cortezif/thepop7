@@ -14,6 +14,7 @@
     "migrate:deploy": "prisma migrate deploy",
     "studio": "prisma studio",
     "seed": "tsx src/seed.ts",
+    "seed:manufacturing": "tsx src/seed-manufacturing.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test \"src/**/*.test.ts\""
   },

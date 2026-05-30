@@ -40,11 +40,13 @@ export function getErpConnector(): ErpConnector {
 export function buildErpForTenant(opts: {
   provider?: "tray" | "bling";
   trayCreds?: { apiUrl: string; accessToken: string } | null;
+  blingCreds?: { accessToken: string } | null;
 }): ErpConnector {
   if (forceMocks()) return new MockErp();
   const provider = opts.provider ?? erpProvider();
   if (provider === "bling") {
-    return createFailover<ErpConnector>([new BlingErp(), new MockErp()], { label: "erp:bling", log });
+    const bling = opts.blingCreds ? new BlingErp(opts.blingCreds) : new BlingErp();
+    return createFailover<ErpConnector>([bling, new MockErp()], { label: "erp:bling", log });
   }
   const tray = opts.trayCreds ? new TrayErp(opts.trayCreds) : new TrayErp();
   return createFailover<ErpConnector>([tray, new MockErp()], { label: "erp:tray", log });

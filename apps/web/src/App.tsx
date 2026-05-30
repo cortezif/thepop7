@@ -1,16 +1,21 @@
 import { useEffect, useState } from "react";
 import { Outlet, NavLink } from "react-router-dom";
-import { LayoutDashboard, MessageSquare, Package, ShoppingCart, ClipboardList, Settings as SettingsIcon, LogOut, Barcode, Sparkles, Scale, Megaphone } from "lucide-react";
+import { LayoutDashboard, MessageSquare, Package, ShoppingCart, ClipboardList, Settings as SettingsIcon, LogOut, Barcode, Sparkles, Scale, Megaphone, Boxes, ScrollText, Factory, Truck } from "lucide-react";
 import { cn } from "./lib/utils";
 import { auth, brandName, tenantSlug, fetchMe, api, storedSegment, setStoredSegment } from "./lib/api";
 import { applyBrandTheme } from "./lib/theme";
 import { Login } from "./pages/Login";
 
-const NAV = [
+type NavItem = { to: string; label: string; Icon: typeof LayoutDashboard; production?: boolean };
+const NAV: NavItem[] = [
   { to: "/",         label: "Painel",        Icon: LayoutDashboard },
   { to: "/recursos", label: "Recursos",      Icon: Sparkles },
   { to: "/inbox",    label: "Atendimento",   Icon: MessageSquare },
   { to: "/catalog",  label: "Catálogo",      Icon: Package },
+  { to: "/insumos",  label: "Insumos",       Icon: Boxes, production: true },
+  { to: "/receitas", label: "Fichas técnicas", Icon: ScrollText, production: true },
+  { to: "/producao", label: "Produção",      Icon: Factory, production: true },
+  { to: "/entrega",  label: "Entrega",       Icon: Truck, production: true },
   { to: "/pedidos",  label: "Pedidos",       Icon: ClipboardList },
   { to: "/estoque",  label: "Estoque",       Icon: Barcode },
   { to: "/compras",  label: "Compras",       Icon: ShoppingCart },
@@ -30,6 +35,7 @@ function monogram(name: string): string {
 export function App() {
   const [loggedIn, setLoggedIn] = useState(auth.isLoggedIn());
   const [brand, setBrand] = useState(brandName());
+  const [production, setProduction] = useState(false);
 
   useEffect(() => {
     const onUnauth = () => setLoggedIn(false);
@@ -44,7 +50,7 @@ export function App() {
     // mantém o default do CSS até o getConfig responder (evita pulo de cor por slug).
     const seg = storedSegment();
     if (seg) applyBrandTheme(tenantSlug(), seg);
-    api.getConfig().then((c) => { setStoredSegment(c.segment); applyBrandTheme(tenantSlug(), c.segment); }).catch(() => {});
+    api.getConfig().then((c) => { setStoredSegment(c.segment); applyBrandTheme(tenantSlug(), c.segment); setProduction(!!c.productionEnabled); }).catch(() => {});
     if (!brand) {
       fetchMe().then(() => {
         const n = brandName();
@@ -59,7 +65,7 @@ export function App() {
     setLoggedIn(true);
     const seg = storedSegment();
     if (seg) applyBrandTheme(tenantSlug(), seg);
-    api.getConfig().then((c) => { setStoredSegment(c.segment); applyBrandTheme(tenantSlug(), c.segment); }).catch(() => {});
+    api.getConfig().then((c) => { setStoredSegment(c.segment); applyBrandTheme(tenantSlug(), c.segment); setProduction(!!c.productionEnabled); }).catch(() => {});
     const n = brandName();
     setBrand(n);
     if (n) document.title = n;
@@ -87,7 +93,7 @@ export function App() {
         </div>
 
         <nav className="flex flex-col gap-0.5">
-          {NAV.map(({ to, label, Icon }) => (
+          {NAV.filter((n) => !n.production || production).map(({ to, label, Icon }) => (
             <NavLink
               key={to}
               to={to}

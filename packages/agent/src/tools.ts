@@ -132,7 +132,9 @@ export const TOOL_DEFS: Anthropic.Messages.Tool[] = [
           },
         },
         cep:          { type: "string", description: "CEP de entrega, só dígitos" },
-        servicoFrete: { type: "string", description: "Serviço escolhido (ex: 'Correios Sedex'). Opcional." },
+        servicoFrete: { type: "string", description: "Serviço de transportadora escolhido (ex: 'Correios Sedex'). Opcional." },
+        entregaPropria: { type: "boolean", description: "true se a entrega for própria (motoboy/carro da loja) em vez de transportadora. Use o que a cliente escolheu." },
+        distanciaKm:    { type: "number", description: "Distância até a cliente em km. Obrigatório quando entregaPropria=true (calcula moto/carro e o valor)." },
       },
     },
   },
@@ -182,6 +184,54 @@ export const TOOL_DEFS: Anthropic.Messages.Tool[] = [
       required: ["motivo"],
       properties: {
         motivo: { type: "string", description: "Resumo curto para o atendente" },
+      },
+    },
+  },
+];
+
+// Tools EXCLUSIVAS de lojas que fabricam (ADR-030 — Fase 4). Só são oferecidas
+// ao agente quando o tenant tem `productionEnabled` (a app passa estes defs à
+// parte). Mantê-las fora de TOOL_DEFS evita poluir o contexto de lojas de revenda.
+export const PRODUCTION_TOOL_DEFS: Anthropic.Messages.Tool[] = [
+  {
+    name: "consultar_ficha",
+    description:
+      "Consulta a ficha técnica de um produto FABRICADO: do que é feito (ingredientes/insumos), " +
+      "se é feito sob encomenda e o prazo de encomenda em dias. Use quando a cliente perguntar " +
+      "ingredientes, composição, do que é feito, se tem tal item, ou em quanto tempo fica pronto. " +
+      "Não invente ingredientes — responda só com o que a tool retornar.",
+    input_schema: {
+      type: "object",
+      required: ["sku"],
+      properties: {
+        sku: { type: "string", description: "SKU/variante do produto" },
+      },
+    },
+  },
+  {
+    name: "calcular_entrega_propria",
+    description:
+      "Calcula o custo da entrega própria (motoboy/carro da loja) — usada NO LUGAR da transportadora " +
+      "quando a loja entrega por conta própria. O modal (moto ou carro) é escolhido pelo volume do pedido. " +
+      "Se você ainda não sabe a distância, chame sem `distanceKm` para ver as faixas de preço e então " +
+      "pergunte o bairro/distância à cliente. Se a entrega própria não estiver configurada, retorna " +
+      "indisponível — aí use consultar_frete (transportadora).",
+    input_schema: {
+      type: "object",
+      properties: {
+        distanceKm: { type: "number", description: "Distância aproximada até a cliente, em km (se souber)." },
+        itens: {
+          type: "array",
+          description: "Itens do pedido (para medir o volume e decidir moto/carro).",
+          items: {
+            type: "object",
+            required: ["sku"],
+            properties: {
+              sku: { type: "string" },
+              quantidade: { type: "number", default: 1 },
+            },
+          },
+        },
       },
     },
   },

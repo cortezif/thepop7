@@ -1,7 +1,8 @@
 import type { FastifyPluginAsync } from "fastify";
 import { randomUUID } from "node:crypto";
 import { buildErpForTenant } from "@hubadvisor/connectors";
-import { getPrisma, getTrayCreds, withTenant } from "@hubadvisor/db";
+import { getPrisma, withTenant } from "@hubadvisor/db";
+import { resolveErpCreds } from "../lib/erp.js";
 import { searchProducts } from "../services/product-search.js";
 import { backfillBarcodes, resolveScannedBarcode, findBarcodesByPhoto } from "../services/barcode-service.js";
 import { z } from "zod";
@@ -123,11 +124,14 @@ export const catalogRoutes: FastifyPluginAsync = async (app) => {
   // (upsert por externalId, source=erp; NÃO toca nos manuais).
   app.post("/sync", async (req, reply) => {
     const tenantId = req.auth!.tenantId;
-    const creds = await getTrayCreds(tenantId);
-    // Sem Tray real conectada não há o que importar — e NÃO injetamos o mock
+    const { provider, trayCreds, blingCreds, connected } = await resolveErpCreds(tenantId);
+    // Sem ERP real conectado não há o que importar — e NÃO injetamos o mock
     // (senão uma loja de bolos receberia produtos de moda de demonstração).
-    if (!creds) return reply.code(400).send({ error: "Conecte a Tray em Configurações antes de sincronizar — sem ERP conectado não há catálogo para importar." });
-    const erp = buildErpForTenant({ trayCreds: creds });
+    if (!connected) {
+      const nome = provider === "bling" ? "a Bling" : "a Tray";
+      return reply.code(400).send({ error: `Conecte ${nome} em Configurações antes de sincronizar — sem ERP conectado não há catálogo para importar.` });
+    }
+    const erp = buildErpForTenant({ trayCreds, blingCreds });
     const products = await erp.listProducts();
     let upserted = 0;
     await withTenant(tenantId, async (tx) => {
@@ -241,7 +245,8 @@ export const catalogRoutes: FastifyPluginAsync = async (app) => {
 
   app.get("/products/:id", async (req, reply) => {
     const id = (req.params as any).id;
-    const erp = buildErpForTenant({ trayCreds: await getTrayCreds(req.auth!.tenantId) });
+    const { trayCreds, blingCreds } = await resolveErpCreds(req.auth!.tenantId);
+    const erp = buildErpForTenant({ trayCreds, blingCreds });
     const product = await erp.getProduct(id);
     if (!product) return reply.code(404).send({ error: "not found" });
     return product;

@@ -13,6 +13,7 @@ export type SegmentPreset = {
   styles: string[];
   occasions: string[];
   aiVoice: string;      // linguagem da IA específica do segmento
+  production?: boolean; // ADR-030: liga o modo fabricação (Insumos/Receitas/Produção)
 };
 
 export const SEGMENT_PRESETS: SegmentPreset[] = [
@@ -30,6 +31,7 @@ export const SEGMENT_PRESETS: SegmentPreset[] = [
     id: "bolos",
     label: "Bolos & Confeitaria",
     paletteKey: "caramel",
+    production: true,
     styles: ["aniversario", "casamento", "infantil", "tematico", "gourmet", "vegano", "fit", "vulcao", "naked-cake"],
     occasions: ["aniversario", "casamento", "cha-de-bebe", "cha-de-panela", "corporativo", "formatura", "datas-comemorativas"],
     aiVoice:
