@@ -39,7 +39,78 @@ export function Entrega() {
         />
         <Estimator />
       </div>
+
+      <div className="mt-6">
+        <CourierEstimator />
+      </div>
     </Page>
+  );
+}
+
+// ── Entregador on-demand (Lalamove/Open Delivery; mock se sem credencial) ──────
+function CourierEstimator() {
+  const [fromCep, setFromCep] = useState("");
+  const [toCep, setToCep] = useState("");
+  const [modal, setModal] = useState<"moto" | "carro">("moto");
+  const [res, setRes] = useState<import("../lib/api").CourierQuoteResult | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function run() {
+    if (fromCep.replace(/\D/g, "").length < 8 || toCep.replace(/\D/g, "").length < 8) {
+      setRes({ ok: false, reason: "Informe os dois CEPs (origem e destino) completos." });
+      return;
+    }
+    setBusy(true);
+    try { setRes(await api.courierQuote({ fromCep, toCep, modal })); }
+    catch (e: any) { setRes({ ok: false, reason: e?.message ?? "Erro ao cotar" }); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <Card>
+      <CardHeader
+        icon={Bike}
+        title="Entregador on-demand"
+        subtitle="Cotação por entregador sob demanda (motoboy/carro). Geocodifica os CEPs e cota via Lalamove/Open Delivery — sem credencial, mostra uma simulação."
+      />
+      <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <label className="block">
+          <span className="mb-1.5 block text-xs font-medium text-muted-foreground">CEP da loja (origem)</span>
+          <input className={inputClass} value={fromCep} onChange={(e) => setFromCep(e.target.value)} placeholder="01310-100" />
+        </label>
+        <label className="block">
+          <span className="mb-1.5 block text-xs font-medium text-muted-foreground">CEP do cliente (destino)</span>
+          <input className={inputClass} value={toCep} onChange={(e) => setToCep(e.target.value)} placeholder="04567-000" />
+        </label>
+        <label className="block">
+          <span className="mb-1.5 block text-xs font-medium text-muted-foreground">Modal</span>
+          <select className={inputClass} value={modal} onChange={(e) => setModal(e.target.value as any)}>
+            <option value="moto">Moto</option>
+            <option value="carro">Carro</option>
+          </select>
+        </label>
+      </div>
+      <Button className="mt-4" Icon={Calculator} onClick={run} disabled={busy}>{busy ? "Cotando…" : "Cotar entregador"}</Button>
+
+      {res && (res.ok ? (
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-accent-soft p-5">
+          <div className="flex items-center gap-2 text-primary-strong">
+            {res.modal === "moto" ? <Bike size={18} /> : <Car size={18} />}
+            <span className="text-sm font-medium capitalize">{res.modal}</span>
+            {res.mock && <Badge tone="warning">simulação (sem credencial)</Badge>}
+            {!res.mock && <Badge tone="success">{res.provider}</Badge>}
+          </div>
+          <div className="text-right">
+            <p className="font-serif text-2xl font-semibold text-primary-strong">{formatBRL(res.priceBRL)}</p>
+            <p className="text-xs text-primary-strong/70">
+              {res.distanceKm != null ? `${res.distanceKm} km` : ""}{res.etaMinutes != null ? ` · ~${res.etaMinutes} min` : ""}
+            </p>
+          </div>
+        </div>
+      ) : (
+        <p className="mt-4 text-sm text-amber-700">{res.reason}</p>
+      ))}
+    </Card>
   );
 }
 

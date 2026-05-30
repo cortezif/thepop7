@@ -5,7 +5,7 @@ import {
   listBoms, createBom, updateBom, deleteBom,
 } from "../services/manufacturing-service.js";
 import { previewProduction, createBatch, listBatches } from "../services/production-service.js";
-import { getTariff, saveTariff, quoteForTenant } from "../services/delivery-service.js";
+import { getTariff, saveTariff, quoteForTenant, courierQuoteForTenant } from "../services/delivery-service.js";
 
 // Fabricação (ADR-030) — CRUD de insumos/embalagens e fichas técnicas (receitas).
 // Tudo protegido por JWP (registrado no bloco `secure` do app).
@@ -155,5 +155,22 @@ export const manufacturingRoutes: FastifyPluginAsync = async (app) => {
     }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
     return quoteForTenant(req.auth!.tenantId, body.data.distanceKm, body.data.volume);
+  });
+
+  // POST /manufacturing/delivery/courier-quote — cotação de entregador on-demand
+  // (geocodifica CEPs e cota via Lalamove/Open Delivery; mock se sem credencial)
+  app.post("/delivery/courier-quote", async (req, reply) => {
+    const body = z.object({
+      tenantSlug: z.string(),
+      fromCep: z.string().min(8),
+      toCep: z.string().min(8),
+      modal: z.enum(["moto", "carro"]).optional(),
+      itemsValueBRL: z.number().min(0).optional(),
+    }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+    return courierQuoteForTenant(req.auth!.tenantId, {
+      fromCep: body.data.fromCep, toCep: body.data.toCep,
+      modal: body.data.modal, itemsValueBRL: body.data.itemsValueBRL,
+    });
   });
 };

@@ -20,6 +20,8 @@ export function Settings() {
       <WhatsAppStatus />
       <InstagramStatus />
       <CPlugStatus />
+      <LalamoveStatus />
+      <OpenDeliveryStatus />
       <AnthropicStatus />
     </div>
   );
@@ -439,6 +441,30 @@ function CPlugStatus() {
       description="Emissão de notas fiscais eletrônicas. Configure as credenciais da loja no servidor."
       provider="cplug"
       loadFn={() => api.integrationStatus("cplug")}
+    />
+  );
+}
+
+function LalamoveStatus() {
+  return (
+    <EnvIntegration
+      icon={<Truck className="h-5 w-5 text-muted-foreground" />}
+      title="Lalamove (entregador on-demand)"
+      description="Aciona motoboy/carro sob demanda em capitais e grandes cidades. Informe API Key e Secret."
+      provider="lalamove"
+      loadFn={() => api.integrationStatus("lalamove")}
+    />
+  );
+}
+
+function OpenDeliveryStatus() {
+  return (
+    <EnvIntegration
+      icon={<Truck className="h-5 w-5 text-muted-foreground" />}
+      title="Open Delivery (entregador — interior)"
+      description="Padrão ABRASEL (Pedidos10 etc.) para entregadores no interior. Informe Client ID/Secret e Base URL do operador."
+      provider="opendelivery"
+      loadFn={() => api.integrationStatus("opendelivery")}
     />
   );
 }

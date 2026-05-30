@@ -1,4 +1,7 @@
 import { getPrisma, withTenant } from "@hubadvisor/db";
+import { buildCourierForTenant, courierProvider } from "@hubadvisor/connectors";
+import { geocodeCep } from "./geocode-service.js";
+import { getLalamoveCreds, getOpenDeliveryCreds } from "./integration-service.js";
 
 // Entrega própria (ADR-030 — Fase 3). Modal (moto vs carro) escolhido pelo volume
 // do pedido; preço pela faixa de distância do modal. Substitui a cotação de
@@ -100,6 +103,38 @@ export async function quoteForTenant(tenantId: string, distanceKm: number, volum
  * Volume de um pedido = Σ (quantidade × Product.deliveryVolume). Usado pelo
  * cálculo automático de modal (Fase 4 liga isto ao fechamento da Maya).
  */
+// ── Entrega on-demand (courier) — geocodifica CEPs e cota via provider ────────
+export type CourierQuoteResult =
+  | { ok: true; provider: string; mock: boolean; modal: "moto" | "carro"; priceBRL: number; etaMinutes?: number; distanceKm?: number; pickup: { lat: number; lng: number }; dropoff: { lat: number; lng: number } }
+  | { ok: false; reason: string };
+
+export async function courierQuoteForTenant(
+  tenantId: string,
+  input: { fromCep: string; toCep: string; modal?: "moto" | "carro"; itemsValueBRL?: number },
+): Promise<CourierQuoteResult> {
+  const [pickup, dropoff] = await Promise.all([geocodeCep(input.fromCep), geocodeCep(input.toCep)]);
+  if (!pickup) return { ok: false, reason: "Não consegui localizar o CEP de origem (loja)." };
+  if (!dropoff) return { ok: false, reason: "Não consegui localizar o CEP de destino (cliente)." };
+
+  const provider = courierProvider();
+  const courier = provider === "opendelivery"
+    ? buildCourierForTenant({ provider, openDeliveryCreds: await getOpenDeliveryCreds(tenantId) })
+    : buildCourierForTenant({ provider, lalamoveCreds: await getLalamoveCreds(tenantId) });
+
+  const q = await courier.quoteCourier({ pickup, dropoff, modal: input.modal, itemsValueBRL: input.itemsValueBRL });
+  return {
+    ok: true,
+    provider: q.provider,
+    mock: q.provider === "mock", // sem credencial → cotação simulada (haversine)
+    modal: q.modal,
+    priceBRL: q.priceBRL,
+    etaMinutes: q.etaMinutes,
+    distanceKm: q.distanceKm,
+    pickup: { lat: pickup.lat, lng: pickup.lng },
+    dropoff: { lat: dropoff.lat, lng: dropoff.lng },
+  };
+}
+
 export async function orderVolume(tenantId: string, items: Array<{ productId: string; quantity: number }>): Promise<number> {
   if (items.length === 0) return 0;
   const ids = [...new Set(items.map((i) => i.productId))];

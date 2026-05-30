@@ -81,6 +81,16 @@ export const PROVIDER_FIELDS: Record<string, CredField[]> = {
   anthropic: [
     { key: "apiKey", label: "API Key", secret: true, env: "ANTHROPIC_API_KEY", required: true },
   ],
+  lalamove: [
+    { key: "apiKey", label: "API Key", secret: true, env: "LALAMOVE_API_KEY", required: true },
+    { key: "apiSecret", label: "API Secret", secret: true, env: "LALAMOVE_API_SECRET", required: true },
+    { key: "market", label: "Market (ex.: BR)", secret: false, env: "LALAMOVE_MARKET" },
+  ],
+  opendelivery: [
+    { key: "clientId", label: "Client ID", secret: false, env: "OPENDELIVERY_CLIENT_ID", required: true },
+    { key: "clientSecret", label: "Client Secret", secret: true, env: "OPENDELIVERY_CLIENT_SECRET", required: true },
+    { key: "baseUrl", label: "Base URL (do operador logístico)", secret: false, env: "OPENDELIVERY_BASE_URL", required: true },
+  ],
 };
 
 function readDbConfig(row: Awaited<ReturnType<typeof getIntegration>>): Record<string, string> {
@@ -568,4 +578,43 @@ export async function getAnthropicStatus(tenantId: string) {
     appConfigured: configured,
     note: configured ? "API Key configurada. Maya/Bia/Lia operacionais." : "Informe a API Key da Anthropic.",
   };
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// COURIER / entrega on-demand (Lalamove, Open Delivery) — credencial por loja
+// ──────────────────────────────────────────────────────────────────────────────
+
+export async function getLalamoveStatus(tenantId: string) {
+  const configured = await isAppConfigured(tenantId, "lalamove");
+  return {
+    provider: "lalamove" as const,
+    connected: configured,
+    status: configured ? "connected" : "disconnected",
+    appConfigured: configured,
+    note: configured ? "Lalamove configurada (entregador on-demand)." : "Informe API Key e Secret da Lalamove (capitais/grandes cidades).",
+  };
+}
+
+export async function getOpenDeliveryStatus(tenantId: string) {
+  const configured = await isAppConfigured(tenantId, "opendelivery");
+  return {
+    provider: "opendelivery" as const,
+    connected: configured,
+    status: configured ? "connected" : "disconnected",
+    appConfigured: configured,
+    note: configured ? "Open Delivery configurado (Pedidos10/ABRASEL — cobre interior)." : "Informe Client ID/Secret e Base URL do operador logístico (padrão Open Delivery).",
+  };
+}
+
+/** Credenciais de courier do tenant (banco→env), p/ buildCourierForTenant. */
+export async function getLalamoveCreds(tenantId: string): Promise<{ apiKey: string; apiSecret: string; market?: string } | null> {
+  const cfg = await getProviderConfig(tenantId, "lalamove");
+  if (!cfg.apiKey || !cfg.apiSecret) return null;
+  return { apiKey: cfg.apiKey, apiSecret: cfg.apiSecret, market: cfg.market };
+}
+
+export async function getOpenDeliveryCreds(tenantId: string): Promise<{ clientId: string; clientSecret: string; baseUrl: string } | null> {
+  const cfg = await getProviderConfig(tenantId, "opendelivery");
+  if (!cfg.clientId || !cfg.clientSecret || !cfg.baseUrl) return null;
+  return { clientId: cfg.clientId, clientSecret: cfg.clientSecret, baseUrl: cfg.baseUrl };
 }

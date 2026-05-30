@@ -356,7 +356,13 @@ export const api = {
     post<{ ok: boolean; motoVolumeLimit: number; bands: DeliveryBand[] }>(`/manufacturing/delivery/tariff`, payload as any),
   quoteDelivery: (distanceKm: number, volume: number) =>
     post<DeliveryQuote>(`/manufacturing/delivery/quote`, { distanceKm, volume }),
+  courierQuote: (payload: { fromCep: string; toCep: string; modal?: "moto" | "carro"; itemsValueBRL?: number }) =>
+    post<CourierQuoteResult>(`/manufacturing/delivery/courier-quote`, payload as any),
 };
+
+export type CourierQuoteResult =
+  | { ok: true; provider: string; mock: boolean; modal: "moto" | "carro"; priceBRL: number; etaMinutes?: number; distanceKm?: number; pickup: { lat: number; lng: number }; dropoff: { lat: number; lng: number } }
+  | { ok: false; reason: string };
 
 export type DeliveryBand = { modal: "moto" | "carro"; maxKm: number; priceBRL: number };
 export type DeliveryTariff = { motoVolumeLimit: number; bands: DeliveryBand[]; configured: boolean };
