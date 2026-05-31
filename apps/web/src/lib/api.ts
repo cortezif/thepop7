@@ -390,8 +390,8 @@ export const api = {
   sendCashbackNudge: (withinDays = 5) =>
     post<{ contacts: number; sentWhatsapp: number; sentEmail: number; sentSms: number; skipped: number }>(`/marketing/cashback-nudge`, { withinDays }),
   segmentPresets: () => get<SegmentPreset[]>(`/admin/segment-presets`),
-  setSegment: (payload: { segment: string; styles?: string[]; occasions?: string[]; applyVoice?: boolean }) =>
-    post<{ ok: boolean; segment: string; catalogVocab: { styles: string[]; occasions: string[] } | null; voiceApplied?: boolean }>(`/admin/segment-config`, payload),
+  setSegment: (payload: { segment: string; styles?: string[]; occasions?: string[]; applyVoice?: boolean; productionEnabled?: boolean }) =>
+    post<{ ok: boolean; segment: string; catalogVocab: { styles: string[]; occasions: string[] } | null; voiceApplied?: boolean; productionEnabled?: boolean }>(`/admin/segment-config`, payload),
   setRetention: (payload: { retentionDays?: number | null; orderRetentionDays?: number | null }) =>
     post<{ ok: boolean; retentionDays?: number | null; orderRetentionDays?: number | null }>(`/admin/retention-config`, payload),
   retentionPreview: () => get<{ enabled: boolean; retentionDays: number | null; orderRetentionDays: number | null; mensagensAfetadas?: number; pedidosAfetados?: number }>(`/lgpd/retention/preview`),
@@ -763,6 +763,7 @@ export type IntegrationStatus = {
 export type SegmentPreset = {
   id: string; label: string; paletteKey: string;
   styles: string[]; occasions: string[]; aiVoice: string;
+  production?: boolean; // ADR-030: liga o modo fabricação (Insumos/Receitas/Produção)
 };
 
 export type TrayStatus = {

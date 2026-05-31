@@ -47,8 +47,14 @@ export function App() {
 
   useEffect(() => {
     const onUnauth = () => setLoggedIn(false);
+    // Mudou o tipo de negócio em Configurações → re-lê a flag de fabricação na hora.
+    const onConfigChanged = () => api.getConfig().then((c) => setProduction(!!c.productionEnabled)).catch(() => {});
     window.addEventListener("hubadvisor:unauthorized", onUnauth);
-    return () => window.removeEventListener("hubadvisor:unauthorized", onUnauth);
+    window.addEventListener("hubadvisor:config-changed", onConfigChanged);
+    return () => {
+      window.removeEventListener("hubadvisor:unauthorized", onUnauth);
+      window.removeEventListener("hubadvisor:config-changed", onConfigChanged);
+    };
   }, []);
 
   // Aplica o tema da loja e re-hidrata a marca ao montar (sobrevive a refresh).

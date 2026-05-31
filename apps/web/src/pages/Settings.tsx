@@ -711,6 +711,7 @@ function SegmentConfig() {
   const [styles, setStyles] = useState("");
   const [occasions, setOccasions] = useState("");
   const [applyVoice, setApplyVoice] = useState(false);
+  const [production, setProduction] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -720,6 +721,7 @@ function SegmentConfig() {
       setSegment(c.segment ?? "moda");
       setStyles((c.catalogVocab?.styles ?? []).join(", "));
       setOccasions((c.catalogVocab?.occasions ?? []).join(", "));
+      setProduction(!!c.productionEnabled);
     }).catch(() => {});
   }, []);
 
@@ -731,6 +733,7 @@ function SegmentConfig() {
       setStyles(p.styles.join(", "));
       setOccasions(p.occasions.join(", "));
       setApplyVoice(true); // por padrão adota a linguagem de IA do segmento
+      setProduction(!!p.production); // segmentos de fabricação (ex: bolos) já vêm com o modo ligado
     }
   }
 
@@ -738,8 +741,10 @@ function SegmentConfig() {
     setBusy(true); setMsg(null);
     try {
       const toList = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
-      const r = await api.setSegment({ segment: segment.trim() || "moda", styles: toList(styles), occasions: toList(occasions), applyVoice });
+      const r = await api.setSegment({ segment: segment.trim() || "moda", styles: toList(styles), occasions: toList(occasions), applyVoice, productionEnabled: production });
       setMsg(`Salvo: ${r.segment}${r.voiceApplied ? " · linguagem da IA aplicada" : ""}.`);
+      // Avisa o menu lateral pra refletir o modo fabricação sem refresh manual.
+      window.dispatchEvent(new CustomEvent("hubadvisor:config-changed"));
     } catch (e) { setMsg(String(e)); } finally { setBusy(false); }
   }
 
@@ -784,6 +789,16 @@ function SegmentConfig() {
           <span>
             Adotar a <strong>linguagem da IA</strong> deste segmento
             {current && <span className="mt-1 block rounded bg-muted/50 px-2 py-1 text-xs text-muted-foreground">“{current.aiVoice.slice(0, 160)}…”</span>}
+          </span>
+        </label>
+
+        <label className="flex items-start gap-2 text-sm">
+          <input type="checkbox" checked={production} onChange={(e) => setProduction(e.target.checked)} className="mt-0.5" />
+          <span>
+            Ativar <strong>modo fabricação</strong>
+            <span className="mt-1 block rounded bg-muted/50 px-2 py-1 text-xs text-muted-foreground">
+              Mostra os menus <strong>Insumos</strong>, <strong>Fichas técnicas</strong>, <strong>Produção</strong>, <strong>Entrega</strong> e <strong>Relatórios fab.</strong> — para quem fabrica (ex.: bolos consomem insumos por receita e dão baixa no estoque).
+            </span>
           </span>
         </label>
 

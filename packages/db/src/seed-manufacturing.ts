@@ -2,6 +2,13 @@
    principal: liga o modo fabricação na loja-piloto (thepop7), cadastra insumos,
    uma receita de bolo (com custo automático no produto), e a tarifa de entrega
    própria. Uso: npm --workspace @hubadvisor/db run seed:manufacturing */
+import { config as loadEnv } from "dotenv";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+loadEnv({ path: resolve(__dirname, "../../../.env") });
+
 import { getPrisma } from "./index.js";
 
 const prisma = getPrisma();
