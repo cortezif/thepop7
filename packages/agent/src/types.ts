@@ -45,6 +45,9 @@ export type ConversationContext = {
   recentMessages: Array<{ direction: "in" | "out"; text: string }>;
   // Resumos de conversas anteriores desta cliente (ADR-007) — memória de longo prazo.
   priorSummaries?: string[];
+  // Cashback da cliente (ADR-031) — para a IA citar PROATIVAMENTE crédito a vencer
+  // (ex.: no fechamento). Só presente quando há saldo > 0.
+  cashback?: { saldoBRL: number; expiringBRL: number; daysLeft: number | null };
 };
 
 // Implementação concreta das tools — injetada pelo app (separação domínio × LLM)

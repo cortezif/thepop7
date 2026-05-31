@@ -1,6 +1,6 @@
 import { runAgentTurn, summarizeConversation, extractProductAttributes, DEFAULT_CASCADE, PRODUCTION_TOOL_DEFS, type AgentConfig, type ConversationContext, type AgentToolImpl } from "@hubadvisor/agent";
 import { getTariff, quoteDelivery, courierQuoteForTenant } from "./delivery-service.js";
-import { cashbackBalance } from "./cashback-service.js";
+import { cashbackBalance, cashbackHintFor } from "./cashback-service.js";
 import { getPrisma, withTenant, decryptPII, resolveTenantCredentials } from "@hubadvisor/db";
 import { buildErpForTenant, getLogisticsConnector, getMessagingConnector } from "@hubadvisor/connectors";
 import { resolveErpCreds } from "../lib/erp.js";
@@ -163,6 +163,7 @@ export async function handleIncomingMessage(dto: IncomingDTO, log: FastifyBaseLo
       text: m.content ?? "",
     })),
     priorSummaries,
+    cashback: tenant.cashbackEnabled ? (await cashbackHintFor(tenant.id, contact.id)) ?? undefined : undefined,
   };
 
   const cfg: AgentConfig = {
@@ -333,6 +334,7 @@ export async function suggestReply(tenantSlug: string, conversationId: string, l
       favoriteColors: contact?.favoriteColors ?? [],
     },
     recentMessages: history,
+    cashback: contact && tenant.cashbackEnabled ? (await cashbackHintFor(tenant.id, contact.id)) ?? undefined : undefined,
   };
 
   const cfg: AgentConfig = {

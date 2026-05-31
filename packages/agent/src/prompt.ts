@@ -60,8 +60,17 @@ FLUXO DE FECHAMENTO DE VENDA (importante):
     ? `\n\nMEMÓRIA DE CONVERSAS ANTERIORES (use pra dar continuidade, sem repetir perguntas já respondidas; não cite que "tenho registros"):\n${memory.map((s) => `  - ${s}`).join("\n")}`
     : "";
 
+  const cb = ctx.cashback;
+  const cashbackBlock = cb && cb.saldoBRL > 0
+    ? `\n\nCASHBACK DA CLIENTE: ela tem R$ ${cb.saldoBRL.toFixed(2)} de crédito${
+        cb.expiringBRL > 0 && cb.daysLeft != null
+          ? ` — R$ ${cb.expiringBRL.toFixed(2)} VENCE em ${cb.daysLeft} dia(s)`
+          : ""
+      }. Mencione isso de forma natural e oportuna (ex.: ao montar o pedido ou no fechamento) como incentivo — "você tem R$X de crédito pra usar agora". O resgate é automático no pedido (até o teto da loja); não prometa valor exato de desconto, deixe o sistema calcular. Não seja insistente nem repita a cada mensagem.`
+    : "";
+
   const contextBlock = `CLIENTE ATUAL (canal: ${ctx.channel}):
-${profileSummary || "  (perfil ainda vazio — colete naturalmente durante a conversa)"}${memoryBlock}
+${profileSummary || "  (perfil ainda vazio — colete naturalmente durante a conversa)"}${memoryBlock}${cashbackBlock}
 
 Se descobrir medidas, estilo, ocasião ou preferências durante a conversa, chame atualizar_perfil.
 IMPORTANTE: NUNCA diga que "anotei"/"registrei" o perfil sem ter CHAMADO a tool atualizar_perfil na mesma volta. Persista primeiro, depois confirme.`;

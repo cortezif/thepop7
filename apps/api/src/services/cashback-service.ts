@@ -111,6 +111,28 @@ export async function redeemForOrder(
   return tx ? run(tx) : withTenant(tenantId, run);
 }
 
+/**
+ * Resumo do cashback de UMA cliente para a IA citar na conversa (ADR-031).
+ * Devolve null se não há saldo. `expiringBRL`/`daysLeft` consideram a janela de
+ * `withinDays` (default 7) — gancho de "use antes de vencer".
+ */
+export async function cashbackHintFor(
+  tenantId: string, contactId: string, withinDays = 7,
+): Promise<{ saldoBRL: number; expiringBRL: number; daysLeft: number | null } | null> {
+  const now = new Date();
+  const rows = await activeAccruals(getPrisma(), tenantId, contactId);
+  if (rows.length === 0) return null;
+  const accruals = rows.map((a) => ({ id: a.id, remainingBRL: num(a.remainingBRL), expiresAt: a.expiresAt }));
+  const saldoBRL = availableBalance(accruals, now);
+  if (saldoBRL <= 0) return null;
+  const horizon = now.getTime() + withinDays * 86_400_000;
+  const soon = rows.filter((a) => a.expiresAt && new Date(a.expiresAt).getTime() <= horizon && num(a.remainingBRL) > 0);
+  const expiringBRL = r2(soon.reduce((s, a) => s + num(a.remainingBRL), 0));
+  const soonest = soon[0]?.expiresAt ? new Date(soon[0].expiresAt) : null; // activeAccruals já vem ordenado por expiresAt asc
+  const daysLeft = soonest ? Math.max(0, Math.ceil((soonest.getTime() - now.getTime()) / 86_400_000)) : null;
+  return { saldoBRL, expiringBRL, daysLeft: expiringBRL > 0 ? daysLeft : null };
+}
+
 export type ExpiringGroup = { contactId: string; expiringBRL: number; soonestExpiry: Date; entryIds: string[] };
 
 /**
