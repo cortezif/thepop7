@@ -42,6 +42,11 @@ export function Inbox() {
     setNewNote("");
     try { await api.addNote(selected, newNote.trim()); await loadNotes(selected); } catch (e) { setError(String(e)); }
   }
+  async function removeNote(noteId: string) {
+    if (!selected) return;
+    setNotes((ns) => ns.filter((n) => n.id !== noteId)); // otimista
+    try { await api.deleteNote(selected, noteId); } catch (e) { setError(String(e)); loadNotes(selected); }
+  }
   async function toggleAssign() {
     if (!selected || !current) return;
     try { await api.assignToMe(selected, !!current.assignedToId); await loadConversations(); } catch (e) { setError(String(e)); }
@@ -255,10 +260,14 @@ export function Inbox() {
                 {notes.length > 0 && (
                   <div className="mt-1.5 max-h-24 space-y-1 overflow-y-auto">
                     {notes.map((n) => (
-                      <p key={n.id} className="text-xs text-muted-foreground">
-                        <span className="text-foreground">{n.text}</span>
-                        <span className="ml-1 opacity-60">— {n.authorName ?? "operador"}</span>
-                      </p>
+                      <div key={n.id} className="group flex items-start gap-1.5 text-xs text-muted-foreground">
+                        <span className="flex-1">
+                          <span className="text-foreground">{n.text}</span>
+                          <span className="ml-1 opacity-60">— {n.authorName ?? "operador"}{n.createdAt ? `, ${fmtMsgTime(n.createdAt)}` : ""}</span>
+                        </span>
+                        <button onClick={() => removeNote(n.id)} title="Apagar nota"
+                          className="shrink-0 opacity-0 transition-opacity hover:text-primary group-hover:opacity-100">✕</button>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -403,6 +412,17 @@ function StatusBadge({ status }: { status: string }) {
   return <Badge tone={cfg.tone}>{cfg.label}</Badge>;
 }
 
+/** Data/hora curta da mensagem: "hoje 15:42", "ontem 09:10" ou "31/05 15:42". */
+function fmtMsgTime(iso: string): string {
+  const d = new Date(iso);
+  const time = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  const today = new Date(); const y = new Date(today); y.setDate(y.getDate() - 1);
+  const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+  if (sameDay(d, today)) return `hoje ${time}`;
+  if (sameDay(d, y)) return `ontem ${time}`;
+  return `${d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })} ${time}`;
+}
+
 function MessageBubble({ message }: { message: Message }) {
   const isIn = message.direction === "in";
   const isAI = !isIn && !!message.llmModel;
@@ -437,6 +457,11 @@ function MessageBubble({ message }: { message: Message }) {
         {message.reviewFlagged && (
           <div className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700" title={message.reviewReasons?.join("; ")}>
             <AlertTriangle size={10} /> revisar: {message.reviewReasons?.join("; ")}
+          </div>
+        )}
+        {message.createdAt && (
+          <div className={cn("mt-1 text-[10px]", isIn ? "text-muted-foreground" : "text-primary-foreground/70")} title={new Date(message.createdAt).toLocaleString("pt-BR")}>
+            {fmtMsgTime(message.createdAt)}
           </div>
         )}
       </div>

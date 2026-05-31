@@ -357,6 +357,8 @@ export const api = {
     get<ConversationNote[]>(`/inbox/conversations/${conversationId}/notes`),
   addNote: (conversationId: string, text: string) =>
     post<ConversationNote>(`/inbox/conversations/${conversationId}/notes`, { text }),
+  deleteNote: (conversationId: string, noteId: string) =>
+    del<{ ok: boolean }>(`/inbox/conversations/${conversationId}/notes/${noteId}`),
   assignToMe: (conversationId: string, unassign?: boolean) =>
     post<{ ok: boolean; assignedToName?: string | null }>(`/inbox/conversations/${conversationId}/assign`, { unassign }),
   suggestReply: (conversationId: string) =>

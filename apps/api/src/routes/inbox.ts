@@ -136,6 +136,19 @@ export const inboxRoutes: FastifyPluginAsync = async (app) => {
     );
   });
 
+  // DELETE /inbox/conversations/:id/notes/:noteId — apaga uma nota interna
+  app.delete("/conversations/:id/notes/:noteId", async (req, reply) => {
+    const { id, noteId } = req.params as any;
+    const tenant = await resolveTenant((req.query as any).tenantSlug);
+    if (!tenant) return reply.code(404).send({ error: "tenant not found" });
+    return withTenant(tenant.id, async (tx) => {
+      const conv = await tx.conversation.findFirst({ where: { id, tenantId: tenant.id }, select: { id: true } });
+      if (!conv) return reply.code(404).send({ error: "conversa não encontrada" });
+      const r = await tx.conversationNote.deleteMany({ where: { id: noteId, conversationId: id } });
+      return { ok: r.count > 0 };
+    });
+  });
+
   // POST /inbox/conversations/:id/assign — atribui ao operador logado (ou desatribui)
   app.post("/conversations/:id/assign", async (req, reply) => {
     const id = (req.params as any).id;
