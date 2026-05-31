@@ -63,7 +63,9 @@ for (const ws of wsDirs) {
       imported.add(pkgName(spec));
     }
   }
-  const missing = [...imported].filter((n) => n !== pj.name && !builtins.has(n) && !declared.has(n));
+  // node: é sempre builtin (alguns, como node:test, só existem com o prefixo e
+  // não aparecem em builtinModules em todas as versões do Node).
+  const missing = [...imported].filter((n) => n !== pj.name && !n.startsWith("node:") && !builtins.has(n) && !declared.has(n));
   if (missing.length) {
     problems++;
     console.error(`✗ [${pj.name}] importa sem declarar: ${missing.join(", ")}`);
