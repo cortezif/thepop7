@@ -39,7 +39,10 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
     // Só consideramos lojas onde a SENHA também bate (não vazamos em quais
     // lojas o e-mail existe sem credencial válida).
-    const matched = candidates.filter((u) => verifyPassword(body.data.password, u.passwordHash));
+    // Lojas suspensas não autenticam (acesso cortado pelo admin da plataforma).
+    const matched = candidates
+      .filter((u) => verifyPassword(body.data.password, u.passwordHash))
+      .filter((u) => u.tenant.status !== "suspended");
     if (matched.length === 0) return reply.code(401).send({ error: "credenciais inválidas" });
 
     // E-mail+senha válidos em mais de uma loja → pedir seleção.
@@ -105,6 +108,24 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       id: req.auth!.sub, email: req.auth!.email, role: req.auth!.role,
       tenant: tenant ? { slug: tenant.slug, name: tenant.name } : null,
     };
+  });
+
+  // POST /auth/change-password — o próprio usuário troca a senha (exige a atual).
+  app.post("/change-password", { preHandler: requireAuth }, async (req, reply) => {
+    const body = z.object({
+      currentPassword: z.string().min(1),
+      newPassword: z.string().min(6, "mínimo 6 caracteres"),
+    }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+
+    const prisma = getPrisma();
+    const user = await prisma.user.findUnique({ where: { id: req.auth!.sub } });
+    if (!user || !verifyPassword(body.data.currentPassword, user.passwordHash)) {
+      return reply.code(401).send({ error: "senha atual incorreta" });
+    }
+    await prisma.user.update({ where: { id: user.id }, data: { passwordHash: hashPassword(body.data.newPassword) } });
+    req.log.info({ user: user.id }, "senha alterada pelo próprio usuário");
+    return { ok: true };
   });
 
   // GET /auth/tray/callback — callback OAuth da Tray (passo 2). Aberta: a Tray

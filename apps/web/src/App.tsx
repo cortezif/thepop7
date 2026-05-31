@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { Outlet, NavLink } from "react-router-dom";
-import { LayoutDashboard, MessageSquare, Package, ShoppingCart, ClipboardList, Settings as SettingsIcon, LogOut, Barcode, Sparkles, Scale, Megaphone, Boxes, ScrollText, Factory, Truck } from "lucide-react";
+import { LayoutDashboard, MessageSquare, Package, ShoppingCart, ClipboardList, Settings as SettingsIcon, LogOut, Barcode, Sparkles, Scale, Megaphone, Boxes, ScrollText, Factory, Truck, Users2, UserCircle } from "lucide-react";
 import { cn } from "./lib/utils";
-import { auth, brandName, tenantSlug, fetchMe, api, storedSegment, setStoredSegment } from "./lib/api";
+import { auth, brandName, tenantSlug, fetchMe, api, storedSegment, setStoredSegment, canManage } from "./lib/api";
 import { applyBrandTheme } from "./lib/theme";
 import { Login } from "./pages/Login";
 
-type NavItem = { to: string; label: string; Icon: typeof LayoutDashboard; production?: boolean };
+type NavItem = { to: string; label: string; Icon: typeof LayoutDashboard; production?: boolean; manage?: boolean };
 const NAV: NavItem[] = [
   { to: "/",         label: "Painel",        Icon: LayoutDashboard },
   { to: "/recursos", label: "Recursos",      Icon: Sparkles },
@@ -21,7 +21,9 @@ const NAV: NavItem[] = [
   { to: "/compras",  label: "Compras",       Icon: ShoppingCart },
   { to: "/mercadologica", label: "Mercadológica", Icon: Scale },
   { to: "/midia-paga", label: "Mídia paga", Icon: Megaphone },
+  { to: "/equipe",   label: "Equipe",        Icon: Users2, manage: true },
   { to: "/settings", label: "Configurações", Icon: SettingsIcon },
+  { to: "/conta",    label: "Minha conta",   Icon: UserCircle },
 ];
 
 /** Monograma a partir do nome da loja (1–2 iniciais). */
@@ -93,7 +95,7 @@ export function App() {
         </div>
 
         <nav className="flex flex-col gap-0.5">
-          {NAV.filter((n) => !n.production || production).map(({ to, label, Icon }) => (
+          {NAV.filter((n) => (!n.production || production) && (!n.manage || canManage())).map(({ to, label, Icon }) => (
             <NavLink
               key={to}
               to={to}

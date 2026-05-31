@@ -13,6 +13,8 @@ import { Receitas } from "./pages/Receitas";
 import { Producao } from "./pages/Producao";
 import { Entrega } from "./pages/Entrega";
 import { Settings } from "./pages/Settings";
+import { Equipe } from "./pages/Equipe";
+import { MinhaConta } from "./pages/MinhaConta";
 import { Plataforma } from "./pages/Plataforma";
 import { Recursos } from "./pages/Recursos";
 import { Mercadologica } from "./pages/Mercadologica";
@@ -39,6 +41,8 @@ createRoot(document.getElementById("root")!).render(
           <Route path="/producao" element={<Producao />} />
           <Route path="/entrega"  element={<Entrega />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/equipe"   element={<Equipe />} />
+          <Route path="/conta"    element={<MinhaConta />} />
         </Route>
         <Route path="/plataforma" element={<Plataforma />} />
         <Route path="/cotacao/:token" element={<CotacaoPublica />} />

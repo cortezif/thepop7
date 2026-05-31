@@ -83,3 +83,18 @@ export async function requireAuth(req: FastifyRequest, reply: FastifyReply) {
   }
   req.auth = claims;
 }
+
+/**
+ * preHandler de autorização por papel (ADR-013/F2). Roda DEPOIS de `requireAuth`
+ * (que popula `req.auth`), então use sempre encadeado num bloco já protegido ou
+ * num `preHandler: [requireAuth, requireRole(...)]`. `owner` é o dono da loja;
+ * `admin` administra; `operator` opera o dia a dia sem mexer em conta/config.
+ */
+export function requireRole(...roles: string[]) {
+  return async function (req: FastifyRequest, reply: FastifyReply) {
+    if (!req.auth || !roles.includes(req.auth.role)) {
+      reply.code(403).send({ error: "permissão insuficiente para esta ação" });
+      return reply;
+    }
+  };
+}

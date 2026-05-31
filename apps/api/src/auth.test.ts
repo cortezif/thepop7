@@ -2,7 +2,7 @@ process.env.JWT_SECRET = "test-secret-fixo";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { hashPassword, verifyPassword, signJwt, verifyJwt, requireAuth, type AuthClaims } from "./auth.js";
+import { hashPassword, verifyPassword, signJwt, verifyJwt, requireAuth, requireRole, type AuthClaims } from "./auth.js";
 
 const claims: AuthClaims = { sub: "u1", email: "a@b.com", role: "owner", tenantId: "t1", tenantSlug: "loja-a" };
 
@@ -81,5 +81,24 @@ test("requireAuth: tenant do request ≠ do token → 403 (isolamento)", async (
   const req: any = { headers: { authorization: `Bearer ${token}` }, query: { tenantSlug: "loja-b" }, body: {} };
   const reply = fakeReply();
   await requireAuth(req, reply);
+  assert.equal(reply._state.code, 403);
+});
+
+// --- requireRole (preHandler de papel) ---
+test("requireRole: papel permitido → passa", async () => {
+  const reply = fakeReply();
+  await requireRole("owner", "admin")({ auth: { role: "admin" } } as any, reply);
+  assert.equal(reply._state.code, 200, "não deve responder erro");
+});
+
+test("requireRole: papel insuficiente → 403", async () => {
+  const reply = fakeReply();
+  await requireRole("owner", "admin")({ auth: { role: "operator" } } as any, reply);
+  assert.equal(reply._state.code, 403);
+});
+
+test("requireRole: sem auth → 403", async () => {
+  const reply = fakeReply();
+  await requireRole("owner")({} as any, reply);
   assert.equal(reply._state.code, 403);
 });
