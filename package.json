@@ -16,6 +16,9 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "test:e2e": "playwright test",
+    "docs:status": "node scripts/gen-status.mjs",
+    "docs:shots": "node scripts/shots.mjs",
+    "docs:gifs": "tsx scripts/gifs.mts",
     "db:generate": "npm --workspace @hubadvisor/db run generate",
     "db:migrate": "npm --workspace @hubadvisor/db run migrate",
     "db:studio": "npm --workspace @hubadvisor/db run studio",
@@ -28,6 +31,8 @@
   "devDependencies": {
     "@playwright/test": "^1.60.0",
     "@types/node": "^22.0.0",
+    "gifenc": "^1.0.3",
+    "pngjs": "^7.0.0",
     "tsx": "^4.16.0",
     "turbo": "^2.0.0",
     "typescript": "^5.5.0"

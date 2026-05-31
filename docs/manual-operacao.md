@@ -5,6 +5,9 @@
 > aproveitam. Alimentar fora de ordem deixa recursos "apagados".
 >
 > Use os **checkboxes** como checklist de implantação (marque `[x]` ao concluir).
+>
+> ⏱️ **Com pressa?** Veja o **[Primeiros 30 minutos](./primeiros-30-min.md)** — só o
+> caminho mínimo até a primeira venda. Este documento é a referência completa.
 
 ## Legenda de status
 
@@ -20,20 +23,29 @@
 
 ## Painel de integrações — o que ligar (e status atual)
 
-| Integração | Onde ligar | Credencial / env no servidor | Status hoje |
-|-----------|-----------|------------------------------|-------------|
+<!-- INTEGRACOES:START -->
+> Gerado automaticamente do status real da loja **thepop7** em 2026-05-31 (`scripts/gen-status.mjs`).
+
+| Integração | Onde ligar | Credencial / env no servidor | Status |
+|-----------|-----------|------------------------------|--------|
 | **Anthropic Claude (IA)** | Configurações | `ANTHROPIC_API_KEY` | 🟢 LIVE |
 | **WhatsApp Business Cloud** | Configurações → WhatsApp | `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `META_WEBHOOK_VERIFY_TOKEN` | 🟡 Aguardando |
 | **Instagram / Facebook** | Configurações → Instagram | `INSTAGRAM_ACCESS_TOKEN`, `META_APP_ID`, `META_APP_SECRET` | 🟡 Aguardando |
-| **Mercado Pago** (pagamento) | Configurações → Mercado Pago | `MERCADOPAGO_ACCESS_TOKEN` (+ `_APP_ID`, `_APP_SECRET`) | 🟡 Aguardando |
-| **Melhor Envio** (frete) | Configurações → Melhor Envio | `MELHORENVIO_ACCESS_TOKEN` (+ `_CLIENT_ID`, `_CLIENT_SECRET`) | 🟡 Aguardando |
-| **Tray Commerce** (ERP) | Configurações → Tray | `ERP_PROVIDER=tray`, `TRAY_CONSUMER_KEY`, `TRAY_CONSUMER_SECRET`, `TRAY_API_URL`, `TRAY_ACCESS_TOKEN` | 🟡 Aguardando |
-| **CPlug** (NFe / fiscal) | Configurações → CPlug | `FISCAL_PROVIDER=cplug`, `CPLUG_CLIENT_ID`, `CPLUG_CLIENT_SECRET`, `CPLUG_STORE_USER`, `CPLUG_STORE_PASSWORD` | 🟡 Aguardando |
+| **Mercado Pago (pagamento)** | Configurações → Mercado Pago | `MERCADOPAGO_ACCESS_TOKEN` | 🟡 Aguardando |
+| **Melhor Envio (frete)** | Configurações → Melhor Envio | `MELHORENVIO_ACCESS_TOKEN` | 🟡 Aguardando |
+| **Tray Commerce (ERP)** | Configurações → Tray | `ERP_PROVIDER=tray`, `TRAY_CONSUMER_KEY/SECRET`, `TRAY_ACCESS_TOKEN` | 🟡 Aguardando |
+| **CPlug (NFe / fiscal)** | Configurações → CPlug | `FISCAL_PROVIDER=cplug`, `CPLUG_*` | 🟡 Aguardando |
 | **SMS (Zenvia)** | Configurações → SMS | `ZENVIA_TOKEN`, `ZENVIA_FROM` | 🟡 Aguardando |
-| **E-mail (Resend)** | servidor | `RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_INBOUND_DOMAIN` | 🟡 Aguardando |
+| **Lalamove (entregador on-demand)** | Configurações → Lalamove | `LALAMOVE_API_KEY/SECRET`, `LALAMOVE_MARKET` | ⚪ Opcional |
+| **Open Delivery (entregador)** | Configurações → Open Delivery | `OPENDELIVERY_BASE_URL`, `OPENDELIVERY_CLIENT_*` | ⚪ Opcional |
+<!-- INTEGRACOES:END -->
+
+**Outras (configuração só no servidor):**
+
+| Integração | Onde ligar | Credencial / env no servidor | Status |
+|-----------|-----------|------------------------------|--------|
 | **Mídia paga (Meta Ads)** | Mídia paga | `META_ADS_ACCESS_TOKEN`, `META_AD_ACCOUNT_ID` | 🟡 Aguardando |
-| **Lalamove** (entregador on-demand) | Configurações → Lalamove | `LALAMOVE_API_KEY`, `LALAMOVE_API_SECRET`, `LALAMOVE_MARKET`, `LALAMOVE_ENV` | ⚪ Opcional |
-| **Open Delivery** (entregador interior) | Configurações → Open Delivery | `OPENDELIVERY_BASE_URL`, `OPENDELIVERY_CLIENT_ID`, `OPENDELIVERY_CLIENT_SECRET` | ⚪ Opcional |
+| **E-mail (Resend)** | servidor | `RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_INBOUND_DOMAIN` | 🟡 Aguardando |
 | IA de reserva (fallback) | servidor | `GROQ_API_KEY` / `OLLAMA_URL` | ⚪ Opcional |
 | Busca semântica (embeddings) | servidor | `VOYAGE_API_KEY` | ⚪ Opcional |
 
@@ -135,6 +147,8 @@
 ### 3.2 Padrão de código próprio (etiquetas)
 - [ ] **Configurações → Padrão de código (etiquetas)** → montar o formato por segmentos. Ex.: `26030104159030-0001-PP` (ou "usar sugestão de roupas").
 
+![Montar o padrão de código da loja](./img/flow-etiqueta-padrao.gif)
+
 **Destrava:** código de barras/QR **com significado** (dá pra ler a etiqueta a olho) e base para o registro peça a peça.
 
 ### 3.3 Gerar/imprimir etiquetas e registrar peças
@@ -194,6 +208,8 @@
 
 ### 5.2 Aprovar pedidos pendentes
 - [ ] **Pedidos** → pedidos acima do teto aparecem como **"Aguardando aprovação"** → **"Aprovar e gerar PIX"**.
+
+![Aprovar pedido pendente e gerar PIX](./img/flow-aprovar-pedido.gif)
 
 **Destrava:** controle humano nas vendas de maior valor, sem travar as pequenas.
 
@@ -290,6 +306,8 @@
 ### 9.2 Mercadológica (rede de fornecedores + cotação) — 🟢 nativo
 - [ ] **Mercadológica → Fornecedores** (cadastrar).
 - [ ] Abrir **pesquisa de preços** → capturar ofertas (form, manual, IA por texto/anexo PDF/imagem/CSV, WhatsApp ou e-mail) → enviar o link público `/cotacao/:token`.
+
+![Cadastrar um fornecedor na rede de cotação](./img/flow-cotacao-fornecedor.gif)
 
 **Destrava:** **mapa comparativo** de preços consolidado + reenvio automático de cobrança de cotação.
 
