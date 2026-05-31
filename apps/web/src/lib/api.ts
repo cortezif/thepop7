@@ -1,5 +1,7 @@
 // Cliente HTTP do painel. Proxy /api → :3001 (ver vite.config.ts).
 // MVP: tenant fixo. Quando houver auth (Fase 2.2), vem do contexto do usuário.
+import type { CodePattern } from "@hubadvisor/shared/code-pattern";
+export type { CodePattern, CodeSegment } from "@hubadvisor/shared/code-pattern";
 
 // ---- Auth (F2): token JWT + tenant da sessão no localStorage ----
 const TOKEN_KEY = "hubadvisor_token";
@@ -354,7 +356,7 @@ export const api = {
   deleteProduct: (id: string) => del<{ ok: boolean }>(`/catalog/products/${id}`),
   syncCatalog: () => post<{ ok: boolean; upserted: number }>(`/catalog/sync`, {}),
   cacheStats: () => get<any>(`/admin/cache/stats`),
-  getConfig: () => get<{ aiEnabled: boolean; monthlyAIBudgetBRL: number; autoApproveMaxBRL: number; retentionDays: number | null; orderRetentionDays: number | null; segment?: string; catalogVocab?: { styles?: string[]; occasions?: string[] } | null; productionEnabled?: boolean; storeZip?: string | null; storeAddress?: string | null; storeMapsUrl?: string | null; cashback?: { enabled: boolean; pct: number; expiryDays: number; maxRedeemPct: number }; winback?: { enabled: boolean; inactiveDays: number } }>(`/admin/config`),
+  getConfig: () => get<{ aiEnabled: boolean; monthlyAIBudgetBRL: number; autoApproveMaxBRL: number; retentionDays: number | null; orderRetentionDays: number | null; segment?: string; catalogVocab?: { styles?: string[]; occasions?: string[] } | null; productionEnabled?: boolean; storeZip?: string | null; storeAddress?: string | null; storeMapsUrl?: string | null; codePattern?: CodePattern | null; cashback?: { enabled: boolean; pct: number; expiryDays: number; maxRedeemPct: number }; winback?: { enabled: boolean; inactiveDays: number } }>(`/admin/config`),
   setWinbackConfig: (payload: { enabled?: boolean; inactiveDays?: number }) =>
     post<{ ok: boolean }>(`/admin/winback-config`, payload),
   sendWinback: (inactiveDays?: number) =>
@@ -364,6 +366,8 @@ export const api = {
   setStoreZip: (storeZip: string | null) => post<{ ok: boolean; storeZip: string | null }>(`/admin/store-config`, { storeZip }),
   setStorePickup: (payload: { storeAddress?: string | null; storeMapsUrl?: string | null }) =>
     post<{ ok: boolean; storeAddress: string | null; storeMapsUrl: string | null }>(`/admin/store-config`, payload),
+  setCodePattern: (pattern: CodePattern | null) =>
+    post<{ ok: boolean; codePattern: CodePattern | null }>(`/admin/code-pattern`, { pattern }),
   // Clientes / CRM (ADR-031)
   contacts: (params?: { q?: string; optedOut?: boolean; withCashback?: boolean }) => {
     const qs = new URLSearchParams();

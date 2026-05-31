@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { Power, Users, GitMerge, Store, CreditCard, Truck, MessageCircle, Instagram, FileText, Bot, Tag } from "lucide-react";
+import { Power, Users, GitMerge, Store, CreditCard, Truck, MessageCircle, Instagram, FileText, Bot, Tag, Barcode } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
-import { api, type DuplicateGroup, type TrayStatus, type IntegrationStatus, type SegmentPreset, type IntegrationConfig } from "../lib/api";
+import { api, type DuplicateGroup, type TrayStatus, type IntegrationStatus, type SegmentPreset, type IntegrationConfig, type CodePattern, type CodeSegment } from "../lib/api";
+import { DEFAULT_CLOTHING_PATTERN, buildCode, decodeCode, validatePattern, sampleValues } from "@hubadvisor/shared/code-pattern";
 import { inputClass } from "../components/ui";
 import { cn } from "../lib/utils";
 
@@ -14,6 +15,7 @@ export function Settings() {
       <CashbackConfig />
       <WinbackConfig />
       <StorePickupConfig />
+      <CodePatternConfig />
       <Retention />
       <IdentityMerge />
       <TrayIntegration />
@@ -317,6 +319,114 @@ function CashbackConfig() {
         <button onClick={save} disabled={busy} className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">{busy ? "Salvando…" : "Salvar"}</button>
       </div>
       {msg && <p className="mt-3 text-sm text-muted-foreground">{msg}</p>}
+    </div>
+  );
+}
+
+function CodePatternConfig() {
+  const [segs, setSegs] = useState<CodeSegment[]>(DEFAULT_CLOTHING_PATTERN.segments);
+  const [active, setActive] = useState(false); // há padrão salvo
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  function load() {
+    api.getConfig().then((c) => {
+      if (c.codePattern?.segments?.length) { setSegs(c.codePattern.segments); setActive(true); }
+    }).catch(() => {});
+  }
+  useEffect(load, []);
+
+  const pattern: CodePattern = { segments: segs };
+  const errs = validatePattern(pattern);
+  const preview = errs.length ? "" : buildCode(pattern, sampleValues(pattern));
+  const decoded = preview ? decodeCode(pattern, preview) : [];
+
+  function setSeg(i: number, patch: Partial<CodeSegment>) {
+    setSegs((s) => s.map((x, idx) => (idx === i ? { ...x, ...patch } : x)));
+  }
+  function move(i: number, d: number) {
+    setSegs((s) => { const a = [...s]; const j = i + d; if (j < 0 || j >= a.length) return s; [a[i], a[j]] = [a[j]!, a[i]!]; return a; });
+  }
+  function addSeg() {
+    setSegs((s) => [...s, { key: `seg${s.length + 1}`, label: "Novo campo", length: 2, kind: "custom" }]);
+  }
+  function removeSeg(i: number) { setSegs((s) => s.filter((_, idx) => idx !== i)); }
+
+  async function save() {
+    setBusy(true); setMsg(null);
+    try { await api.setCodePattern(pattern); setActive(true); setMsg("Padrão salvo."); }
+    catch (e: any) { setMsg(e?.message ?? String(e)); } finally { setBusy(false); }
+  }
+  async function reset() {
+    setBusy(true); setMsg(null);
+    try { await api.setCodePattern(null); setActive(false); setSegs(DEFAULT_CLOTHING_PATTERN.segments); setMsg("Voltou ao padrão do sistema."); }
+    catch (e: any) { setMsg(e?.message ?? String(e)); } finally { setBusy(false); }
+  }
+
+  const KINDS: { v: CodeSegment["kind"]; label: string }[] = [
+    { v: "yymm", label: "Ano/Mês (auto)" }, { v: "supplier", label: "Fornecedor" },
+    { v: "productType", label: "Tipo de peça" }, { v: "cost", label: "Custo (do produto)" },
+    { v: "margin", label: "Margem" }, { v: "sequence", label: "Nº sequencial (auto)" },
+    { v: "size", label: "Tamanho (variante)" }, { v: "literal", label: "Texto fixo" },
+    { v: "custom", label: "Livre (digitado)" },
+  ];
+
+  return (
+    <div className="mt-6 rounded-lg border border-border bg-background p-6">
+      <div className="flex items-center gap-2">
+        <Barcode size={18} className="text-primary" />
+        <h2 className="font-serif text-lg font-bold">Padrão de código (etiquetas)</h2>
+        {active && <span className="ml-auto rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800">Personalizado</span>}
+      </div>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Monte um código próprio com significado em cada parte (ex.: roupas — ano/mês, fornecedor, tipo, custo,
+        margem, nº da peça, tamanho). Vale para código de barras e QR. Cada linha é um segmento, na ordem.
+      </p>
+
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <button onClick={() => setSegs(DEFAULT_CLOTHING_PATTERN.segments)} className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted/60">Usar sugestão de roupas</button>
+        <button onClick={addSeg} className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted/60">+ Segmento</button>
+      </div>
+
+      <div className="mt-4 space-y-2">
+        {segs.map((s, i) => (
+          <div key={i} className="flex flex-wrap items-center gap-2 rounded-md border border-border/70 bg-muted/20 p-2 text-sm">
+            <span className="w-6 text-center text-xs text-muted-foreground">{i + 1}</span>
+            <input className="w-40 rounded border border-border bg-background px-2 py-1" value={s.label} onChange={(e) => setSeg(i, { label: e.target.value })} placeholder="Rótulo" />
+            <select className="rounded border border-border bg-background px-2 py-1" value={s.kind} onChange={(e) => setSeg(i, { kind: e.target.value as CodeSegment["kind"] })}>
+              {KINDS.map((k) => <option key={k.v} value={k.v}>{k.label}</option>)}
+            </select>
+            <label className="flex items-center gap-1 text-xs text-muted-foreground">tam.
+              <input type="number" min={0} max={20} className="w-14 rounded border border-border bg-background px-2 py-1" value={s.length} onChange={(e) => setSeg(i, { length: Math.max(0, Number(e.target.value) || 0) })} />
+            </label>
+            {s.kind === "literal" && <input className="w-20 rounded border border-border bg-background px-2 py-1" value={s.value ?? ""} onChange={(e) => setSeg(i, { value: e.target.value })} placeholder="texto" />}
+            <input className="w-14 rounded border border-border bg-background px-2 py-1" value={s.sepBefore ?? ""} onChange={(e) => setSeg(i, { sepBefore: e.target.value || undefined })} placeholder="sep" title="Separador antes (ex.: -)" />
+            <div className="ml-auto flex items-center gap-1">
+              <button onClick={() => move(i, -1)} className="rounded px-1.5 text-muted-foreground hover:text-foreground">↑</button>
+              <button onClick={() => move(i, 1)} className="rounded px-1.5 text-muted-foreground hover:text-foreground">↓</button>
+              <button onClick={() => removeSeg(i)} className="rounded px-1.5 text-muted-foreground hover:text-primary">✕</button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {errs.length > 0 ? (
+        <div className="mt-4 rounded-lg bg-rose-50 px-4 py-2 text-sm text-rose-700">{errs.join(" ")}</div>
+      ) : (
+        <div className="mt-4 rounded-lg bg-muted/40 px-4 py-3">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Pré-visualização (exemplo)</p>
+          <p className="mt-1 font-mono text-lg font-semibold tracking-wide text-foreground">{preview}</p>
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            {decoded.map((d) => <span key={d.key}><b className="text-foreground">{d.value}</b> = {d.label}</span>)}
+          </div>
+        </div>
+      )}
+
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <button onClick={save} disabled={busy || errs.length > 0} className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">{busy ? "Salvando…" : "Salvar padrão"}</button>
+        {active && <button onClick={reset} disabled={busy} className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50">Voltar ao padrão do sistema</button>}
+        {msg && <span className="text-xs text-muted-foreground">{msg}</span>}
+      </div>
     </div>
   );
 }

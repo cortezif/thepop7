@@ -6,6 +6,7 @@ import { findDuplicateContacts, mergeContactsByIds } from "../services/identity-
 import { SEGMENT_PRESETS, getSegmentPreset } from "../services/segment-presets.js";
 import { requireRole } from "../auth.js";
 import { storeMapsUrl } from "../lib/store-pickup.js";
+import { validatePattern, type CodePattern } from "@hubadvisor/shared";
 
 // Mutações administrativas (configuração da loja) exigem owner/admin. Leituras
 // (config, presets, stats) seguem disponíveis a qualquer operador autenticado.
@@ -43,6 +44,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       storeZip: (tenant.policies as any)?.storeZip ?? null,
       storeAddress: (tenant.policies as any)?.storeAddress ?? null,
       storeMapsUrl: storeMapsUrl(tenant.policies as any),
+      codePattern: (tenant.policies as any)?.codePattern ?? null,
       cashback: {
         enabled: tenant.cashbackEnabled,
         pct: tenant.cashbackPct,
@@ -96,6 +98,27 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       await tx.tenant.update({ where: { id: tenant.id }, data });
     });
     return { ok: true, ...data };
+  });
+
+  // POST /admin/code-pattern — padrão próprio de código de barras/QR (ADR-035).
+  // Passe pattern:null para voltar ao padrão do sistema.
+  app.post("/code-pattern", adminOnly, async (req, reply) => {
+    const body = z.object({ tenantSlug: z.string(), pattern: z.any().nullable() }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+    const tenant = await resolveTenant(body.data.tenantSlug);
+    if (!tenant) return reply.code(404).send({ error: "tenant not found" });
+    const policies = { ...((tenant.policies as Record<string, unknown>) ?? {}) };
+    if (body.data.pattern == null) {
+      delete policies.codePattern;
+    } else {
+      const errs = validatePattern(body.data.pattern);
+      if (errs.length) return reply.code(400).send({ error: errs.join(" ") });
+      policies.codePattern = body.data.pattern as CodePattern;
+    }
+    await withTenant(tenant.id, async (tx) => {
+      await tx.tenant.update({ where: { id: tenant.id }, data: { policies: policies as any } });
+    });
+    return { ok: true, codePattern: policies.codePattern ?? null };
   });
 
   // POST /admin/store-config — CEP de origem da loja (entregas on-demand, ADR-030)
