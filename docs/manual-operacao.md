@@ -374,6 +374,8 @@
 
 > Só aparece se o **Tipo de negócio** ligou produção (1.2). Para quem **produz**.
 
+![Fabricação — insumos e embalagens](./img/12-fabricacao.png)
+
 ### 12.1 Insumos — 🟢 nativo
 - [ ] **Insumos** → cadastrar matérias-primas e estoque.
 
@@ -396,6 +398,8 @@
 ## Parte 13 — Equipe & governança
 
 > **Quem pode o quê** e **conformidade**.
+
+![Equipe da loja — papéis e acessos](./img/13-equipe.png)
 
 ### 13.1 Equipe (papéis) — 🟢 nativo
 - [ ] **Equipe** → convidar pessoas e definir papel (dono, admin, gestão, atendente).
