@@ -271,6 +271,7 @@ export type Conversation = {
   handoffReason?: string | null;
   summary?: string | null;
   tags?: string[];
+  profileTags?: string[];
   assignedToId?: string | null;
   assignedToName?: string | null;
 };

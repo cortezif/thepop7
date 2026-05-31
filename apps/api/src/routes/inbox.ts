@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getPrisma, withTenant, decryptPII, resolveTenantCredentials } from "@hubadvisor/db";
 import { getMessagingConnector } from "@hubadvisor/connectors";
 import { enterCredentials } from "@hubadvisor/shared";
+import { effectiveTags } from "@hubadvisor/shared/customer-tags";
 import { suggestReply, summarizeAndPersist } from "../services/conversation-service.js";
 
 async function resolveTenant(slug: string) {
@@ -23,10 +24,16 @@ export const inboxRoutes: FastifyPluginAsync = async (app) => {
         orderBy: { lastMessageAt: "desc" },
         take: 50,
         include: {
-          contact: { select: { name: true, phone: true, igHandle: true } },
+          contact: { select: { id: true, name: true, phone: true, igHandle: true, tags: true } },
           messages: { orderBy: { createdAt: "desc" }, take: 1, select: { content: true, direction: true, createdAt: true } },
         },
       });
+      // Perfil do cliente (ADR-036) por conversa: tags manuais ∪ automáticas (nº pedidos).
+      const contactIds = [...new Set(convs.map((c) => c.contact?.id).filter(Boolean) as string[])];
+      const orderAgg = contactIds.length
+        ? await tx.order.groupBy({ by: ["contactId"], where: { tenantId: tenant.id, contactId: { in: contactIds } }, _count: { _all: true } })
+        : [];
+      const ordersByContact = new Map(orderAgg.map((o) => [o.contactId, o._count._all]));
       return convs.map((c) => ({
         id: c.id,
         channel: c.channel,
@@ -37,6 +44,7 @@ export const inboxRoutes: FastifyPluginAsync = async (app) => {
         handoffReason: c.handoffReason,
         summary: c.summary,
         tags: c.tags,
+        profileTags: c.contact ? effectiveTags(c.contact.tags, { ordersCount: ordersByContact.get(c.contact.id) ?? 0 }) : [],
         assignedToId: c.assignedToId,
         assignedToName: c.assignedToName,
       }));

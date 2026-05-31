@@ -4,6 +4,14 @@ import { PageHeader } from "../components/PageHeader";
 import { ChatMarkdown } from "../components/ChatMarkdown";
 import { Card, Button, Badge, EmptyState, Tabs, inputClass } from "../components/ui";
 import { api, type Conversation, type Message, type ConversationNote } from "../lib/api";
+import { CUSTOMER_TAGS } from "@hubadvisor/shared/customer-tags";
+
+const PROFILE_TONE: Record<string, string> = {
+  good: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  warn: "bg-amber-50 text-amber-700 border-amber-200",
+  danger: "bg-rose-50 text-rose-700 border-rose-200",
+  neutral: "bg-muted text-muted-foreground border-border",
+};
 import { cn, formatBRL } from "../lib/utils";
 
 type StatusFilter = "all" | "active" | "handed_off" | "closed";
@@ -21,6 +29,7 @@ export function Inbox() {
   const [newNote, setNewNote] = useState("");
   const [newTag, setNewTag] = useState("");
   const [filter, setFilter] = useState<StatusFilter>("all");
+  const [profileFilter, setProfileFilter] = useState<string | null>(null);
   const threadRef = useRef<HTMLDivElement>(null);
 
   async function loadNotes(id: string) {
@@ -132,7 +141,10 @@ export function Inbox() {
     handed_off: conversations.filter((c) => c.status === "handed_off").length,
     closed: conversations.filter((c) => c.status === "closed").length,
   };
-  const visible = filter === "all" ? conversations : conversations.filter((c) => c.status === filter);
+  const byStatus = filter === "all" ? conversations : conversations.filter((c) => c.status === filter);
+  // Perfis presentes nas conversas atuais (p/ filtrar a triagem por tag do cliente).
+  const profilesPresent = CUSTOMER_TAGS.filter((t) => byStatus.some((c) => (c.profileTags ?? []).includes(t.key)));
+  const visible = profileFilter ? byStatus.filter((c) => (c.profileTags ?? []).includes(profileFilter)) : byStatus;
 
   return (
     <div className="flex h-screen flex-col bg-background px-8 pb-6 pt-10 lg:px-10">
@@ -162,6 +174,20 @@ export function Inbox() {
               active={filter}
               onChange={setFilter}
             />
+            {profilesPresent.length > 0 && (
+              <div className="mt-2 flex flex-wrap items-center gap-1">
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Perfil:</span>
+                {profileFilter && (
+                  <button onClick={() => setProfileFilter(null)} className="rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-muted/60">todos ✕</button>
+                )}
+                {profilesPresent.map((t) => (
+                  <button key={t.key} onClick={() => setProfileFilter(profileFilter === t.key ? null : t.key)}
+                    className={`rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors ${profileFilter === t.key ? PROFILE_TONE[t.tone] : "border-border text-muted-foreground hover:bg-muted/60"}`}>
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto p-2">
@@ -191,6 +217,13 @@ export function Inbox() {
                           <StatusBadge status={c.status} />
                         </div>
                         <p className="mt-0.5 truncate text-xs text-muted-foreground">{c.lastMessage}</p>
+                        {(c.profileTags ?? []).length > 0 && (
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {CUSTOMER_TAGS.filter((t) => (c.profileTags ?? []).includes(t.key)).map((t) => (
+                              <span key={t.key} className={`rounded-full border px-1.5 py-0 text-[10px] font-medium ${PROFILE_TONE[t.tone]}`}>{t.label}</span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </button>
                   </li>
