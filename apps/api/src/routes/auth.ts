@@ -4,6 +4,7 @@ import { getPrisma } from "@hubadvisor/db";
 import { verifyPassword, hashPassword, signJwt, requireAuth } from "../auth.js";
 import {
   connectTrayFromCallback,
+  resolveTrayTenantId,
   connectMpFromCallback,
   connectMeFromCallback,
   connectBlingFromCallback,
@@ -114,13 +115,20 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     const q = z.object({
       code: z.string().min(1),
       api_address: z.string().url(),
-      state: z.string().optional(), // slug do tenant
+      state: z.string().optional(), // slug do tenant (fallback; Tray não preserva query no callback)
     }).safeParse(req.query);
     const redirectBase = "/settings";
     if (!q.success) return reply.redirect(`${redirectBase}?tray=erro&motivo=callback_invalido`);
 
-    const slug = (q.data.state ?? "thepop7").toLowerCase();
-    const tenant = await getPrisma().tenant.findUnique({ where: { slug } });
+    // Resolve o tenant: pelo state (se veio) OU pelo api_address devolvido pela Tray
+    // (o callback não carrega o slug porque a Tray quebra query pré-existente).
+    let tenant = q.data.state
+      ? await getPrisma().tenant.findUnique({ where: { slug: q.data.state.toLowerCase() } })
+      : null;
+    if (!tenant) {
+      const tid = await resolveTrayTenantId(q.data.api_address);
+      tenant = tid ? await getPrisma().tenant.findUnique({ where: { id: tid } }) : null;
+    }
     if (!tenant) return reply.redirect(`${redirectBase}?tray=erro&motivo=loja_nao_encontrada`);
 
     try {

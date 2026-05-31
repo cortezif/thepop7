@@ -204,6 +204,36 @@ async function persistTrayTokens(tenantId: string, tokens: TrayTokens) {
   });
 }
 
+/** Normaliza um endereço (web_api) para comparação tolerante. */
+function normAddr(a: string | null | undefined): string {
+  return (a ?? "").trim().toLowerCase().replace(/\/+$/, "");
+}
+
+/** Persiste o web_api informado pela loja ao INICIAR a autorização Tray, para
+ *  que o callback (que não carrega o slug) consiga resolver o tenant. */
+export async function saveTrayApiAddress(tenantId: string, apiAddress: string) {
+  await withTenant(tenantId, async (tx) => {
+    await tx.integration.upsert({
+      where: { tenantId_provider: { tenantId, provider: "tray" } },
+      create: { tenantId, provider: "tray", apiAddress, status: "disconnected" },
+      update: { apiAddress },
+    });
+  });
+}
+
+/** Resolve o tenant de um callback Tray pelo api_address devolvido (sem `state`).
+ *  Casa pelo web_api salvo no authorize; se não achar e só houver uma integração
+ *  Tray, usa essa (loja única). */
+export async function resolveTrayTenantId(apiAddress: string): Promise<string | null> {
+  const rows = await getPrisma().integration.findMany({ where: { provider: "tray" } });
+  const target = normAddr(apiAddress);
+  const targetHost = (() => { try { return new URL(apiAddress).host.replace(/^www\./, ""); } catch { return ""; } })();
+  const match = rows.find((r) => normAddr(r.apiAddress) === target)
+    ?? rows.find((r) => { try { return new URL(r.apiAddress ?? "").host.replace(/^www\./, "") === targetHost; } catch { return false; } });
+  if (match) return match.tenantId;
+  return rows.length === 1 ? rows[0]!.tenantId : null;
+}
+
 export async function connectTrayFromCallback(tenantId: string, code: string, apiAddress: string) {
   const { consumerKey, consumerSecret } = await trayAppCreds(tenantId);
   if (!consumerKey || !consumerSecret) throw new Error("Credenciais Tray (Consumer Key/Secret) não configuradas");

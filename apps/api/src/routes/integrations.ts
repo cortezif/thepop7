@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getPrisma } from "@hubadvisor/db";
 import { buildTrayAuthorizeUrl } from "@hubadvisor/connectors";
 import {
-  getTrayStatus, refreshTray, disconnectTray,
+  getTrayStatus, refreshTray, disconnectTray, saveTrayApiAddress,
   getMpStatus, refreshMp, disconnectMp, buildMpUrl,
   getMeStatus, refreshMe, disconnectMe, buildMeUrl,
   getBlingStatus, refreshBling, disconnectBling, buildBlingUrl,
@@ -39,7 +39,11 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
     const cfg = await getProviderConfig(tenant.id, "tray");
     const consumerKey = cfg.consumerKey ?? "";
     if (!consumerKey) return reply.code(400).send({ error: "Credenciais Tray não configuradas" });
-    const callbackUrl = `${publicBase(req as any).replace(/\/$/, "")}/api/auth/tray/callback?state=${encodeURIComponent(tenant.slug)}`;
+    // Callback SEM query: a Tray anexa code/api_address com `?`, e um `?state=`
+    // pré-existente quebraria a URL. Persistimos o web_api para o callback
+    // resolver o tenant pelo api_address devolvido.
+    await saveTrayApiAddress(tenant.id, q.data.apiAddress);
+    const callbackUrl = `${publicBase(req as any).replace(/\/$/, "")}/api/auth/tray/callback`;
     const url = buildTrayAuthorizeUrl({ apiAddress: q.data.apiAddress, consumerKey, callbackUrl });
     return { url };
   });
