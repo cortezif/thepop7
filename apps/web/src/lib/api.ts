@@ -2,6 +2,7 @@
 // MVP: tenant fixo. Quando houver auth (Fase 2.2), vem do contexto do usuário.
 import type { CodePattern } from "@hubadvisor/shared/code-pattern";
 export type { CodePattern, CodeSegment } from "@hubadvisor/shared/code-pattern";
+export type GeneratedCode = { code: string; decoded: Array<{ key: string; label: string; value: string }>; variantSku: string; size: string; description: string };
 
 // ---- Auth (F2): token JWT + tenant da sessão no localStorage ----
 const TOKEN_KEY = "hubadvisor_token";
@@ -111,6 +112,26 @@ export async function downloadLabels(format: "csv" | "zpl") {
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
   return { missing: Number(missing ?? 0) };
+}
+
+/** Baixa as etiquetas do padrão próprio (Code128 + QR no ZPL) com header de auth. */
+export async function downloadPatternLabels(
+  input: { variantSku: string; quantity?: number; manual?: Record<string, string> },
+  format: "zpl" | "csv",
+) {
+  const res = await fetch(`/api/stock/pattern-labels?format=${format}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ tenantSlug: tenantSlug(), ...input }),
+  });
+  if (res.status === 401) { on401(); throw new Error("não autenticado"); }
+  if (!res.ok) { const e = await res.json().catch(() => null); throw new Error(typeof e?.error === "string" ? e.error : `etiquetas → ${res.status}`); }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = `codigos.${format}`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
 }
 
 /** Baixa o CSV do caixa do mês (com header de auth). */
@@ -368,6 +389,8 @@ export const api = {
     post<{ ok: boolean; storeAddress: string | null; storeMapsUrl: string | null }>(`/admin/store-config`, payload),
   setCodePattern: (pattern: CodePattern | null) =>
     post<{ ok: boolean; codePattern: CodePattern | null }>(`/admin/code-pattern`, { pattern }),
+  generateCodes: (input: { variantSku: string; quantity?: number; manual?: Record<string, string> }) =>
+    post<GeneratedCode[]>(`/stock/generate-codes`, input),
   // Clientes / CRM (ADR-031)
   contacts: (params?: { q?: string; optedOut?: boolean; withCashback?: boolean }) => {
     const qs = new URLSearchParams();

@@ -44,6 +44,37 @@ function zplEscape(s: string): string {
   return s.replace(/\^/g, " ").replace(/~/g, " ");
 }
 
+export type PatternLabel = { code: string; description: string };
+
+/**
+ * ZPL para o código PRÓPRIO da loja (ADR-035): Code128 (alfanumérico, aceita
+ * letras/separadores) + QR com o mesmo código. 50x30mm @203dpi. Uma etiqueta por
+ * código (cada peça já tem o seu).
+ */
+export function patternLabelsToZpl(labels: PatternLabel[]): string {
+  const out: string[] = [];
+  for (const l of labels) {
+    const code = zplEscape(l.code);
+    out.push(
+      "^XA",
+      "^CI28",
+      `^FO20,12^A0N,22,22^FD${zplEscape(l.description).slice(0, 28)}^FS`,
+      `^FO20,42^BY2^BCN,55,N,N,N^FD${code}^FS`,   // Code128
+      `^FO20,108^A0N,20,20^FD${code}^FS`,          // código legível
+      `^FO300,20^BQN,2,4^FDLA,${code}^FS`,         // QR
+      "^XZ",
+    );
+  }
+  return out.join("\n") + "\n";
+}
+
+/** CSV do código próprio (código, descrição, sku, tamanho, qtd=1 por peça). */
+export function patternLabelsToCsv(rows: Array<PatternLabel & { variantSku: string; size: string }>): string {
+  const head = ["codigo", "descricao", "sku", "tamanho"];
+  const body = rows.map((r) => [r.code, r.description, r.variantSku, r.size].map(csvCell).join(";"));
+  return "﻿" + [head.join(";"), ...body].join("\r\n") + "\r\n";
+}
+
 /**
  * Monta os itens de etiqueta a partir de SKUs de variantes (+ qtd). Resolve
  * código de barras e descrição do catálogo. SKUs sem código são ignorados

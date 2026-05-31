@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  DEFAULT_CLOTHING_PATTERN, buildCode, decodeCode, describePattern, validatePattern, formatSegment, sampleValues,
+  DEFAULT_CLOTHING_PATTERN, buildCode, decodeCode, describePattern, validatePattern, formatSegment, sampleValues, buildCodeFromContext,
 } from "./code-pattern.js";
 
 test("buildCode: padrão de roupas reproduz o exemplo", () => {
@@ -54,6 +54,22 @@ test("formatSegment: literal vira maiúsculo; numérico só dígitos", () => {
   assert.equal(formatSegment({ key: "x", label: "x", length: 0, kind: "literal", value: "lj" }, undefined), "LJ");
   assert.equal(formatSegment({ key: "c", label: "c", length: 3, kind: "cost" }, "159"), "159");
   assert.equal(formatSegment({ key: "c", label: "c", length: 3, kind: "cost" }, "9"), "009");
+});
+
+test("buildCodeFromContext: preenche auto (yymm/custo/seq/tam) + manuais", () => {
+  const code = buildCodeFromContext(DEFAULT_CLOTHING_PATTERN, {
+    yymm: "2603", costReais: 159, sizeText: "PP", sequence: 1,
+    manual: { fornecedor: "01", tipo: "04", margem: "030" },
+  });
+  assert.equal(code, "26030104159030-0001-PP");
+});
+
+test("buildCodeFromContext: custo arredonda e sequência incrementa o nº", () => {
+  const code = buildCodeFromContext(DEFAULT_CLOTHING_PATTERN, {
+    yymm: "2512", costReais: 88.7, sizeText: "G", sequence: 345,
+    manual: { fornecedor: "7", tipo: "11", margem: "120" },
+  });
+  assert.equal(code, "25120711089120-0345-G");
 });
 
 test("validatePattern: ok no padrão; pega duplicados e variável no meio", () => {

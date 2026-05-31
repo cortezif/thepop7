@@ -3,6 +3,7 @@ import { z } from "zod";
 import { listMovements, traceByBarcode, movementByBarcode } from "../services/stock-movement-service.js";
 import { resolveScannedBarcode } from "../services/barcode-service.js";
 import { buildLabelItems, labelsToCsv, labelsToZpl } from "../services/label-service.js";
+import { generateCodes, codesToLabels } from "../services/code-gen-service.js";
 import { getPrisma } from "@hubadvisor/db";
 import { normalizeBarcode } from "@hubadvisor/shared";
 
@@ -57,6 +58,37 @@ export const stockRoutes: FastifyPluginAsync = async (app) => {
          .header("content-disposition", `attachment; filename="etiquetas.csv"`)
          .header("x-labels-missing", String(missing.length));
     return labelsToCsv(items);
+  });
+
+  // ── Código próprio da loja (ADR-035 fase 2) ─────────────────────────────────
+  const genBody = z.object({
+    tenantSlug: z.string().optional(),
+    variantSku: z.string(),
+    quantity: z.number().int().positive().max(500).optional(),
+    manual: z.record(z.string(), z.string()).optional(),
+  });
+
+  // POST /stock/generate-codes — gera N códigos (preview/JSON) pelo padrão da loja.
+  app.post("/generate-codes", async (req, reply) => {
+    const body = genBody.safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+    try {
+      return await generateCodes(req.auth!.tenantId, body.data);
+    } catch (e: any) { return reply.code(400).send({ error: e?.message ?? "falha" }); }
+  });
+
+  // POST /stock/pattern-labels?format=zpl|csv — baixa as etiquetas (Code128 + QR).
+  app.post("/pattern-labels", async (req, reply) => {
+    const body = genBody.safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+    const format = String((req.query as any).format ?? "zpl").toLowerCase() === "csv" ? "csv" : "zpl";
+    try {
+      const codes = await generateCodes(req.auth!.tenantId, body.data);
+      const file = codesToLabels(codes, format);
+      reply.header("content-type", format === "csv" ? "text/csv; charset=utf-8" : "text/plain; charset=utf-8")
+           .header("content-disposition", `attachment; filename="codigos.${format}"`);
+      return file;
+    } catch (e: any) { return reply.code(400).send({ error: e?.message ?? "falha" }); }
   });
 
   // POST /stock/receive — recebimento de mercadoria (purchase_in) por scan.

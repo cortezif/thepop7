@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Barcode, Search, Tag, PackagePlus, Image as ImageIcon, History, ScanLine } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { Page, Card, CardHeader, Button, Badge, EmptyState, Skeleton, inputClass } from "../components/ui";
-import { api, downloadLabels, type StockTrace, type BarcodeByPhoto } from "../lib/api";
+import { api, downloadLabels, downloadPatternLabels, type StockTrace, type BarcodeByPhoto, type CodePattern, type GeneratedCode } from "../lib/api";
+import { DEFAULT_CLOTHING_PATTERN } from "@hubadvisor/shared/code-pattern";
 
 const TYPE_LABEL: Record<string, string> = {
   purchase_in: "Entrada (compra)",
@@ -142,6 +143,8 @@ export function Estoque() {
           {backfillMsg && <span className="text-xs text-muted-foreground">{backfillMsg}</span>}
         </div>
       </Card>
+
+      <PatternLabelGen />
 
       {/* ── Resultado de rastreio ──────────────────────────────────────────── */}
       {busy && (
@@ -339,6 +342,78 @@ export function Estoque() {
         )}
       </Card>
     </Page>
+  );
+}
+
+function PatternLabelGen() {
+  const [pattern, setPattern] = useState<CodePattern>(DEFAULT_CLOTHING_PATTERN);
+  const [variants, setVariants] = useState<{ sku: string; size?: string; name: string }[]>([]);
+  const [sku, setSku] = useState("");
+  const [qty, setQty] = useState(1);
+  const [manual, setManual] = useState<Record<string, string>>({});
+  const [codes, setCodes] = useState<GeneratedCode[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    api.getConfig().then((c) => { if (c.codePattern?.segments?.length) setPattern(c.codePattern); }).catch(() => {});
+    api.listCatalogProducts().then((ps) => {
+      const vs = ps.flatMap((p: any) => (p.variants ?? []).map((v: any) => ({ sku: v.sku, size: v.size, name: p.name })));
+      setVariants(vs); if (vs[0]) setSku(vs[0].sku);
+    }).catch(() => {});
+  }, []);
+
+  // Segmentos que o operador digita (fornecedor, tipo, margem, livre).
+  const manualSegs = pattern.segments.filter((s) => ["supplier", "productType", "margin", "custom"].includes(s.kind));
+
+  async function preview() {
+    setBusy(true); setErr(""); setCodes(null);
+    try { setCodes(await api.generateCodes({ variantSku: sku, quantity: qty, manual })); }
+    catch (e: any) { setErr(e?.message ?? "falha"); } finally { setBusy(false); }
+  }
+  async function download(format: "zpl" | "csv") {
+    setErr("");
+    try { await downloadPatternLabels({ variantSku: sku, quantity: qty, manual }, format); }
+    catch (e: any) { setErr(e?.message ?? "falha"); }
+  }
+
+  return (
+    <Card className="mt-6">
+      <CardHeader icon={Tag} title="Etiquetas com seu padrão" subtitle="Gera o código próprio (Code128 + QR) para cada peça — número sequencial automático. Configure o formato em Configurações." />
+      <div className="grid gap-3 px-5 pb-5 md:grid-cols-2">
+        {err && <div className="md:col-span-2 rounded-lg bg-rose-50 px-4 py-2 text-sm text-rose-700">{err}</div>}
+        <label className="text-xs font-medium text-muted-foreground">Produto / variante
+          <select className={inputClass} value={sku} onChange={(e) => setSku(e.target.value)}>
+            {variants.map((v) => <option key={v.sku} value={v.sku}>{v.name} · {v.size ?? ""} ({v.sku})</option>)}
+          </select>
+        </label>
+        <label className="text-xs font-medium text-muted-foreground">Quantidade de peças
+          <input type="number" min={1} max={500} className={inputClass} value={qty} onChange={(e) => setQty(Math.max(1, Number(e.target.value) || 1))} />
+        </label>
+        {manualSegs.map((s) => (
+          <label key={s.key} className="text-xs font-medium text-muted-foreground">{s.label}
+            <input className={inputClass} value={manual[s.key] ?? ""} onChange={(e) => setManual((m) => ({ ...m, [s.key]: e.target.value }))} placeholder={`${s.length || ""} díg.`} />
+          </label>
+        ))}
+        <div className="md:col-span-2 flex flex-wrap gap-2">
+          <Button onClick={preview} disabled={busy || !sku}>{busy ? "Gerando…" : "Pré-visualizar"}</Button>
+          <Button variant="outline" onClick={() => download("zpl")} disabled={!sku}>Baixar ZPL (impressora)</Button>
+          <Button variant="ghost" onClick={() => download("csv")} disabled={!sku}>Baixar CSV</Button>
+        </div>
+        {codes && codes.length > 0 && (
+          <div className="md:col-span-2 rounded-lg bg-muted/40 px-4 py-3">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">{codes.length} código(s) — cada peça um número único</p>
+            <div className="mt-1 space-y-0.5 font-mono text-sm text-foreground">
+              {codes.slice(0, 10).map((c) => <div key={c.code}>{c.code}</div>)}
+              {codes.length > 10 && <div className="text-muted-foreground">… +{codes.length - 10}</div>}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              {codes[0]!.decoded.map((d) => <span key={d.key}><b className="text-foreground">{d.value}</b> = {d.label}</span>)}
+            </div>
+          </div>
+        )}
+      </div>
+    </Card>
   );
 }
 

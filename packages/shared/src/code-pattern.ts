@@ -113,6 +113,31 @@ export function describePattern(pattern: CodePattern): string {
     .join("");
 }
 
+export type CodeContext = {
+  yymm?: string;            // ano/mês AAMM (auto)
+  costReais?: number;       // custo inteiro em reais (do produto)
+  sizeText?: string;        // tamanho da variante
+  sequence?: number;        // nº sequencial da peça
+  manual?: Record<string, string>; // fornecedor/tipo/margem/custom digitados
+};
+
+/** Resolve o valor de cada segmento a partir do contexto (auto + manual). Pura. */
+export function buildCodeFromContext(pattern: CodePattern, ctx: CodeContext): string {
+  const m = ctx.manual ?? {};
+  const values: Record<string, string> = {};
+  for (const seg of pattern.segments) {
+    switch (seg.kind) {
+      case "yymm":     values[seg.key] = ctx.yymm ?? ""; break;
+      case "cost":     values[seg.key] = ctx.costReais != null ? String(Math.round(ctx.costReais)) : ""; break;
+      case "size":     values[seg.key] = ctx.sizeText ?? ""; break;
+      case "sequence": values[seg.key] = ctx.sequence != null ? String(ctx.sequence) : ""; break;
+      case "literal":  break; // usa seg.value
+      default:         values[seg.key] = m[seg.key] ?? ""; // supplier/productType/margin/custom
+    }
+  }
+  return buildCode(pattern, values);
+}
+
 /** Valores de exemplo p/ um código demonstrativo. Pura. */
 export function sampleValues(pattern: CodePattern): Record<string, string> {
   const ex: Partial<Record<SegmentKind, string>> = {
