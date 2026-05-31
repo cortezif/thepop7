@@ -105,7 +105,7 @@ test("Estoque: registrar peças e dar baixa (venda) por código", async ({ page,
   await expect(page.getByText(/Estoque por tamanho/i)).toBeVisible({ timeout: 10_000 });
   await page.getByPlaceholder(/c[oó]digo da pe[cç]a/i).fill(code);
   await page.getByRole("button", { name: /Dar baixa/i }).click();
-  await expect(page.getByText(/Baixa OK|vendida/i)).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText(/Baixa OK/i)).toBeVisible({ timeout: 10_000 });
   expect(errors, errors.join(" | ")).toEqual([]);
 });
 
@@ -128,7 +128,7 @@ test("Clientes: marcar perfil (tag) de um cliente", async ({ page, request }) =>
 
   // cria um cliente
   await page.getByRole("button", { name: /Novo cliente/i }).click();
-  await page.getByPlaceholder("Nome", { exact: true }).fill("Perfil E2E");
+  await page.getByPlaceholder("Nome *", { exact: true }).fill("Perfil E2E");
   await page.getByPlaceholder(/Telefone/i).fill("+5511977776666");
   await page.getByRole("button", { name: /Cadastrar/i }).click();
   await expect(page.getByText("Perfil E2E")).toBeVisible({ timeout: 10_000 });

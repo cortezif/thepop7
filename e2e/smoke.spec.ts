@@ -41,7 +41,7 @@ test("Clientes: cadastrar um cliente pelo formulário", async ({ page, request }
   await page.goto("/clientes");
 
   await page.getByRole("button", { name: /Novo cliente/i }).click();
-  await page.getByPlaceholder("Nome", { exact: true }).fill("Cliente E2E");
+  await page.getByPlaceholder("Nome *", { exact: true }).fill("Cliente E2E");
   await page.getByPlaceholder(/Telefone/i).fill("+5511988887777");
   await page.getByRole("button", { name: /Cadastrar/i }).click();
 
