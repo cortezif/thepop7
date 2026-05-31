@@ -9,6 +9,7 @@ import {
   submitPublicQuote, getPublicInvite, extractQuoteFromText, extractQuoteFromAttachments, processResends,
 } from "../services/mercadologica-service.js";
 import { readAttachment } from "../services/attachment-storage.js";
+import { runCashbackNudgesAllTenants } from "../services/broadcast-service.js";
 
 async function tid(slug: string) {
   const t = await getPrisma().tenant.findUnique({ where: { slug } });
@@ -187,6 +188,16 @@ export const cronRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(403).send({ error: "forbidden" });
     }
     return processResends();
+  });
+
+  // Lembrete de cashback a vencer (ADR-031 fase 2c) — varre todas as lojas.
+  app.post("/cashback-nudge", async (req, reply) => {
+    const secret = process.env.CRON_SECRET;
+    if (secret && (req.headers["x-cron-key"] ?? "") !== secret) {
+      return reply.code(403).send({ error: "forbidden" });
+    }
+    const within = Number((req.body as any)?.withinDays) || 5;
+    return runCashbackNudgesAllTenants(within);
   });
 };
 

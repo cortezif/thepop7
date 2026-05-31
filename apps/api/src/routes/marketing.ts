@@ -1,8 +1,9 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import {
-  listCampaigns, createCampaign, sendCampaign, previewSegment, sanitizeChannels,
+  listCampaigns, createCampaign, sendCampaign, previewSegment, sanitizeChannels, sendCashbackNudges,
 } from "../services/broadcast-service.js";
+import { expiringSoon } from "../services/cashback-service.js";
 
 // Campanhas de promoção / broadcast (ADR-031 fase 2) — WhatsApp/e-mail/SMS.
 // Protegido por JWP (bloco `secure` do app).
@@ -45,5 +46,18 @@ export const marketingRoutes: FastifyPluginAsync = async (app) => {
     } catch (e: any) {
       return reply.code(400).send({ error: e?.message ?? "falha ao enviar campanha" });
     }
+  });
+
+  // Cashback a vencer — prévia (quantos clientes / quanto) e disparo manual do lembrete.
+  app.get("/cashback-nudge/preview", async (req) => {
+    const within = Number((req.query as any)?.withinDays) || 5;
+    const groups = await expiringSoon(req.auth!.tenantId, within);
+    const totalBRL = groups.reduce((s, g) => s + g.expiringBRL, 0);
+    return { contacts: groups.length, totalBRL: Math.round(totalBRL * 100) / 100, withinDays: within };
+  });
+
+  app.post("/cashback-nudge", async (req) => {
+    const within = Number((req.body as any)?.withinDays) || 5;
+    return sendCashbackNudges(req.auth!.tenantId, within);
   });
 };

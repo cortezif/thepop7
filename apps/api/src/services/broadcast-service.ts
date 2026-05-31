@@ -6,6 +6,7 @@ import { getPrisma, withTenant, decryptPII, resolveTenantCredentials } from "@hu
 import { getMessagingConnector, getSmsConnector, sendEmail } from "@hubadvisor/connectors";
 import { enterCredentials } from "@hubadvisor/shared";
 import { getSmsCreds } from "./integration-service.js";
+import { expiringSoon, markNudged } from "./cashback-service.js";
 
 export type Channel = "whatsapp" | "email" | "sms";
 export type SegmentFilter = { onlyBuyers?: boolean };
@@ -133,4 +134,80 @@ export async function sendCampaign(tenantId: string, campaignId: string) {
     }),
   );
   return updated;
+}
+
+/** Roda o nudge de cashback para todas as lojas com cashback ativo (cron). */
+export async function runCashbackNudgesAllTenants(withinDays = 5) {
+  const tenants = await getPrisma().tenant.findMany({ where: { cashbackEnabled: true }, select: { id: true } });
+  let contacts = 0, sentWhatsapp = 0, sentEmail = 0, sentSms = 0;
+  for (const t of tenants) {
+    const r = await sendCashbackNudges(t.id, withinDays);
+    contacts += r.contacts; sentWhatsapp += r.sentWhatsapp; sentEmail += r.sentEmail; sentSms += r.sentSms;
+  }
+  return { tenants: tenants.length, contacts, sentWhatsapp, sentEmail, sentSms };
+}
+
+function brl(n: number): string {
+  return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function nudgeText(name: string | null, amountBRL: number, daysLeft: number): string {
+  const hi = name ? `Oi, ${name.split(" ")[0]}! ` : "Oi! ";
+  const prazo = daysLeft <= 0 ? "vence hoje" : daysLeft === 1 ? "vence amanhã" : `vence em ${daysLeft} dias`;
+  return `${hi}Você tem ${brl(amountBRL)} de cashback que ${prazo}. Aproveite e use no seu próximo pedido antes que expire 💛`;
+}
+
+/**
+ * Lembrete de expiração de cashback (ADR-031 fase 2c). Para cada cliente com
+ * crédito vencendo dentro de `withinDays`, envia uma mensagem personalizada por
+ * WhatsApp/SMS (telefone) e e-mail. Respeita opt-out de "marketing". Marca os
+ * accruals como lembrados (não reenvia por `renudgeAfterDays`). Idempotente.
+ */
+export async function sendCashbackNudges(tenantId: string, withinDays = 5) {
+  const groups = await expiringSoon(tenantId, withinDays);
+  if (groups.length === 0) return { contacts: 0, sentWhatsapp: 0, sentEmail: 0, sentSms: 0, skipped: 0 };
+
+  enterCredentials(await resolveTenantCredentials(tenantId));
+  const smsCreds = (await getSmsCreds(tenantId)) ?? undefined;
+  const prisma = getPrisma();
+
+  let sentWhatsapp = 0, sentEmail = 0, sentSms = 0, skipped = 0, reached = 0;
+  const now = Date.now();
+
+  for (const g of groups) {
+    const c = await prisma.contact.findFirst({
+      where: { id: g.contactId, tenantId },
+      select: { name: true, phone: true, email: true, optOuts: true },
+    });
+    if (!c || c.optOuts.includes("marketing")) { skipped++; continue; }
+
+    const daysLeft = Math.max(0, Math.ceil((new Date(g.soonestExpiry).getTime() - now) / 86_400_000));
+    const text = nudgeText(c.name, g.expiringBRL, daysLeft);
+    const phone = decryptPII(c.phone);
+    const email = decryptPII(c.email);
+    let anySent = false;
+
+    if (phone) {
+      try {
+        await getMessagingConnector("whatsapp").send({
+          tenantId, conversationId: `cashback-nudge-${g.contactId}`, type: "text", text, to: phone, channel: "whatsapp",
+        });
+        sentWhatsapp++; anySent = true;
+      } catch { /* não-fatal */ }
+      try {
+        const r = await getSmsConnector(smsCreds).send({ to: phone, text });
+        if (r.ok) { sentSms++; anySent = true; }
+      } catch { /* não-fatal */ }
+    }
+    if (email) {
+      try {
+        const r = await sendEmail({ to: email, subject: "Seu cashback está vencendo 💛", text });
+        if (r.ok) { sentEmail++; anySent = true; }
+      } catch { /* não-fatal */ }
+    }
+
+    if (anySent) { reached++; await markNudged(tenantId, g.entryIds); }
+    else skipped++;
+  }
+  return { contacts: reached, sentWhatsapp, sentEmail, sentSms, skipped };
 }

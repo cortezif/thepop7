@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Megaphone, Send, Users, Mail, MessageCircle, Smartphone, CheckCircle2 } from "lucide-react";
+import { Megaphone, Send, Users, Mail, MessageCircle, Smartphone, CheckCircle2, Gift } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { Page, Card, CardHeader, Button, Badge, EmptyState, Skeleton, Tabs, inputClass } from "../components/ui";
 import { api, type Campaign, type CampaignChannel } from "../lib/api";
@@ -21,6 +21,8 @@ export function Promocoes() {
         title="Promoções"
         subtitle="Envie promoções e avisos de cashback para seus clientes por WhatsApp, e-mail e SMS. Só recebe quem consentiu — quem optou por sair de marketing fica de fora automaticamente (LGPD)."
       />
+      <CashbackNudge />
+
       <div className="mb-6">
         <Tabs active={tab} onChange={setTab} tabs={[
           { key: "campanhas", label: "Campanhas" },
@@ -29,6 +31,46 @@ export function Promocoes() {
       </div>
       {tab === "campanhas" ? <Lista /> : <Nova onDone={() => setTab("campanhas")} />}
     </Page>
+  );
+}
+
+function CashbackNudge() {
+  const [pv, setPv] = useState<{ contacts: number; totalBRL: number } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  function load() { api.cashbackNudgePreview(5).then(setPv).catch(() => setPv(null)); }
+  useEffect(load, []);
+
+  async function run() {
+    setBusy(true); setMsg("");
+    try {
+      const r = await api.sendCashbackNudge(5);
+      setMsg(`Lembretes enviados a ${r.contacts} cliente(s) · WhatsApp ${r.sentWhatsapp} · e-mail ${r.sentEmail} · SMS ${r.sentSms}.`);
+      load();
+    } catch (e: any) { setMsg(e?.message ?? "falha ao enviar"); }
+    finally { setBusy(false); }
+  }
+
+  if (!pv) return null;
+  return (
+    <Card className="mb-6 border-amber-200 bg-amber-50/50">
+      <div className="flex flex-wrap items-center gap-4 p-5">
+        <Gift className="h-6 w-6 text-amber-600" />
+        <div className="min-w-0 flex-1">
+          <p className="font-medium text-foreground">Cashback a vencer (próximos 5 dias)</p>
+          <p className="text-sm text-muted-foreground">
+            {pv.contacts > 0
+              ? <><b className="text-foreground">{pv.contacts}</b> cliente(s) com <b className="text-foreground">{pv.totalBRL.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</b> prestes a expirar. O lembrete também roda sozinho 1x/dia.</>
+              : "Nenhum crédito vencendo nos próximos 5 dias."}
+          </p>
+          {msg && <p className="mt-1 text-sm text-emerald-700">{msg}</p>}
+        </div>
+        <Button onClick={run} disabled={busy || pv.contacts === 0}>
+          <Send className="h-4 w-4" /> {busy ? "Enviando…" : "Enviar lembretes agora"}
+        </Button>
+      </div>
+    </Card>
   );
 }
 

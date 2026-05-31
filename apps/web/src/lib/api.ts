@@ -309,6 +309,10 @@ export const api = {
   createCampaign: (input: { title: string; message: string; subject?: string; channels: CampaignChannel[]; onlyBuyers?: boolean }) =>
     post<Campaign>(`/marketing/campaigns`, input),
   sendCampaign: (id: string) => post<Campaign>(`/marketing/campaigns/${id}/send`, {}),
+  cashbackNudgePreview: (withinDays = 5) =>
+    get<{ contacts: number; totalBRL: number; withinDays: number }>(`/marketing/cashback-nudge/preview?withinDays=${withinDays}`),
+  sendCashbackNudge: (withinDays = 5) =>
+    post<{ contacts: number; sentWhatsapp: number; sentEmail: number; sentSms: number; skipped: number }>(`/marketing/cashback-nudge`, { withinDays }),
   segmentPresets: () => get<SegmentPreset[]>(`/admin/segment-presets`),
   setSegment: (payload: { segment: string; styles?: string[]; occasions?: string[]; applyVoice?: boolean }) =>
     post<{ ok: boolean; segment: string; catalogVocab: { styles: string[]; occasions: string[] } | null; voiceApplied?: boolean }>(`/admin/segment-config`, payload),

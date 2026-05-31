@@ -1168,6 +1168,7 @@ model CashbackEntry {
   remainingBRL Decimal  @default(0) @db.Decimal(10, 2) // só accrual: saldo ainda disponível
   orderId      String?
   expiresAt    DateTime?                               // só accrual
+  nudgedAt     DateTime?                               // último lembrete de expiração enviado
   note         String?
   createdAt    DateTime @default(now())
 

@@ -111,6 +111,42 @@ export async function redeemForOrder(
   return tx ? run(tx) : withTenant(tenantId, run);
 }
 
+export type ExpiringGroup = { contactId: string; expiringBRL: number; soonestExpiry: Date; entryIds: string[] };
+
+/**
+ * Accruals que vencem dentro de `withinDays` (e ainda têm saldo), agrupados por
+ * cliente. Ignora quem já recebeu lembrete há menos de `renudgeAfterDays` dias
+ * (evita spam). Para o nudge de expiração (ADR-031 fase 2c).
+ */
+export async function expiringSoon(tenantId: string, withinDays = 5, renudgeAfterDays = 7): Promise<ExpiringGroup[]> {
+  const now = new Date();
+  const horizon = new Date(now.getTime() + withinDays * 86_400_000);
+  const renudgeBefore = new Date(now.getTime() - renudgeAfterDays * 86_400_000);
+  const rows = await getPrisma().cashbackEntry.findMany({
+    where: {
+      tenantId, kind: "accrual", remainingBRL: { gt: 0 },
+      expiresAt: { gt: now, lte: horizon },
+      OR: [{ nudgedAt: null }, { nudgedAt: { lt: renudgeBefore } }],
+    },
+    orderBy: { expiresAt: "asc" },
+  });
+  const byContact = new Map<string, ExpiringGroup>();
+  for (const a of rows) {
+    const g = byContact.get(a.contactId);
+    if (g) { g.expiringBRL = r2(g.expiringBRL + num(a.remainingBRL)); g.entryIds.push(a.id); }
+    else byContact.set(a.contactId, { contactId: a.contactId, expiringBRL: num(a.remainingBRL), soonestExpiry: a.expiresAt!, entryIds: [a.id] });
+  }
+  return [...byContact.values()];
+}
+
+/** Marca accruals como já lembrados (após enviar o nudge). */
+export async function markNudged(tenantId: string, entryIds: string[]): Promise<void> {
+  if (entryIds.length === 0) return;
+  await withTenant(tenantId, (tx) =>
+    tx.cashbackEntry.updateMany({ where: { tenantId, id: { in: entryIds } }, data: { nudgedAt: new Date() } }),
+  );
+}
+
 /** Expira accruals vencidos sem uso (cron/nudge). Cria lançamentos de expiração. */
 export async function expireStale(tenantId: string) {
   return withTenant(tenantId, async (tx) => {

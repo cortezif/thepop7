@@ -14,6 +14,7 @@ import { catalogSyncProcessor } from "./jobs/catalog-sync.js";
 import { productEmbeddingProcessor } from "./jobs/product-embedding.js";
 import { catalogEnrichmentProcessor } from "./jobs/catalog-enrichment.js";
 import { mercadologicaResendProcessor } from "./jobs/mercadologica-resend.js";
+import { cashbackNudgeProcessor } from "./jobs/cashback-nudge.js";
 
 const log = pino({ name: "worker", transport: { target: "pino-pretty", options: { translateTime: "HH:MM:ss" } } });
 
@@ -29,6 +30,7 @@ const queues = {
   "product-embedding":  new Queue("product-embedding", { connection }),
   "catalog-enrichment": new Queue("catalog-enrichment", { connection }),
   "mercadologica-resend": new Queue("mercadologica-resend", { connection }),
+  "cashback-nudge":       new Queue("cashback-nudge", { connection }),
 };
 
 new Worker("reservation-expiry", reservationExpiryProcessor, { connection })
@@ -55,6 +57,10 @@ new Worker("mercadologica-resend", mercadologicaResendProcessor, { connection })
   .on("completed", (job) => log.info({ id: job.id }, "mercadologica-resend done"))
   .on("failed", (job, err) => log.error({ id: job?.id, err }, "mercadologica-resend failed"));
 
+new Worker("cashback-nudge", cashbackNudgeProcessor, { connection })
+  .on("completed", (job) => log.info({ id: job.id }, "cashback-nudge done"))
+  .on("failed", (job, err) => log.error({ id: job?.id, err }, "cashback-nudge failed"));
+
 // Recorrência: limpa reservas expiradas a cada minuto
 queues["reservation-expiry"].add(
   "sweep",
@@ -67,6 +73,13 @@ queues["mercadologica-resend"].add(
   "sweep",
   {},
   { repeat: { every: 3_600_000 }, removeOnComplete: 24, removeOnFail: 50 }
+);
+
+// Recorrência: lembrete de cashback a vencer (ADR-031) — 1x/dia
+queues["cashback-nudge"].add(
+  "sweep",
+  {},
+  { repeat: { every: 86_400_000 }, removeOnComplete: 14, removeOnFail: 30 }
 );
 
 log.info("Worker iniciado, queues registradas");
