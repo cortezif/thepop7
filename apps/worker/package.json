@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@hubadvisor/agent": "*",
     "@hubadvisor/connectors": "*",
     "@hubadvisor/db": "*",
     "@hubadvisor/embedding": "*",
