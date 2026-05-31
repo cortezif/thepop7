@@ -7,6 +7,7 @@ import { listCampaigns, createCampaign, previewSegment } from "../services/broad
 import { cashbackBalance } from "../services/cashback-service.js";
 import { marketingReport } from "../services/marketing-report-service.js";
 import { listContacts, contactStats, createContactManual } from "../services/contact-service.js";
+import { cashflow, listEntries, createEntry, monthKey } from "../services/finance-service.js";
 
 process.env.JWT_SECRET = process.env.JWT_SECRET ?? "itest-secret";
 
@@ -32,6 +33,7 @@ before(async () => {
   contactB = c.id;
   await prisma.cashbackEntry.create({ data: { tenantId: tB, contactId: contactB, kind: "accrual", amountBRL: 15, remainingBRL: 15, expiresAt: new Date(Date.now() + 30 * 864e5) } });
   await createCampaign(tB, { title: "Promo B", message: "oi", channels: ["whatsapp"] });
+  await createEntry(tB, { type: "despesa", category: "aluguel", amountBRL: 999 });
 });
 after(async () => {
   await prisma.tenant.deleteMany({ where: { slug: { in: [`itest-isoa-${sfx}`, `itest-isob-${sfx}`] } } }).catch(() => {});
@@ -70,4 +72,12 @@ test("contatos/CRM (ADR-031) não vazam entre lojas", async () => {
   assert.equal((await contactStats(tA)).total, 0);
   assert.equal((await previewSegment(tA, "todos")).total, 0, "segmento de A não pega contatos da B");
   assert.equal((await previewSegment(tB, "todos")).total, 1);
+});
+
+test("financeiro (ADR-032) não vaza entre lojas", async () => {
+  const m = monthKey(new Date());
+  assert.equal((await listEntries(tA, m)).length, 0, "A não vê o lançamento da B");
+  assert.equal((await listEntries(tB, m)).length, 1, "B vê o próprio");
+  assert.equal((await cashflow(tA, m)).despesasBRL, 0, "caixa de A não soma despesa da B");
+  assert.equal((await cashflow(tB, m)).despesasBRL, 999);
 });

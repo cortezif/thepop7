@@ -274,6 +274,13 @@ export type MarketingReport = {
   campaigns: { total: number; sent: number; recipients: number; sentWhatsapp: number; sentEmail: number; sentSms: number };
 };
 
+export type FinanceEntry = { id: string; type: "receita" | "despesa"; category: string; description: string | null; amountBRL: number; date: string; createdAt: string };
+export type Cashflow = {
+  month: string; vendasBRL: number; ordersCount: number;
+  receitasManuaisBRL: number; receitasBRL: number; despesasBRL: number; saldoBRL: number;
+  byCategory: { type: "receita" | "despesa"; category: string; totalBRL: number }[];
+};
+
 export type CampaignChannel = "whatsapp" | "email" | "sms";
 export type CampaignAudience = "todos" | "compradores" | "inativos";
 export type Campaign = {
@@ -370,6 +377,12 @@ export const api = {
     post<{ merged: boolean; primaryId: string; mergedId?: string }>(`/admin/identity/merge`, { idA, idB }),
   dailyMetrics: () => get<DailyMetrics>(`/metrics/daily`),
   npsComments: () => get<NpsComment[]>(`/metrics/nps-comments`),
+  // Financeiro / fluxo de caixa (ADR-032)
+  cashflow: (month: string) => get<Cashflow>(`/finance/cashflow?month=${month}`),
+  financeEntries: (month: string) => get<FinanceEntry[]>(`/finance/entries?month=${month}`),
+  createFinanceEntry: (input: { type: "receita" | "despesa"; category: string; description?: string; amountBRL: number; date?: string }) =>
+    post<FinanceEntry>(`/finance/entries`, input),
+  deleteFinanceEntry: (id: string) => del<{ ok: boolean }>(`/finance/entries/${id}`),
   npsBoard: (band?: "promotor" | "neutro" | "detrator") =>
     get<NpsBoard>(`/metrics/nps${band ? `?band=${band}` : ""}`),
   reorder: () => get<ReorderSuggestion[]>(`/purchasing/reorder`),

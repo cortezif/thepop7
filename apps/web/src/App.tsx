@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Outlet, NavLink } from "react-router-dom";
-import { LayoutDashboard, MessageSquare, Package, ShoppingCart, ClipboardList, Settings as SettingsIcon, LogOut, Barcode, Sparkles, Scale, Megaphone, Boxes, ScrollText, Factory, Truck, Users2, UserCircle, BarChart3, Gift, Contact, Smile } from "lucide-react";
+import { LayoutDashboard, MessageSquare, Package, ShoppingCart, ClipboardList, Settings as SettingsIcon, LogOut, Barcode, Sparkles, Scale, Megaphone, Boxes, ScrollText, Factory, Truck, Users2, UserCircle, BarChart3, Gift, Contact, Smile, Wallet } from "lucide-react";
 import { cn } from "./lib/utils";
 import { auth, brandName, tenantSlug, fetchMe, api, storedSegment, setStoredSegment, canManage } from "./lib/api";
 import { applyBrandTheme } from "./lib/theme";
@@ -20,6 +20,7 @@ const NAV: NavItem[] = [
   { to: "/pedidos",  label: "Pedidos",       Icon: ClipboardList },
   { to: "/estoque",  label: "Estoque",       Icon: Barcode },
   { to: "/compras",  label: "Compras",       Icon: ShoppingCart },
+  { to: "/financeiro", label: "Financeiro",  Icon: Wallet, manage: true },
   { to: "/mercadologica", label: "Mercadológica", Icon: Scale },
   { to: "/clientes", label: "Clientes", Icon: Contact },
   { to: "/midia-paga", label: "Mídia paga", Icon: Megaphone },

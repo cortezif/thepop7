@@ -23,6 +23,7 @@ import { MidiaPaga } from "./pages/MidiaPaga";
 import { Promocoes } from "./pages/Promocoes";
 import { Clientes } from "./pages/Clientes";
 import { Satisfacao } from "./pages/Satisfacao";
+import { Financeiro } from "./pages/Financeiro";
 import { CotacaoPublica } from "./pages/CotacaoPublica";
 import "./styles/globals.css";
 
@@ -41,6 +42,7 @@ createRoot(document.getElementById("root")!).render(
           <Route path="/clientes" element={<Clientes />} />
           <Route path="/promocoes" element={<Promocoes />} />
           <Route path="/satisfacao" element={<Satisfacao />} />
+          <Route path="/financeiro" element={<Financeiro />} />
           <Route path="/pedidos"  element={<Pedidos />} />
           <Route path="/estoque"  element={<Estoque />} />
           <Route path="/insumos"  element={<Insumos />} />
