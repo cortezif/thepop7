@@ -22,6 +22,7 @@ import { platformRoutes } from "./routes/platform.js";
 import { mercadologicaRoutes, cotacaoPublicaRoutes, cronRoutes } from "./routes/mercadologica.js";
 import { adsRoutes } from "./routes/ads.js";
 import { manufacturingRoutes } from "./routes/manufacturing.js";
+import { userRoutes } from "./routes/users.js";
 import { requireAuth } from "./auth.js";
 
 export function buildApp() {
@@ -86,6 +87,7 @@ export function buildApp() {
     secure.register(catalogRoutes,            { prefix: "/catalog" });
     secure.register(catalogEnrichmentRoutes,  { prefix: "/catalog" });
     secure.register(adminRoutes,              { prefix: "/admin" });
+    secure.register(userRoutes,               { prefix: "/users" });   // gestão de equipe (owner/admin)
     secure.register(inboxRoutes,              { prefix: "/inbox" });
     secure.register(metricsRoutes,            { prefix: "/metrics" });
     secure.register(postSaleRoutes,           { prefix: "/post-sale" });

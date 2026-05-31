@@ -5,12 +5,20 @@
 const TOKEN_KEY = "hubadvisor_token";
 const TENANT_KEY = "hubadvisor_tenant";
 const BRAND_KEY = "hubadvisor_brand";
+const ROLE_KEY = "hubadvisor_role";
 export const auth = {
   get: () => localStorage.getItem(TOKEN_KEY),
   set: (t: string) => localStorage.setItem(TOKEN_KEY, t),
-  clear: () => { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(TENANT_KEY); localStorage.removeItem(BRAND_KEY); localStorage.removeItem("hubadvisor_segment"); },
+  clear: () => { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(TENANT_KEY); localStorage.removeItem(BRAND_KEY); localStorage.removeItem(ROLE_KEY); localStorage.removeItem("hubadvisor_segment"); },
   isLoggedIn: () => !!localStorage.getItem(TOKEN_KEY),
 };
+
+/** Papel do usuário da sessão (owner | admin | operator). */
+export type Role = "owner" | "admin" | "operator";
+export const currentRole = (): Role => (localStorage.getItem(ROLE_KEY) as Role) ?? "operator";
+const setRole = (r?: string | null) => { if (r) localStorage.setItem(ROLE_KEY, r); };
+/** True se o usuário pode gerenciar equipe/config (owner ou admin). */
+export const canManage = (): boolean => currentRole() === "owner" || currentRole() === "admin";
 /** Slug do tenant da sessão (default thepop7 — demo). */
 export const tenantSlug = () => localStorage.getItem(TENANT_KEY) ?? "thepop7";
 const setTenant = (slug: string) => localStorage.setItem(TENANT_KEY, slug);
@@ -62,6 +70,17 @@ async function put<T>(path: string, body: Record<string, unknown>): Promise<T> {
   });
   if (res.status === 401) { on401(); throw new Error("não autenticado"); }
   if (!res.ok) { const e = await res.json().catch(() => null); throw new Error(typeof e?.error === "string" ? e.error : `PUT ${path} → ${res.status}`); }
+  return res.json();
+}
+
+async function patch<T>(path: string, body: Record<string, unknown>): Promise<T> {
+  const res = await fetch(`/api${path}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ tenantSlug: tenantSlug(), ...body }),
+  });
+  if (res.status === 401) { on401(); throw new Error("não autenticado"); }
+  if (!res.ok) { const e = await res.json().catch(() => null); throw new Error(typeof e?.error === "string" ? e.error : `PATCH ${path} → ${res.status}`); }
   return res.json();
 }
 
@@ -133,14 +152,16 @@ export async function login(email: string, password: string, slug?: string): Pro
   if ("needsTenantSelection" in data) return { kind: "choose", tenants: data.tenants };
   auth.set(data.token); setTenant(data.tenantSlug);
   if (data.tenant?.name) setBrand(data.tenant.name);
+  setRole(data.user.role);
   return { kind: "ok", user: data.user };
 }
 
-/** Revalida o token e re-hidrata a marca (ex.: após refresh da página). */
-export async function fetchMe(): Promise<{ tenant: { slug: string; name: string } | null } | null> {
+/** Revalida o token e re-hidrata a marca + papel (ex.: após refresh da página). */
+export async function fetchMe(): Promise<{ role?: string; tenant: { slug: string; name: string } | null } | null> {
   try {
-    const me = await get<{ tenant: { slug: string; name: string } | null }>(`/auth/me`);
+    const me = await get<{ role?: string; tenant: { slug: string; name: string } | null }>(`/auth/me`);
     if (me?.tenant?.name) setBrand(me.tenant.name);
+    if (me?.role) setRole(me.role);
     return me;
   } catch { return null; }
 }
@@ -159,8 +180,49 @@ export async function signup(input: { storeName: string; slug: string; name: str
   const data = (await res.json()) as AuthResult;
   auth.set(data.token); setTenant(data.tenantSlug);
   if (data.tenant?.name) setBrand(data.tenant.name);
+  setRole(data.user.role);
   return data.user;
 }
+
+// ── Gestão de equipe (owner/admin) + conta pessoal ──
+export type TeamUser = { id: string; name: string; email: string; role: Role; createdAt: string };
+export const team = {
+  list: () => get<TeamUser[]>(`/users`),
+  create: (input: { name: string; email: string; role: Role; password: string }) =>
+    post<TeamUser>(`/users`, input),
+  update: (id: string, input: { name?: string; role?: Role }) =>
+    patch<TeamUser>(`/users/${id}`, input),
+  resetPassword: (id: string, password: string) =>
+    post<{ ok: boolean }>(`/users/${id}/password`, { password }),
+  remove: (id: string) => del<{ ok: boolean }>(`/users/${id}`),
+  changeOwnPassword: (currentPassword: string, newPassword: string) =>
+    post<{ ok: boolean }>(`/auth/change-password`, { currentPassword, newPassword }),
+};
+
+// ── Painel da plataforma (chave própria x-platform-key, não usa o JWT) ──
+export type PlatformTenant = {
+  id: string; slug: string; name: string; status: "active" | "suspended" | "trial";
+  segment: string; productionEnabled: boolean; createdAt: string;
+  ownerName: string | null; ownerEmail: string | null;
+  users: number; orders: number; products: number;
+};
+async function platformFetch<T>(key: string, path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`/api/platform${path}`, {
+    ...init,
+    headers: { "Content-Type": "application/json", "x-platform-key": key.trim(), ...(init?.headers ?? {}) },
+  });
+  if (res.status === 401) throw new Error("Chave de plataforma inválida.");
+  if (res.status === 503) throw new Error("Painel desabilitado no servidor (defina PLATFORM_ADMIN_KEY).");
+  if (!res.ok) { const e = await res.json().catch(() => null); throw new Error(typeof e?.error === "string" ? e.error : `HTTP ${res.status}`); }
+  return res.json();
+}
+export const platform = {
+  tenants: (key: string) => platformFetch<PlatformTenant[]>(key, `/tenants`),
+  createTenant: (key: string, input: { storeName: string; slug: string; ownerName: string; ownerEmail: string; password: string; status?: string }) =>
+    platformFetch<{ id: string; slug: string; name: string; status: string }>(key, `/tenants`, { method: "POST", body: JSON.stringify(input) }),
+  setStatus: (key: string, id: string, status: "active" | "suspended" | "trial") =>
+    platformFetch<{ ok: boolean; status: string }>(key, `/tenants/${id}/status`, { method: "POST", body: JSON.stringify({ status }) }),
+};
 
 export type Conversation = {
   id: string;

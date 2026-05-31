@@ -4,6 +4,11 @@ import { getCacheStatsLive, clearCache } from "@hubadvisor/agent";
 import { getPrisma, withTenant } from "@hubadvisor/db";
 import { findDuplicateContacts, mergeContactsByIds } from "../services/identity-service.js";
 import { SEGMENT_PRESETS, getSegmentPreset } from "../services/segment-presets.js";
+import { requireRole } from "../auth.js";
+
+// Mutações administrativas (configuração da loja) exigem owner/admin. Leituras
+// (config, presets, stats) seguem disponíveis a qualquer operador autenticado.
+const adminOnly = { preHandler: requireRole("owner", "admin") };
 
 async function resolveTenant(slug: string) {
   return getPrisma().tenant.findUnique({ where: { slug } });
@@ -39,7 +44,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // POST /admin/store-config — CEP de origem da loja (entregas on-demand). ADR-030.
-  app.post("/store-config", async (req, reply) => {
+  app.post("/store-config", adminOnly, async (req, reply) => {
     const body = z.object({ tenantSlug: z.string(), storeZip: z.string().nullable() }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
     const tenant = await resolveTenant(body.data.tenantSlug);
@@ -57,7 +62,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
   app.get("/segment-presets", async () => SEGMENT_PRESETS);
 
   // POST /admin/segment-config — segmento da loja + vocabulário + (opcional) voz da IA (ADR-029)
-  app.post("/segment-config", async (req, reply) => {
+  app.post("/segment-config", adminOnly, async (req, reply) => {
     const body = z.object({
       tenantSlug: z.string(),
       segment: z.string().min(2).max(40),
@@ -92,7 +97,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // POST /admin/retention-config — política de retenção diferenciada (ADR-013). null = desativa.
-  app.post("/retention-config", async (req, reply) => {
+  app.post("/retention-config", adminOnly, async (req, reply) => {
     const body = z.object({
       tenantSlug: z.string(),
       retentionDays: z.number().int().min(1).nullable().optional(),
@@ -114,7 +119,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // POST /admin/auto-approve — ajusta o teto de auto-aprovação (ADR-025)
-  app.post("/auto-approve", async (req, reply) => {
+  app.post("/auto-approve", adminOnly, async (req, reply) => {
     const body = z.object({ tenantSlug: z.string(), maxBRL: z.number().min(0) }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
     const tenant = await resolveTenant(body.data.tenantSlug);
@@ -133,7 +138,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // POST /admin/ai-toggle — liga/desliga o kill-switch (ADR-025), com evento de auditoria
-  app.post("/ai-toggle", async (req, reply) => {
+  app.post("/ai-toggle", adminOnly, async (req, reply) => {
     const body = z.object({ tenantSlug: z.string(), enabled: z.boolean() }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
     const tenant = await resolveTenant(body.data.tenantSlug);
@@ -164,7 +169,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // POST /admin/identity/merge — funde dois contatos
-  app.post("/identity/merge", async (req, reply) => {
+  app.post("/identity/merge", adminOnly, async (req, reply) => {
     const body = z.object({ tenantSlug: z.string(), idA: z.string(), idB: z.string() }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
     const tenant = await resolveTenant(body.data.tenantSlug);
