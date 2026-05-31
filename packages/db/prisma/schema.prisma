@@ -113,6 +113,7 @@ model Tenant {
   financialEntries FinancialEntry[]
   couriers         Courier[]
   deliveryJobs     DeliveryJob[]
+  pieces           Piece[]
 
   @@map("tenants")
 }
@@ -1282,4 +1283,27 @@ model DeliveryJob {
   @@index([tenantId, status])
   @@index([courierId, status])
   @@map("delivery_jobs")
+}
+
+// Peça serializada (ADR-035 fase 3): cada etiqueta gerada pelo padrão da loja vira
+// UMA peça com código único. Permite contar estoque por tamanho e dar baixa na venda.
+model Piece {
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  code       String   // código completo do padrão (único na loja)
+  productId  String?
+  variantSku String
+  size       String
+  sequence   Int      // número sequencial da peça
+  status     String   @default("em_estoque") // em_estoque | vendida | baixada
+  meta       Json?    // snapshot dos campos manuais (fornecedor/tipo/margem)
+  createdAt  DateTime @default(now())
+  soldAt     DateTime?
+
+  @@unique([tenantId, code])
+  @@index([tenantId, status, size])
+  @@index([tenantId, variantSku])
+  @@map("pieces")
 }

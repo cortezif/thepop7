@@ -3,6 +3,7 @@
 import type { CodePattern } from "@hubadvisor/shared/code-pattern";
 export type { CodePattern, CodeSegment } from "@hubadvisor/shared/code-pattern";
 export type GeneratedCode = { code: string; decoded: Array<{ key: string; label: string; value: string }>; variantSku: string; size: string; description: string };
+export type PiecesSummary = { emEstoque: number; vendidas: number; bySize: Array<{ size: string; count: number }> };
 
 // ---- Auth (F2): token JWT + tenant da sessão no localStorage ----
 const TOKEN_KEY = "hubadvisor_token";
@@ -391,6 +392,8 @@ export const api = {
     post<{ ok: boolean; codePattern: CodePattern | null }>(`/admin/code-pattern`, { pattern }),
   generateCodes: (input: { variantSku: string; quantity?: number; manual?: Record<string, string> }) =>
     post<GeneratedCode[]>(`/stock/generate-codes`, input),
+  piecesSummary: () => get<PiecesSummary>(`/stock/pieces/summary`),
+  sellPiece: (code: string) => post<{ ok: boolean; alreadySold: boolean; piece: { code: string; variantSku: string; size: string; status: string } }>(`/stock/pieces/sell`, { code }),
   // Clientes / CRM (ADR-031)
   contacts: (params?: { q?: string; optedOut?: boolean; withCashback?: boolean }) => {
     const qs = new URLSearchParams();

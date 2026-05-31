@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Barcode, Search, Tag, PackagePlus, Image as ImageIcon, History, ScanLine } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { Page, Card, CardHeader, Button, Badge, EmptyState, Skeleton, inputClass } from "../components/ui";
-import { api, downloadLabels, downloadPatternLabels, type StockTrace, type BarcodeByPhoto, type CodePattern, type GeneratedCode } from "../lib/api";
+import { api, downloadLabels, downloadPatternLabels, type StockTrace, type BarcodeByPhoto, type CodePattern, type GeneratedCode, type PiecesSummary } from "../lib/api";
 import { DEFAULT_CLOTHING_PATTERN } from "@hubadvisor/shared/code-pattern";
 
 const TYPE_LABEL: Record<string, string> = {
@@ -145,6 +145,8 @@ export function Estoque() {
       </Card>
 
       <PatternLabelGen />
+
+      <PiecesStock />
 
       {/* ── Resultado de rastreio ──────────────────────────────────────────── */}
       {busy && (
@@ -412,6 +414,53 @@ function PatternLabelGen() {
             </div>
           </div>
         )}
+      </div>
+    </Card>
+  );
+}
+
+function PiecesStock() {
+  const [sum, setSum] = useState<PiecesSummary | null>(null);
+  const [code, setCode] = useState("");
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  function load() { api.piecesSummary().then(setSum).catch(() => setSum(null)); }
+  useEffect(load, []);
+
+  async function sell() {
+    const c = code.trim();
+    if (!c) return;
+    setBusy(true); setMsg(null);
+    try {
+      const r = await api.sellPiece(c);
+      setMsg(r.alreadySold ? `Peça ${r.piece.size} já estava vendida.` : `Baixa OK — ${r.piece.size} (${r.piece.variantSku}) vendida.`);
+      setCode(""); load();
+    } catch (e: any) { setMsg(e?.message ?? "peça não encontrada"); }
+    finally { setBusy(false); }
+  }
+
+  if (!sum || (sum.emEstoque === 0 && sum.vendidas === 0)) return null;
+  const max = Math.max(1, ...sum.bySize.map((s) => s.count));
+  return (
+    <Card className="mt-6">
+      <CardHeader icon={Barcode} title="Estoque por tamanho (peças)" subtitle={`${sum.emEstoque} peça(s) em estoque · ${sum.vendidas} vendida(s). Cada peça impressa pelo seu padrão é contada aqui.`} />
+      <div className="space-y-2 px-5 pb-3">
+        {sum.bySize.map((s) => (
+          <div key={s.size} className="flex items-center gap-3 text-sm">
+            <span className="w-12 shrink-0 font-medium text-foreground">{s.size}</span>
+            <div className="h-5 flex-1 overflow-hidden rounded bg-muted">
+              <div className="flex h-full items-center rounded bg-primary px-2 text-xs font-medium text-primary-foreground" style={{ width: `${Math.round((s.count / max) * 100)}%` }}>{s.count}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-2 border-t border-border/60 px-5 py-4">
+        <ScanLine className="h-4 w-4 text-muted-foreground" />
+        <input className={`${inputClass} max-w-xs`} placeholder="Escaneie/digite o código da peça para vender"
+          value={code} onChange={(e) => setCode(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sell()} />
+        <Button onClick={sell} disabled={busy || !code.trim()}>Dar baixa (venda)</Button>
+        {msg && <span className="text-xs text-muted-foreground">{msg}</span>}
       </div>
     </Card>
   );
