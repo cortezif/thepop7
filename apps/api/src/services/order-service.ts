@@ -113,7 +113,7 @@ export async function createOrder(input: {
  */
 export async function approveOrder(tenantId: string, orderId: string) {
   return withTenant(tenantId, async (tx) => {
-    const order = await tx.order.findUnique({ where: { id: orderId } });
+    const order = await tx.order.findFirst({ where: { id: orderId, tenantId } });
     if (!order) return { ok: false, reason: "pedido não encontrado" };
     const meta = (order.metadata as Record<string, unknown> | null) ?? {};
     if (!meta.pendingApproval) return { ok: false, reason: "pedido não está pendente de aprovação" };
@@ -145,7 +145,7 @@ export async function approveOrder(tenantId: string, orderId: string) {
 export async function transitionOrder(tenantId: string, orderId: string, to: OrderStatus, meta?: Record<string, unknown>) {
   const prisma = getPrisma();
   const result = await withTenant(tenantId, async (tx) => {
-    const order = await tx.order.findUnique({ where: { id: orderId } });
+    const order = await tx.order.findFirst({ where: { id: orderId, tenantId } });
     if (!order) throw new Error("pedido não encontrado");
     if (!canTransitionOrder(order.status as OrderStatus, to)) {
       throw new Error(`Transição inválida: ${order.status} → ${to}`);
@@ -177,7 +177,7 @@ export async function transitionOrder(tenantId: string, orderId: string, to: Ord
 
     // Cashback ao pagar (ADR-031): acumula % do subtotal, idempotente por pedido.
     try {
-      const ord = await prisma.order.findUnique({ where: { id: orderId }, select: { contactId: true, subtotalBRL: true } });
+      const ord = await prisma.order.findFirst({ where: { id: orderId, tenantId }, select: { contactId: true, subtotalBRL: true } });
       if (ord) {
         const acc = await accrueCashback(tenantId, ord.contactId, Number(ord.subtotalBRL), orderId);
         (result as any).cashback = acc;
@@ -239,7 +239,7 @@ async function consumeStockForOrder(tx: Prisma.TransactionClient, tenantId: stri
 export async function cancelOrder(tenantId: string, orderId: string, reason: string) {
   const prisma = getPrisma();
   return withTenant(tenantId, async (tx) => {
-    const order = await tx.order.findUnique({ where: { id: orderId } });
+    const order = await tx.order.findFirst({ where: { id: orderId, tenantId } });
     if (!order) throw new Error("pedido não encontrado");
     if (!canCancelOrder(order.status as OrderStatus)) {
       return { ok: false, reason: `Pedido em "${order.status}" não pode ser cancelado (já postado). Use devolução.` };
@@ -261,7 +261,7 @@ export async function cancelOrder(tenantId: string, orderId: string, reason: str
 export async function startReturn(tenantId: string, orderId: string, reason: string, prazoDias = 7) {
   const prisma = getPrisma();
   return withTenant(tenantId, async (tx) => {
-    const order = await tx.order.findUnique({ where: { id: orderId } });
+    const order = await tx.order.findFirst({ where: { id: orderId, tenantId } });
     if (!order) throw new Error("pedido não encontrado");
     if (!canRequestReturn(order.status as OrderStatus, order.deliveredAt, prazoDias)) {
       return { ok: false, reason: `Fora do prazo de devolução (${prazoDias} dias úteis) ou pedido ainda não entregue.` };
@@ -499,8 +499,8 @@ export async function computeFunnel(tenantId: string) {
 /** Status do pedido pro agente comunicar (inclui prazo de devolução). */
 export async function getOrderStatus(tenantId: string, orderId: string) {
   return withTenant(tenantId, async (tx) => {
-    const order = await tx.order.findUnique({
-      where: { id: orderId },
+    const order = await tx.order.findFirst({
+      where: { id: orderId, tenantId },
       include: { items: true, returns: true },
     });
     if (!order) return null;

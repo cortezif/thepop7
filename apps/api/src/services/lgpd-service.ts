@@ -9,7 +9,7 @@ import { appendAudit } from "./audit-service.js";
 /** Exporta todos os dados pessoais de um contato (portabilidade). */
 export async function exportContactData(tenantId: string, contactId: string) {
   const result = await withTenant(tenantId, async (tx) => {
-    const enc = await tx.contact.findUnique({ where: { id: contactId } });
+    const enc = await tx.contact.findFirst({ where: { id: contactId, tenantId } });
     if (!enc) return null;
     // Portabilidade: devolve a PII em claro (decifrada) pro titular.
     const contact = { ...enc, phone: decryptPII(enc.phone), email: decryptPII(enc.email), cpf: decryptPII(enc.cpf) };
@@ -42,7 +42,7 @@ export async function exportContactData(tenantId: string, contactId: string) {
  */
 export async function eraseContact(tenantId: string, contactId: string) {
   const done = await withTenant(tenantId, async (tx) => {
-    const contact = await tx.contact.findUnique({ where: { id: contactId } });
+    const contact = await tx.contact.findFirst({ where: { id: contactId, tenantId } });
     if (!contact) return false;
 
     const anon = `anon_${contactId.slice(-8)}`;
@@ -150,7 +150,7 @@ export async function runRetention(tenantId: string) {
 /** Verifica se um contato optou por NÃO receber uma categoria de mensagem. */
 export async function isOptedOut(tenantId: string, contactId: string, category: string): Promise<boolean> {
   return withTenant(tenantId, async (tx) => {
-    const c = await tx.contact.findUnique({ where: { id: contactId }, select: { optOuts: true } });
+    const c = await tx.contact.findFirst({ where: { id: contactId, tenantId }, select: { optOuts: true } });
     return (c?.optOuts ?? []).includes(category);
   });
 }

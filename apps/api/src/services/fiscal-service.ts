@@ -17,8 +17,8 @@ export async function issueNfeForOrder(tenantId: string, orderId: string): Promi
 > {
   const prisma = getPrisma();
   enterCredentials(await resolveTenantCredentials(tenantId));
-  const order = await prisma.order.findUnique({
-    where: { id: orderId },
+  const order = await prisma.order.findFirst({
+    where: { id: orderId, tenantId },
     include: {
       contact: true,
       items: { include: { product: { select: { name: true } } } },

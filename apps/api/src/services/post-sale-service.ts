@@ -36,8 +36,8 @@ export async function runPostSaleStage(tenantId: string, orderId: string, stage:
 
   // 1) Lê o pedido (tx curta de leitura).
   const order = await withTenant(tenantId, async (tx) =>
-    tx.order.findUnique({
-      where: { id: orderId },
+    tx.order.findFirst({
+      where: { id: orderId, tenantId },
       include: { contact: true, items: { include: { product: { select: { name: true } } } } },
     }),
   );
