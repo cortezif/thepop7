@@ -323,18 +323,27 @@ function CashbackConfig() {
 
 function StorePickupConfig() {
   const [addr, setAddr] = useState("");
-  const [saved, setSaved] = useState<string | null>(null);
+  const [maps, setMaps] = useState("");
+  const [savedAddr, setSavedAddr] = useState<string | null>(null);
+  const [effectiveMaps, setEffectiveMaps] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
-  useEffect(() => {
-    api.getConfig().then((c) => { if (c.storeAddress) { setAddr(c.storeAddress); setSaved(c.storeAddress); } }).catch(() => {});
-  }, []);
+  function load() {
+    api.getConfig().then((c) => {
+      setAddr(c.storeAddress ?? ""); setSavedAddr(c.storeAddress ?? null);
+      setEffectiveMaps(c.storeMapsUrl ?? null);
+    }).catch(() => {});
+  }
+  useEffect(load, []);
 
   async function save() {
     setBusy(true); setMsg(null);
-    try { const r = await api.setStoreAddress(addr.trim() || null); setSaved(r.storeAddress); setMsg("Endereço salvo."); }
-    catch (e) { setMsg(String(e)); } finally { setBusy(false); }
+    try {
+      const r = await api.setStorePickup({ storeAddress: addr.trim() || null, storeMapsUrl: maps.trim() || null });
+      setSavedAddr(r.storeAddress); setEffectiveMaps(r.storeMapsUrl); setMaps("");
+      setMsg("Salvo. A IA já manda endereço + mapa na retirada.");
+    } catch (e) { setMsg(String(e)); } finally { setBusy(false); }
   }
 
   return (
@@ -342,18 +351,31 @@ function StorePickupConfig() {
       <div className="flex items-center gap-2">
         <Store size={18} className="text-primary" />
         <h2 className="font-serif text-lg font-bold">Retirada na loja</h2>
-        {saved && <span className="ml-auto rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800">Ativa</span>}
+        {savedAddr && <span className="ml-auto rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800">Ativa</span>}
       </div>
       <p className="mt-1 text-sm text-muted-foreground">
-        Informe o endereço (e horário) da loja. Com ele preenchido, a IA pode oferecer a opção de o cliente
-        <b> retirar o pedido na loja</b> (sem frete) — e diz onde e quando buscar.
+        Com o endereço preenchido, a IA oferece a opção de <b>retirar o pedido na loja</b> (sem frete) e manda
+        o endereço + o <b>link do Google Maps</b>. Se você não colar um link, ele é gerado automaticamente do endereço.
       </p>
-      <div className="mt-4 flex flex-wrap items-end gap-3">
-        <input
-          className="min-w-[320px] flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-          placeholder="Ex.: Rua das Flores, 123 — Centro. Seg–Sex 9h às 18h, Sáb 9h às 13h."
-          value={addr} onChange={(e) => setAddr(e.target.value)} />
-        <button onClick={save} disabled={busy} className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">{busy ? "Salvando…" : "Salvar"}</button>
+      <div className="mt-4 space-y-3">
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium text-muted-foreground">Endereço e horário</span>
+          <input
+            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+            placeholder="Ex.: Rua das Flores, 123 — Centro. Seg–Sex 9h às 18h, Sáb 9h às 13h."
+            value={addr} onChange={(e) => setAddr(e.target.value)} />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium text-muted-foreground">Link do Google Maps (opcional — cole o pin exato)</span>
+          <input
+            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+            placeholder="https://maps.app.goo.gl/…  (deixe em branco para gerar do endereço)"
+            value={maps} onChange={(e) => setMaps(e.target.value)} />
+        </label>
+        <div className="flex flex-wrap items-center gap-3">
+          <button onClick={save} disabled={busy} className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">{busy ? "Salvando…" : "Salvar"}</button>
+          {effectiveMaps && <a href={effectiveMaps} target="_blank" rel="noreferrer" className="text-sm font-medium text-primary hover:underline">Ver mapa que a IA envia →</a>}
+        </div>
       </div>
       {msg && <p className="mt-3 text-sm text-muted-foreground">{msg}</p>}
     </div>

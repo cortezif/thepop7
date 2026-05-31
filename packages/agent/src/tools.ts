@@ -133,7 +133,7 @@ export const TOOL_DEFS: Anthropic.Messages.Tool[] = [
           },
         },
         cep:          { type: "string", description: "CEP de entrega, só dígitos. Obrigatório para entrega; dispensável na retirada na loja." },
-        retiradaNaLoja: { type: "boolean", description: "true quando a cliente prefere RETIRAR o pedido na loja em vez de receber em casa — frete fica R$0. Informe o endereço/horário da loja (está nas políticas da loja). Não precisa de CEP." },
+        retiradaNaLoja: { type: "boolean", description: "true quando a cliente prefere RETIRAR o pedido na loja em vez de receber em casa — frete fica R$0. Ao confirmar, informe à cliente o endereço/horário (storeAddress) E o link do mapa (storeMapsUrl) que estão nas políticas da loja, pra ela saber onde buscar. Não precisa de CEP." },
         servicoFrete: { type: "string", description: "Serviço de transportadora escolhido (ex: 'Correios Sedex'). Opcional." },
         entregaPropria: { type: "boolean", description: "true se a entrega for própria (motoboy/carro da loja, tabela de faixas) em vez de transportadora. Use o que a cliente escolheu." },
         distanciaKm:    { type: "number", description: "Distância até a cliente em km. Obrigatório quando entregaPropria=true (calcula moto/carro e o valor)." },

@@ -9,6 +9,7 @@ import type { FastifyBaseLogger } from "fastify";
 import { searchProducts, type CustomerProfile, type ProductFilter } from "./product-search.js";
 import { createOrder, cancelOrder, startReturn, getOrderStatus } from "./order-service.js";
 import { resolveContact } from "./identity-service.js";
+import { enrichPoliciesWithMaps } from "../lib/store-pickup.js";
 import { parseNpsScore, recordNps, npsReply, npsBand, pendingDetractorComment, attachNpsComment } from "./nps.js";
 
 type IncomingDTO = {
@@ -194,7 +195,7 @@ export async function handleIncomingMessage(dto: IncomingDTO, log: FastifyBaseLo
     tenantId:  tenant.id,
     persona:   tenant.agentPersona,
     tone:      tenant.agentTone ?? "",
-    policies:  (tenant.policies as Record<string, unknown>) ?? {},
+    policies:  enrichPoliciesWithMaps(tenant.policies as Record<string, unknown>),
     storeName: tenant.name,
   };
 
@@ -365,7 +366,7 @@ export async function suggestReply(tenantSlug: string, conversationId: string, l
     tenantId: tenant.id,
     persona: tenant.agentPersona,
     tone: tenant.agentTone ?? "",
-    policies: (tenant.policies as Record<string, unknown>) ?? {},
+    policies: enrichPoliciesWithMaps(tenant.policies as Record<string, unknown>),
     storeName: tenant.name,
   };
 

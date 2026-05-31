@@ -5,6 +5,7 @@ import { getPrisma, withTenant } from "@hubadvisor/db";
 import { findDuplicateContacts, mergeContactsByIds } from "../services/identity-service.js";
 import { SEGMENT_PRESETS, getSegmentPreset } from "../services/segment-presets.js";
 import { requireRole } from "../auth.js";
+import { storeMapsUrl } from "../lib/store-pickup.js";
 
 // Mutações administrativas (configuração da loja) exigem owner/admin. Leituras
 // (config, presets, stats) seguem disponíveis a qualquer operador autenticado.
@@ -41,6 +42,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       productionEnabled: tenant.productionEnabled,
       storeZip: (tenant.policies as any)?.storeZip ?? null,
       storeAddress: (tenant.policies as any)?.storeAddress ?? null,
+      storeMapsUrl: storeMapsUrl(tenant.policies as any),
       cashback: {
         enabled: tenant.cashbackEnabled,
         pct: tenant.cashbackPct,
@@ -103,6 +105,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       tenantSlug: z.string(),
       storeZip: z.string().nullable().optional(),
       storeAddress: z.string().nullable().optional(),
+      storeMapsUrl: z.string().nullable().optional(),
     }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
     const tenant = await resolveTenant(body.data.tenantSlug);
@@ -116,10 +119,19 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       const addr = (body.data.storeAddress ?? "").trim().slice(0, 300) || null;
       if (addr) policies.storeAddress = addr; else delete policies.storeAddress;
     }
+    if (body.data.storeMapsUrl !== undefined) {
+      const url = (body.data.storeMapsUrl ?? "").trim().slice(0, 500) || null;
+      if (url) policies.storeMapsUrl = url; else delete policies.storeMapsUrl;
+    }
     await withTenant(tenant.id, async (tx) => {
       await tx.tenant.update({ where: { id: tenant.id }, data: { policies: policies as any } });
     });
-    return { ok: true, storeZip: (policies.storeZip as string) ?? null, storeAddress: (policies.storeAddress as string) ?? null };
+    return {
+      ok: true,
+      storeZip: (policies.storeZip as string) ?? null,
+      storeAddress: (policies.storeAddress as string) ?? null,
+      storeMapsUrl: storeMapsUrl(policies), // link efetivo (explícito ou gerado)
+    };
   });
 
   // GET /admin/segment-presets — tipos de negócio disponíveis (ADR-029)
