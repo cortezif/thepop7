@@ -12,6 +12,7 @@ import { Insumos } from "./pages/Insumos";
 import { Receitas } from "./pages/Receitas";
 import { Producao } from "./pages/Producao";
 import { Entrega } from "./pages/Entrega";
+import { RelatoriosFab } from "./pages/RelatoriosFab";
 import { Settings } from "./pages/Settings";
 import { Equipe } from "./pages/Equipe";
 import { MinhaConta } from "./pages/MinhaConta";
@@ -40,6 +41,7 @@ createRoot(document.getElementById("root")!).render(
           <Route path="/receitas" element={<Receitas />} />
           <Route path="/producao" element={<Producao />} />
           <Route path="/entrega"  element={<Entrega />} />
+          <Route path="/relatorios-fab" element={<RelatoriosFab />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/equipe"   element={<Equipe />} />
           <Route path="/conta"    element={<MinhaConta />} />

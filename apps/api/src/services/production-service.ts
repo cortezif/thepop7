@@ -239,6 +239,76 @@ export async function produceForOrderItem(tenantId: string, orderId: string, var
   return { ok: true as const, batchId: batch.batchId, totalCost: batch.totalCost, hasShortfall: batch.hasShortfall };
 }
 
+// ── Relatórios de fabricação (ADR-030) ──────────────────────────────────────
+export type InsumoUse = { name: string; baseUnit: string; quantity: number; costBRL: number };
+
+/** Agrega o consumo de insumos a partir do snapshot `consumed` dos lotes (pura). */
+export function aggregateConsumption(batches: Array<{ consumed: unknown }>): InsumoUse[] {
+  const map = new Map<string, InsumoUse>();
+  for (const b of batches) {
+    const items = Array.isArray(b.consumed) ? b.consumed : [];
+    for (const c of items as Array<{ name?: string; baseUnit?: string; quantity?: unknown; costPerBaseUnit?: unknown }>) {
+      const name = c.name ?? "—";
+      const baseUnit = c.baseUnit ?? "";
+      const key = `${name}|${baseUnit}`;
+      const e = map.get(key) ?? { name, baseUnit, quantity: 0, costBRL: 0 };
+      const q = Number(c.quantity) || 0;
+      e.quantity += q;
+      e.costBRL += q * (Number(c.costPerBaseUnit) || 0);
+      map.set(key, e);
+    }
+  }
+  return [...map.values()]
+    .map((e) => ({ ...e, quantity: Math.round(e.quantity * 1000) / 1000, costBRL: Math.round(e.costBRL * 100) / 100 }))
+    .sort((a, b) => b.costBRL - a.costBRL);
+}
+
+const r2 = (n: number) => Math.round(n * 100) / 100;
+const r3 = (n: number) => Math.round(n * 1000) / 1000;
+
+export type ManufacturingReport = {
+  margins: Array<{ productName: string; priceBRL: number; unitCost: number; marginBRL: number; marginPct: number }>;
+  production: { batches: number; units: number; totalCostBRL: number; byProduct: Array<{ name: string; units: number; costBRL: number }> };
+  insumoConsumption: InsumoUse[];
+};
+
+export async function manufacturingReport(tenantId: string): Promise<ManufacturingReport> {
+  const prisma = getPrisma();
+
+  // Margem dos produtos que têm ficha técnica (custo vem da receita → Product.costBRL).
+  const boms = await prisma.billOfMaterials.findMany({ where: { tenantId, active: true, productId: { not: null } }, select: { productId: true } });
+  const ids = [...new Set(boms.map((b) => b.productId).filter((x): x is string => !!x))];
+  const products = ids.length ? await prisma.product.findMany({ where: { tenantId, id: { in: ids } } }) : [];
+  const margins = products
+    .filter((p) => p.costBRL != null)
+    .map((p) => {
+      const price = num(p.priceBRL);
+      const cost = num(p.costBRL);
+      return { productName: p.name, priceBRL: r2(price), unitCost: r2(cost), marginBRL: r2(price - cost), marginPct: price > 0 ? Math.round(((price - cost) / price) * 1000) / 10 : 0 };
+    })
+    .sort((a, b) => a.marginPct - b.marginPct);
+
+  // Produção + consumo a partir dos lotes.
+  const batches = await prisma.productionBatch.findMany({ where: { tenantId }, orderBy: { createdAt: "desc" }, take: 500 });
+  const units = batches.reduce((s, b) => s + num(b.quantity), 0);
+  const totalCost = batches.reduce((s, b) => s + num(b.totalCost), 0);
+  const byProd = new Map<string, { name: string; units: number; costBRL: number }>();
+  for (const b of batches) {
+    const e = byProd.get(b.bomName) ?? { name: b.bomName, units: 0, costBRL: 0 };
+    e.units += num(b.quantity); e.costBRL += num(b.totalCost);
+    byProd.set(b.bomName, e);
+  }
+
+  return {
+    margins,
+    production: {
+      batches: batches.length, units: r3(units), totalCostBRL: r2(totalCost),
+      byProduct: [...byProd.values()].map((e) => ({ name: e.name, units: r3(e.units), costBRL: r2(e.costBRL) })).sort((a, b) => b.costBRL - a.costBRL),
+    },
+    insumoConsumption: aggregateConsumption(batches.map((b) => ({ consumed: b.consumed }))),
+  };
+}
+
 export async function listBatches(tenantId: string, limit = 50) {
   const rows = await getPrisma().productionBatch.findMany({
     where: { tenantId },

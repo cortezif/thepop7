@@ -413,6 +413,7 @@ export const api = {
   // Produção (Fase 2)
   listBatches: () => get<ProductionBatch[]>(`/manufacturing/production`),
   productionAgenda: () => get<AgendaItem[]>(`/manufacturing/production/agenda`),
+  manufacturingReport: () => get<ManufacturingReport>(`/manufacturing/report`),
   produceOrderItem: (orderId: string, variantSku: string) =>
     post<{ ok: boolean; batchId?: string; totalCost?: number; hasShortfall?: boolean; error?: string }>(`/manufacturing/production/produce-order`, { orderId, variantSku }),
   previewProduction: (bomId: string, quantity: number) =>
@@ -460,6 +461,11 @@ export type AgendaItem = {
   orderId: string; contactName: string; productName: string; variantSku: string;
   quantity: number; orderDate: string; leadTimeDays: number | null; dueDate: string;
   dateSource: "desejada" | "estimada"; status: string;
+};
+export type ManufacturingReport = {
+  margins: Array<{ productName: string; priceBRL: number; unitCost: number; marginBRL: number; marginPct: number }>;
+  production: { batches: number; units: number; totalCostBRL: number; byProduct: Array<{ name: string; units: number; costBRL: number }> };
+  insumoConsumption: Array<{ name: string; baseUnit: string; quantity: number; costBRL: number }>;
 };
 
 export type RawMaterial = {

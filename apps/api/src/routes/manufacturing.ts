@@ -5,7 +5,7 @@ import {
   insumosReorder,
   listBoms, createBom, updateBom, deleteBom,
 } from "../services/manufacturing-service.js";
-import { previewProduction, createBatch, listBatches, productionAgenda, produceForOrderItem } from "../services/production-service.js";
+import { previewProduction, createBatch, listBatches, productionAgenda, produceForOrderItem, manufacturingReport } from "../services/production-service.js";
 import { getTariff, saveTariff, quoteForTenant, courierQuoteForTenant } from "../services/delivery-service.js";
 
 // Fabricação (ADR-030) — CRUD de insumos/embalagens e fichas técnicas (receitas).
@@ -108,6 +108,9 @@ export const manufacturingRoutes: FastifyPluginAsync = async (app) => {
 
   // GET /manufacturing/production/agenda — encomendas (sob encomenda) a produzir
   app.get("/production/agenda", async (req) => productionAgenda(req.auth!.tenantId));
+
+  // GET /manufacturing/report — relatório de fabricação (margem/produção/consumo)
+  app.get("/report", async (req) => manufacturingReport(req.auth!.tenantId));
 
   // POST /manufacturing/production/produce-order — produz um item de encomenda da agenda
   app.post("/production/produce-order", async (req, reply) => {
