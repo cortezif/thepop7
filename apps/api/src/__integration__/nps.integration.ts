@@ -28,6 +28,6 @@ test("NPS detrator: pendente captura comentário e some após preencher", async 
     const comments = await npsComments(tenantId);
     assert.equal(comments.length, 1);
     assert.equal(comments[0]!.band, "detrator");
-    assert.match(comments[0]!.comment, /sacola/);
+    assert.match(comments[0]!.comment ?? "", /sacola/);
   });
 });
