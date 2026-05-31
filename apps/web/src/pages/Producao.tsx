@@ -11,9 +11,10 @@ export function Producao() {
   const [agenda, setAgenda] = useState<AgendaItem[] | null>(null);
 
   async function loadBatches() { setBatches(await api.listBatches().catch(() => [])); }
+  async function loadAgenda() { setAgenda(await api.productionAgenda().catch(() => [])); }
   useEffect(() => {
     api.listBoms().then(setBoms).catch(() => setBoms([]));
-    api.productionAgenda().then(setAgenda).catch(() => setAgenda([]));
+    loadAgenda();
     loadBatches();
   }, []);
 
@@ -26,7 +27,7 @@ export function Producao() {
       />
 
       <div className="mb-6">
-        <AgendaEncomendas agenda={agenda} />
+        <AgendaEncomendas agenda={agenda} onProduced={() => { loadAgenda(); loadBatches(); }} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_1fr]">
@@ -38,10 +39,22 @@ export function Producao() {
 }
 
 // ── Agenda de encomendas (produtos sob encomenda em pedidos abertos) ──────────
-function AgendaEncomendas({ agenda }: { agenda: AgendaItem[] | null }) {
+function AgendaEncomendas({ agenda, onProduced }: { agenda: AgendaItem[] | null; onProduced: () => void }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
   if (agenda === null) return <Skeleton className="h-32 w-full" />;
   const today = new Date().toISOString().slice(0, 10);
   const fmtDate = (iso: string) => new Date(iso + "T00:00:00").toLocaleDateString("pt-BR");
+
+  async function produzir(orderId: string, variantSku: string) {
+    const key = `${orderId}:${variantSku}`;
+    setBusy(key); setErr(null);
+    try {
+      const r = await api.produceOrderItem(orderId, variantSku);
+      if (!r.ok) setErr(r.error ?? "falha ao produzir");
+      else onProduced();
+    } catch (e: any) { setErr(e?.message ?? "erro"); } finally { setBusy(null); }
+  }
   return (
     <Card>
       <CardHeader icon={CalendarClock} title="Encomendas a produzir" subtitle="Pedidos abertos com produtos sob encomenda, ordenados pela data-alvo." />
@@ -55,7 +68,8 @@ function AgendaEncomendas({ agenda }: { agenda: AgendaItem[] | null }) {
               <th className="py-2 pr-3 font-medium">Produto</th>
               <th className="py-2 pr-3 text-center font-medium">Qtd</th>
               <th className="py-2 pr-3 font-medium">Cliente</th>
-              <th className="py-2 font-medium">Pedido</th>
+              <th className="py-2 pr-3 font-medium">Pedido</th>
+              <th className="py-2 font-medium" />
             </tr>
           </thead>
           <tbody>
@@ -75,13 +89,19 @@ function AgendaEncomendas({ agenda }: { agenda: AgendaItem[] | null }) {
                   <td className="py-2.5 pr-3 font-medium text-foreground">{a.productName}</td>
                   <td className="py-2.5 pr-3 text-center">{a.quantity}</td>
                   <td className="py-2.5 pr-3 text-muted-foreground">{a.contactName}</td>
-                  <td className="py-2.5 text-xs text-muted-foreground">{new Date(a.orderDate).toLocaleDateString("pt-BR")} · {a.status}</td>
+                  <td className="py-2.5 pr-3 text-xs text-muted-foreground">{new Date(a.orderDate).toLocaleDateString("pt-BR")} · {a.status}</td>
+                  <td className="py-2.5 text-right">
+                    <Button size="sm" variant="soft" Icon={Factory} onClick={() => produzir(a.orderId, a.variantSku)} disabled={busy === `${a.orderId}:${a.variantSku}`}>
+                      {busy === `${a.orderId}:${a.variantSku}` ? "…" : "Produzir"}
+                    </Button>
+                  </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
       )}
+      {err && <p className="mt-3 text-sm text-red-600">{err}</p>}
     </Card>
   );
 }

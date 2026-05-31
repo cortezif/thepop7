@@ -4,7 +4,7 @@ import {
   listRawMaterials, createRawMaterial, updateRawMaterial, deactivateRawMaterial,
   listBoms, createBom, updateBom, deleteBom,
 } from "../services/manufacturing-service.js";
-import { previewProduction, createBatch, listBatches, productionAgenda } from "../services/production-service.js";
+import { previewProduction, createBatch, listBatches, productionAgenda, produceForOrderItem } from "../services/production-service.js";
 import { getTariff, saveTariff, quoteForTenant, courierQuoteForTenant } from "../services/delivery-service.js";
 
 // Fabricação (ADR-030) — CRUD de insumos/embalagens e fichas técnicas (receitas).
@@ -104,6 +104,15 @@ export const manufacturingRoutes: FastifyPluginAsync = async (app) => {
 
   // GET /manufacturing/production/agenda — encomendas (sob encomenda) a produzir
   app.get("/production/agenda", async (req) => productionAgenda(req.auth!.tenantId));
+
+  // POST /manufacturing/production/produce-order — produz um item de encomenda da agenda
+  app.post("/production/produce-order", async (req, reply) => {
+    const body = z.object({ tenantSlug: z.string(), orderId: z.string(), variantSku: z.string() }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+    try {
+      return await produceForOrderItem(req.auth!.tenantId, body.data.orderId, body.data.variantSku);
+    } catch (e: any) { return reply.code(400).send({ error: e?.message ?? String(e) }); }
+  });
 
   // POST /manufacturing/production/preview — plano de consumo (não persiste)
   app.post("/production/preview", async (req, reply) => {

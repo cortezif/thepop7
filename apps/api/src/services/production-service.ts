@@ -177,11 +177,14 @@ export async function productionAgenda(tenantId: string): Promise<AgendaItem[]> 
   });
   const rows: AgendaItem[] = [];
   for (const o of orders) {
+    const meta = (o.metadata as Record<string, any> | null) ?? {};
     // Data que a cliente pediu (metadata.desiredDate) tem prioridade sobre a estimada.
-    const desired = (o.metadata as Record<string, unknown> | null)?.desiredDate;
+    const desired = meta.desiredDate;
     const hasDesired = typeof desired === "string" && /^\d{4}-\d{2}-\d{2}/.test(desired);
+    const produced = (meta.produced ?? {}) as Record<string, unknown>;
     for (const it of o.items) {
       if (!it.product?.madeToOrder) continue;
+      if (produced[it.variantSku]) continue; // já produzido → fora da agenda
       rows.push({
         orderId: o.id,
         contactName: o.contact?.name ?? "Cliente",
@@ -198,6 +201,42 @@ export async function productionAgenda(tenantId: string): Promise<AgendaItem[]> 
   }
   rows.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
   return rows;
+}
+
+/**
+ * Produz uma encomenda da agenda: acha a ficha técnica do produto do item, registra
+ * o lote (baixa insumos, sob encomenda = não vai pra vitrine) e marca o item como
+ * produzido (metadata.produced[variantSku]) — sai da agenda.
+ */
+export async function produceForOrderItem(tenantId: string, orderId: string, variantSku: string) {
+  const prisma = getPrisma();
+  const order = await prisma.order.findFirst({ where: { id: orderId, tenantId }, include: { items: true, contact: { select: { name: true } } } });
+  if (!order) throw new Error("pedido não encontrado");
+  const item = order.items.find((i) => i.variantSku === variantSku);
+  if (!item) throw new Error("item não encontrado no pedido");
+
+  // Ficha técnica do produto (prefere a específica da variante).
+  const bom = await prisma.billOfMaterials.findFirst({
+    where: { tenantId, active: true, productId: item.productId, OR: [{ variantSku }, { variantSku: null }] },
+    orderBy: { variantSku: "desc" },
+  });
+  if (!bom) throw new Error("produto sem ficha técnica — cadastre a receita antes de produzir");
+
+  const batch = await createBatch(tenantId, {
+    bomId: bom.id,
+    quantity: item.quantity,
+    addToStock: false, // sob encomenda: consome insumos, não soma à vitrine
+    note: `Encomenda ${orderId.slice(-6)} · ${order.contact?.name ?? "cliente"}`,
+  });
+
+  // Marca o item como produzido (sai da agenda).
+  await withTenant(tenantId, async (tx) => {
+    const meta = { ...((order.metadata as Record<string, any> | null) ?? {}) };
+    meta.produced = { ...(meta.produced ?? {}), [variantSku]: { batchId: batch.batchId } };
+    await tx.order.update({ where: { id: orderId }, data: { metadata: meta as any } });
+  });
+
+  return { ok: true as const, batchId: batch.batchId, totalCost: batch.totalCost, hasShortfall: batch.hasShortfall };
 }
 
 export async function listBatches(tenantId: string, limit = 50) {

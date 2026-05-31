@@ -350,6 +350,8 @@ export const api = {
   // Produção (Fase 2)
   listBatches: () => get<ProductionBatch[]>(`/manufacturing/production`),
   productionAgenda: () => get<AgendaItem[]>(`/manufacturing/production/agenda`),
+  produceOrderItem: (orderId: string, variantSku: string) =>
+    post<{ ok: boolean; batchId?: string; totalCost?: number; hasShortfall?: boolean; error?: string }>(`/manufacturing/production/produce-order`, { orderId, variantSku }),
   previewProduction: (bomId: string, quantity: number) =>
     post<ProductionPlan>(`/manufacturing/production/preview`, { bomId, quantity }),
   createBatch: (payload: { bomId: string; quantity: number; addToStock?: boolean; note?: string | null }) =>
