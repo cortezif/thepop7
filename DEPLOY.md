@@ -40,8 +40,9 @@ cp .env.production.example .env.production
 # Gere as chaves de segurança e cole no arquivo:
 openssl rand -hex 32   # use no PII_KEY
 openssl rand -hex 32   # use no JWT_SECRET
+openssl rand -hex 32   # use no PLATFORM_ADMIN_KEY (libera o painel /plataforma)
 
-nano .env.production    # preencha DOMAIN, senhas, DATABASE_URL, ANTHROPIC_API_KEY, ADMIN_*
+nano .env.production    # preencha DOMAIN, senhas, DATABASE_URL, ANTHROPIC_API_KEY, ADMIN_*, PLATFORM_ADMIN_KEY
 ```
 > Importante: a senha em `POSTGRES_PASSWORD` precisa ser a **mesma** dentro da `DATABASE_URL`.
 > Comece com `USE_MOCK_CONNECTORS=true` (sobe funcionando sem as contas externas).
