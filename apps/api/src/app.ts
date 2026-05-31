@@ -85,8 +85,11 @@ export function buildApp() {
   app.register(webhookRoutes,      { prefix: "/webhooks" });      // Meta/MP/Melhor Envio
   app.register(platformRoutes,     { prefix: "/platform" });       // painel da plataforma (chave própria, ADR-024)
   app.register(cotacaoPublicaRoutes, { prefix: "/cotacao-publica" }); // resposta de cotação por token (ADR-029)
-  app.register(entregadorPublicRoutes, { prefix: "/entregador" });    // app do entregador por token (ADR-033)
-  app.register(tvPublicRoutes,       { prefix: "/tv" });               // wallboard de TV por token (ADR-040)
+  // Prefixos da API DISTINTOS das rotas do SPA (/entregador/:token, /tv/:token):
+  // como o rewriteUrl tira o /api antes do roteamento, um prefixo igual ao do SPA
+  // faria a API "roubar" a navegação e devolver JSON em vez da página (ADR-040 fix).
+  app.register(entregadorPublicRoutes, { prefix: "/entregador-publico" }); // app do entregador por token (ADR-033)
+  app.register(tvPublicRoutes,       { prefix: "/tv-publico" });           // wallboard de TV por token (ADR-040)
   app.register(cronRoutes,           { prefix: "/cron" });             // reenvio de cotações (worker, segredo)
 
   // Rotas PROTEGIDAS (painel do operador): exigem JWT válido (F2).

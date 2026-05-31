@@ -22,7 +22,7 @@ test("rota /entregador/:token: vê corridas e avança até entregue", async () =
     const job = await createJobForOrder(tenantId, order.id, { courierId: courier.id, feeBRL: 7 });
 
     // GET — lista a corrida atribuída.
-    const list = await app.inject({ method: "GET", url: `/entregador/${courier.accessToken}` });
+    const list = await app.inject({ method: "GET", url: `/entregador-publico/${courier.accessToken}` });
     assert.equal(list.statusCode, 200);
     const body = list.json();
     assert.equal(body.courier.name, "João");
@@ -31,14 +31,14 @@ test("rota /entregador/:token: vê corridas e avança até entregue", async () =
 
     // Avança: aceitar → coletar → entregar.
     for (const action of ["aceitar", "coletar", "entregar"]) {
-      const r = await app.inject({ method: "POST", url: `/entregador/${courier.accessToken}/jobs/${job.id}/${action}` });
+      const r = await app.inject({ method: "POST", url: `/entregador-publico/${courier.accessToken}/jobs/${job.id}/${action}` });
       assert.equal(r.statusCode, 200, `ação ${action} ok`);
     }
 
     // Entregue fecha o pedido e some da lista.
     const ord = await prisma.order.findUniqueOrThrow({ where: { id: order.id }, select: { status: true } });
     assert.equal(ord.status, "delivered");
-    const after2 = await app.inject({ method: "GET", url: `/entregador/${courier.accessToken}` });
+    const after2 = await app.inject({ method: "GET", url: `/entregador-publico/${courier.accessToken}` });
     assert.equal(after2.json().jobs.length, 0);
 
     await prisma.financialEntry.deleteMany({ where: { tenantId } });
@@ -46,7 +46,7 @@ test("rota /entregador/:token: vê corridas e avança até entregue", async () =
 });
 
 test("rota /entregador: token inválido → 404; ação inválida → 400", async () => {
-  const bad = await app.inject({ method: "GET", url: `/entregador/token-inexistente` });
+  const bad = await app.inject({ method: "GET", url: `/entregador-publico/token-inexistente` });
   assert.equal(bad.statusCode, 404);
 
   await withTestTenant(async (tenantId) => {
@@ -55,7 +55,7 @@ test("rota /entregador: token inválido → 404; ação inválida → 400", asyn
     const courier = await createCourier(tenantId, { name: "Bia" });
     const job = await createJobForOrder(tenantId, order.id, { courierId: courier.id });
 
-    const r = await app.inject({ method: "POST", url: `/entregador/${courier.accessToken}/jobs/${job.id}/voar` });
+    const r = await app.inject({ method: "POST", url: `/entregador-publico/${courier.accessToken}/jobs/${job.id}/voar` });
     assert.equal(r.statusCode, 400);
   });
 });

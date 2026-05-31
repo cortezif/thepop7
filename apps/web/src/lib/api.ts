@@ -730,18 +730,18 @@ export async function openMercAttachment(id: string) {
 // ── App do entregador (sem auth) — tela /entregador/:token (ADR-033) ──
 /** Wallboard de TV por token — público, sem auth (ADR-040). */
 export async function fetchTvDashboard(token: string) {
-  const res = await fetch(`/api/tv/${token}`, { cache: "no-store" });
+  const res = await fetch(`/api/tv-publico/${token}`, { cache: "no-store" });
   if (!res.ok) throw new Error("link inválido ou desativado");
   return res.json() as Promise<TvDashboard>;
 }
 
 export async function fetchCourierApp(token: string) {
-  const res = await fetch(`/api/entregador/${token}`);
+  const res = await fetch(`/api/entregador-publico/${token}`);
   if (!res.ok) throw new Error("acesso inválido");
   return res.json() as Promise<CourierAppData>;
 }
 export async function courierJobAction(token: string, jobId: string, action: "aceitar" | "coletar" | "entregar") {
-  const res = await fetch(`/api/entregador/${token}/jobs/${jobId}/${action}`, { method: "POST" });
+  const res = await fetch(`/api/entregador-publico/${token}/jobs/${jobId}/${action}`, { method: "POST" });
   if (!res.ok) throw new Error("não foi possível atualizar");
   return res.json() as Promise<DeliveryJob>;
 }
