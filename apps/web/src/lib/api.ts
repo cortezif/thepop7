@@ -370,6 +370,8 @@ export const api = {
     post<{ merged: boolean; primaryId: string; mergedId?: string }>(`/admin/identity/merge`, { idA, idB }),
   dailyMetrics: () => get<DailyMetrics>(`/metrics/daily`),
   npsComments: () => get<NpsComment[]>(`/metrics/nps-comments`),
+  npsBoard: (band?: "promotor" | "neutro" | "detrator") =>
+    get<NpsBoard>(`/metrics/nps${band ? `?band=${band}` : ""}`),
   reorder: () => get<ReorderSuggestion[]>(`/purchasing/reorder`),
   purchaseRequests: () => get<PurchaseRequest[]>(`/purchasing/requests`),
   purchaseCloseMessage: (requestId: string) =>
@@ -791,6 +793,14 @@ export type DailyMetrics = {
 
 export type NpsStat = { score: number; responses: number; promotores: number; neutros: number; detratores: number };
 export type NpsComment = { id: string; score: number; comment: string; kind: string; createdAt: string; band: "promotor" | "neutro" | "detrator" };
+export type NpsBand = "promotor" | "neutro" | "detrator";
+export type NpsTrendPoint = { month: string } & NpsStat;
+export type NpsListItem = { id: string; score: number; comment: string | null; kind: string; createdAt: string; contactName: string | null; band: NpsBand };
+export type NpsBoard = {
+  summary: { geral: NpsStat; produto: NpsStat; atendimento: NpsStat };
+  trend: NpsTrendPoint[];
+  list: NpsListItem[];
+};
 
 export type Budget = {
   monthlyBudgetBRL: number;

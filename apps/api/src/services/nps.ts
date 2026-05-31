@@ -81,6 +81,51 @@ export async function attachNpsComment(tenantId: string, id: string, comment: st
   return withTenant(tenantId, (tx) => tx.npsResponse.update({ where: { id }, data: { comment: comment.slice(0, 2000) } }));
 }
 
+/** Tendência mensal de NPS nos últimos `months` meses (mais antigo → recente). */
+export async function npsTrend(tenantId: string, months = 6) {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1);
+  const rows = await withTenant(tenantId, (tx) =>
+    tx.npsResponse.findMany({ where: { tenantId, createdAt: { gte: start } }, select: { score: true, createdAt: true } }),
+  );
+  const buckets: { month: string; scores: number[] }[] = [];
+  for (let i = 0; i < months; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - (months - 1) + i, 1);
+    buckets.push({ month: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, scores: [] });
+  }
+  const idx = new Map(buckets.map((b, i) => [b.month, i]));
+  for (const r of rows) {
+    const key = `${r.createdAt.getFullYear()}-${String(r.createdAt.getMonth() + 1).padStart(2, "0")}`;
+    const i = idx.get(key);
+    if (i != null) buckets[i]!.scores.push(r.score);
+  }
+  return buckets.map((b) => ({ month: b.month, ...computeNps(b.scores) }));
+}
+
+/** Lista de respostas (opcionalmente por faixa) com nome do cliente, pro painel. */
+export async function npsList(tenantId: string, opts: { band?: "promotor" | "neutro" | "detrator" } = {}) {
+  return withTenant(tenantId, async (tx) => {
+    const rows = await tx.npsResponse.findMany({
+      where: { tenantId },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+      select: { id: true, score: true, comment: true, kind: true, createdAt: true, contactId: true },
+    });
+    // contactId não tem relação no schema → resolve nomes em lote.
+    const ids = [...new Set(rows.map((r) => r.contactId).filter((x): x is string => !!x))];
+    const contacts = ids.length
+      ? await tx.contact.findMany({ where: { tenantId, id: { in: ids } }, select: { id: true, name: true } })
+      : [];
+    const nameBy = new Map(contacts.map((c) => [c.id, c.name]));
+    let list = rows.map((r) => ({
+      id: r.id, score: r.score, comment: r.comment, kind: r.kind, createdAt: r.createdAt,
+      contactName: r.contactId ? nameBy.get(r.contactId) ?? null : null, band: npsBand(r.score),
+    }));
+    if (opts.band) list = list.filter((r) => r.band === opts.band);
+    return list.slice(0, 100);
+  });
+}
+
 /** Comentários recentes (com nota e faixa) pro painel de NPS. */
 export async function npsComments(tenantId: string, limit = 30) {
   return withTenant(tenantId, async (tx) => {

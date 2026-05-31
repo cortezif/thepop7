@@ -22,6 +22,7 @@ import { Mercadologica } from "./pages/Mercadologica";
 import { MidiaPaga } from "./pages/MidiaPaga";
 import { Promocoes } from "./pages/Promocoes";
 import { Clientes } from "./pages/Clientes";
+import { Satisfacao } from "./pages/Satisfacao";
 import { CotacaoPublica } from "./pages/CotacaoPublica";
 import "./styles/globals.css";
 
@@ -39,6 +40,7 @@ createRoot(document.getElementById("root")!).render(
           <Route path="/midia-paga" element={<MidiaPaga />} />
           <Route path="/clientes" element={<Clientes />} />
           <Route path="/promocoes" element={<Promocoes />} />
+          <Route path="/satisfacao" element={<Satisfacao />} />
           <Route path="/pedidos"  element={<Pedidos />} />
           <Route path="/estoque"  element={<Estoque />} />
           <Route path="/insumos"  element={<Insumos />} />

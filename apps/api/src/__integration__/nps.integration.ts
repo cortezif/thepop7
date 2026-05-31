@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { getPrisma } from "@hubadvisor/db";
 import { withTestTenant } from "./helpers.js";
-import { recordNps, pendingDetractorComment, attachNpsComment, npsComments } from "../services/nps.js";
+import { recordNps, pendingDetractorComment, attachNpsComment, npsComments, npsTrend, npsList } from "../services/nps.js";
 
 // Recuperação de detrator (ADR-017): captura o comentário na mensagem seguinte
 // à nota baixa e o expõe no painel. test:integration (Postgres).
@@ -29,5 +29,19 @@ test("NPS detrator: pendente captura comentário e some após preencher", async 
     assert.equal(comments.length, 1);
     assert.equal(comments[0]!.band, "detrator");
     assert.match(comments[0]!.comment ?? "", /sacola/);
+
+    // Tendência: o mês corrente tem 2 respostas (3 e 10) → NPS (1-1)/2 = 0.
+    const trend = await npsTrend(tenantId, 6);
+    assert.equal(trend.length, 6);
+    assert.equal(trend[5]!.responses, 2);
+    assert.equal(trend[5]!.score, 0);
+
+    // Lista filtrada por faixa.
+    const dets = await npsList(tenantId, { band: "detrator" });
+    assert.equal(dets.length, 1);
+    assert.equal(dets[0]!.contactName, "Ana");
+    const promos = await npsList(tenantId, { band: "promotor" });
+    assert.equal(promos.length, 1);
+    assert.equal(promos[0]!.contactName, "Bia");
   });
 });

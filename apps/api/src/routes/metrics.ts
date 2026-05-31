@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { getPrisma, withTenant } from "@hubadvisor/db";
 import { computeFinancials, computeFunnel } from "../services/order-service.js";
-import { npsSummary, npsComments } from "../services/nps.js";
+import { npsSummary, npsComments, npsTrend, npsList } from "../services/nps.js";
 
 export const metricsRoutes: FastifyPluginAsync = async (app) => {
   // GET /metrics/nps-comments?tenantSlug=... — comentários recentes (detratores/neutros).
@@ -9,6 +9,18 @@ export const metricsRoutes: FastifyPluginAsync = async (app) => {
     const tenant = await getPrisma().tenant.findUnique({ where: { slug: (req.query as any).tenantSlug as string } });
     if (!tenant) return reply.code(404).send({ error: "tenant not found" });
     return npsComments(tenant.id);
+  });
+
+  // GET /metrics/nps?tenantSlug=...&band=detrator — painel dedicado de satisfação.
+  app.get("/nps", async (req, reply) => {
+    const q = req.query as any;
+    const tenant = await getPrisma().tenant.findUnique({ where: { slug: q.tenantSlug as string } });
+    if (!tenant) return reply.code(404).send({ error: "tenant not found" });
+    const band = ["promotor", "neutro", "detrator"].includes(q.band) ? q.band : undefined;
+    const [summary, trend, list] = await Promise.all([
+      npsSummary(tenant.id), npsTrend(tenant.id), npsList(tenant.id, { band }),
+    ]);
+    return { summary, trend, list };
   });
 
   // GET /metrics/daily?tenantSlug=...
