@@ -9,8 +9,9 @@
 > ⏱️ **Com pressa?** Veja o **[Primeiros 30 minutos](./primeiros-30-min.md)** — só o
 > caminho mínimo até a primeira venda. Este documento é a referência completa.
 >
-> 📄 **Para imprimir/entregar à equipe:** [manual-operacao.pdf](./manual-operacao.pdf)
-> (gerado deste mesmo conteúdo — `npm run docs:pdf`).
+> 📄 **PDF rápido (digital):** [manual-operacao.pdf](./manual-operacao.pdf) — `npm run docs:pdf`.
+> 🖨️ **Edição para gráfica** (capa, sumário paginado, sangria 3 mm + marcas de corte):
+> [manual-operacao-impressao.pdf](./manual-operacao-impressao.pdf) — `npm run docs:pdf-print`.
 
 ## Índice
 
