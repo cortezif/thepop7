@@ -20,7 +20,7 @@ export const inboxRoutes: FastifyPluginAsync = async (app) => {
 
     return withTenant(tenant.id, async (tx) => {
       const convs = await tx.conversation.findMany({
-        where: q.status ? { status: q.status } : {},
+        where: { tenantId: tenant.id, ...(q.status ? { status: q.status } : {}) },
         orderBy: { lastMessageAt: "desc" },
         take: 50,
         include: {
@@ -59,7 +59,7 @@ export const inboxRoutes: FastifyPluginAsync = async (app) => {
 
     return withTenant(tenant.id, async (tx) => {
       const messages = await tx.message.findMany({
-        where: { conversationId: id },
+        where: { conversationId: id, conversation: { tenantId: tenant.id } },
         orderBy: { createdAt: "asc" },
         select: {
           id: true, direction: true, type: true, content: true,
@@ -85,8 +85,8 @@ export const inboxRoutes: FastifyPluginAsync = async (app) => {
     enterCredentials(await resolveTenantCredentials(tenant.id));
 
     return withTenant(tenant.id, async (tx) => {
-      const conv = await tx.conversation.findUnique({ where: { id } });
-      if (!conv) throw new Error("conversa não encontrada");
+      const conv = await tx.conversation.findFirst({ where: { id, tenantId: tenant.id } });
+      if (!conv) return reply.code(404).send({ error: "conversa não encontrada" });
 
       const msg = await tx.message.create({
         data: { conversationId: id, direction: "out", type: "text", content: body.data.text },
@@ -117,7 +117,8 @@ export const inboxRoutes: FastifyPluginAsync = async (app) => {
     if (!tenant) return reply.code(404).send({ error: "tenant not found" });
     const tags = [...new Set(body.data.tags.map((t) => t.trim().toLowerCase()).filter(Boolean))];
     return withTenant(tenant.id, async (tx) => {
-      await tx.conversation.update({ where: { id }, data: { tags } });
+      const r = await tx.conversation.updateMany({ where: { id, tenantId: tenant.id }, data: { tags } });
+      if (r.count === 0) return reply.code(404).send({ error: "conversa não encontrada" });
       return { ok: true, tags };
     });
   });
@@ -128,7 +129,7 @@ export const inboxRoutes: FastifyPluginAsync = async (app) => {
     const tenant = await resolveTenant((req.query as any).tenantSlug);
     if (!tenant) return reply.code(404).send({ error: "tenant not found" });
     return withTenant(tenant.id, async (tx) =>
-      tx.conversationNote.findMany({ where: { conversationId: id }, orderBy: [{ pinned: "desc" }, { createdAt: "asc" }] })
+      tx.conversationNote.findMany({ where: { conversationId: id, conversation: { tenantId: tenant.id } }, orderBy: [{ pinned: "desc" }, { createdAt: "asc" }] })
     );
   });
 
@@ -139,9 +140,11 @@ export const inboxRoutes: FastifyPluginAsync = async (app) => {
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
     const tenant = await resolveTenant(body.data.tenantSlug);
     if (!tenant) return reply.code(404).send({ error: "tenant not found" });
-    return withTenant(tenant.id, async (tx) =>
-      tx.conversationNote.create({ data: { conversationId: id, text: body.data.text, authorId: req.auth?.sub, authorName: req.auth?.email } })
-    );
+    return withTenant(tenant.id, async (tx) => {
+      const conv = await tx.conversation.findFirst({ where: { id, tenantId: tenant.id }, select: { id: true } });
+      if (!conv) return reply.code(404).send({ error: "conversa não encontrada" });
+      return tx.conversationNote.create({ data: { conversationId: id, text: body.data.text, authorId: req.auth?.sub, authorName: req.auth?.email } });
+    });
   });
 
   // PATCH /inbox/conversations/:id/notes/:noteId/pin — fixa/desafixa uma nota
@@ -183,7 +186,8 @@ export const inboxRoutes: FastifyPluginAsync = async (app) => {
       ? { assignedToId: null, assignedToName: null }
       : { assignedToId: req.auth?.sub ?? null, assignedToName: req.auth?.email ?? null };
     return withTenant(tenant.id, async (tx) => {
-      await tx.conversation.update({ where: { id }, data });
+      const r = await tx.conversation.updateMany({ where: { id, tenantId: tenant.id }, data });
+      if (r.count === 0) return reply.code(404).send({ error: "conversa não encontrada" });
       return { ok: true, assignedToName: data.assignedToName };
     });
   });
@@ -222,9 +226,10 @@ export const inboxRoutes: FastifyPluginAsync = async (app) => {
     const tenant = await resolveTenant(body.data.tenantSlug);
     if (!tenant) return reply.code(404).send({ error: "tenant not found" });
 
-    await withTenant(tenant.id, async (tx) => {
-      await tx.conversation.update({ where: { id }, data: { status: body.data.status } });
-    });
+    const updated = await withTenant(tenant.id, async (tx) =>
+      tx.conversation.updateMany({ where: { id, tenantId: tenant.id }, data: { status: body.data.status } }),
+    );
+    if (updated.count === 0) return reply.code(404).send({ error: "conversa não encontrada" });
 
     // Ao encerrar, gera o resumo pra virar memória da cliente (ADR-007).
     if (body.data.status === "closed") {
