@@ -3,12 +3,16 @@ import assert from "node:assert/strict";
 import { getPrisma } from "@hubadvisor/db";
 import { recordNps, npsSummary } from "../services/nps.js";
 import { rankQuotes } from "../services/purchasing-service.js";
+import { listCampaigns, createCampaign, previewSegment } from "../services/broadcast-service.js";
+import { cashbackBalance } from "../services/cashback-service.js";
+import { marketingReport } from "../services/marketing-report-service.js";
+import { listContacts, contactStats, createContactManual } from "../services/contact-service.js";
 
 process.env.JWT_SECRET = process.env.JWT_SECRET ?? "itest-secret";
 
 const prisma = getPrisma();
 const sfx = Date.now();
-let tA = "", tB = "", reqB = "";
+let tA = "", tB = "", reqB = "", contactB = "";
 
 before(async () => {
   const a = await prisma.tenant.create({ data: { slug: `itest-isoa-${sfx}`, name: "A", status: "active", agentPersona: "Maya", agentTone: "x", policies: {} } });
@@ -22,6 +26,12 @@ before(async () => {
   const pr = await prisma.purchaseRequest.create({ data: { tenantId: tB, status: "quoted", items: [{ description: "x", quantity: 1 }] as any } });
   reqB = pr.id;
   await prisma.quote.create({ data: { tenantId: tB, requestId: pr.id, supplierId: sup.id, items: [{ description: "x", unitPriceBRL: 10, quantity: 1 }] as any, totalBRL: 10 as any, leadTimeDays: 5 } });
+
+  // Marketing/CRM da loja B (ADR-031): contato + cashback + campanha.
+  const c = await createContactManual(tB, { name: "CliB", phone: "+5511988887777", consentLGPD: true });
+  contactB = c.id;
+  await prisma.cashbackEntry.create({ data: { tenantId: tB, contactId: contactB, kind: "accrual", amountBRL: 15, remainingBRL: 15, expiresAt: new Date(Date.now() + 30 * 864e5) } });
+  await createCampaign(tB, { title: "Promo B", message: "oi", channels: ["whatsapp"] });
 });
 after(async () => {
   await prisma.tenant.deleteMany({ where: { slug: { in: [`itest-isoa-${sfx}`, `itest-isob-${sfx}`] } } }).catch(() => {});
@@ -40,4 +50,24 @@ test("rankQuotes não ranqueia cotação de outra loja", async () => {
   assert.deepEqual(crossed.ranked, [], "A não acessa as cotações da B");
   const own = await rankQuotes(tB, reqB);
   assert.equal(own.ranked.length, 1, "B ranqueia a própria");
+});
+
+test("campanhas (ADR-031) não vazam entre lojas", async () => {
+  assert.equal((await listCampaigns(tA)).length, 0, "A não vê a campanha da B");
+  assert.equal((await listCampaigns(tB)).length, 1, "B vê a própria");
+});
+
+test("cashback (ADR-031) é por loja", async () => {
+  assert.equal(await cashbackBalance(tA, contactB), 0, "A não enxerga o saldo do cliente da B");
+  assert.equal(await cashbackBalance(tB, contactB), 15, "B enxerga o próprio");
+  assert.equal((await marketingReport(tA)).cashback.accruedBRL, 0, "relatório de A não soma cashback da B");
+  assert.equal((await marketingReport(tB)).cashback.accruedBRL, 15);
+});
+
+test("contatos/CRM (ADR-031) não vazam entre lojas", async () => {
+  assert.equal((await listContacts(tA)).length, 0, "A não vê o contato da B");
+  assert.equal((await listContacts(tB)).length, 1, "B vê o próprio");
+  assert.equal((await contactStats(tA)).total, 0);
+  assert.equal((await previewSegment(tA, "todos")).total, 0, "segmento de A não pega contatos da B");
+  assert.equal((await previewSegment(tB, "todos")).total, 1);
 });
