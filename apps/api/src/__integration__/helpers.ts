@@ -18,6 +18,14 @@ export async function withTestTenant<T>(fn: (tenantId: string) => Promise<T>): P
     return await fn(tenant.id);
   } finally {
     const t = tenant.id;
+    // Fabricação (ADR-030): bom_items → raw_materials é onDelete:Restrict, então o
+    // cascade do tenant trava. Apaga na ordem: itens da ficha → fichas → insumos →
+    // lotes → tarifa, antes do resto.
+    await prisma.bomItem.deleteMany({ where: { bom: { tenantId: t } } }).catch(() => {});
+    await prisma.billOfMaterials.deleteMany({ where: { tenantId: t } }).catch(() => {});
+    await prisma.rawMaterial.deleteMany({ where: { tenantId: t } }).catch(() => {});
+    await prisma.productionBatch.deleteMany({ where: { tenantId: t } }).catch(() => {});
+    await prisma.deliveryTariff.deleteMany({ where: { tenantId: t } }).catch(() => {});
     // Ordem segura de FK: filhos → contatos → produtos → tenant.
     await prisma.orderItem.deleteMany({ where: { order: { tenantId: t } } }).catch(() => {});
     await prisma.return.deleteMany({ where: { order: { tenantId: t } } }).catch(() => {});
