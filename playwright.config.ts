@@ -1,3 +1,4 @@
+import "dotenv/config"; // carrega .env (DATABASE_URL etc.) p/ os helpers Prisma dos specs
 import { defineConfig, devices } from "@playwright/test";
 
 // E2E do painel (ADR-038). Sobe API (3001) + web (3000) e roda no Chromium.
