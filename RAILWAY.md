@@ -78,6 +78,20 @@ ADMIN_PASSWORD = <senha do admin>
 
 ---
 
+### Checklist pré-deploy (1 min)
+- [ ] **Postgres** adicionado e `DATABASE_URL` referenciada (`${{Postgres.DATABASE_URL}}`).
+- [ ] Segredos gerados: `PII_KEY`, `JWT_SECRET`, `PLATFORM_ADMIN_KEY` (`openssl rand -hex 32` cada).
+- [ ] `ADMIN_EMAIL` / `ADMIN_PASSWORD` definidos (vira o **owner** da loja no 1º start).
+- [ ] `APP_DB_ROLE=hubadvisor_app` (hardening do RLS).
+- [ ] `USE_MOCK_CONNECTORS=true` (laboratório) — vira `false` quando as contas reais existirem.
+- [ ] `NODE_ENV=production`. **Não** definir `PORT` (Railway injeta).
+- [ ] Domínio gerado (Settings → Networking).
+
+Depois do 1º deploy, confira nos **Logs**: `subindo API + painel` e
+`RLS hardening ativo`. Se aparecer `APP_DB_ROLE definido mas inutilizável`,
+o `rls.sql` não conseguiu criar o papel (veja privilégios do usuário do banco) —
+a app sobe mesmo assim, só sem o reforço de RLS.
+
 ### Notas
 - **Custo:** Railway cobra por uso (CPU/RAM/banco). Começo barato; acompanhe no painel deles.
 - **Backups:** o Postgres do Railway tem backups; confira o plano.

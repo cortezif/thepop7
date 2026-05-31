@@ -25,12 +25,45 @@ export function getPrisma(): PrismaClient {
  * o usuário da conexão, ex. postgres, que bypassa o RLS — só a checagem no código
  * isola). Validar a env uma vez (identificador SQL simples) pra poder interpolar.
  */
-const APP_DB_ROLE = (() => {
+let _appDbRole: string | null = (() => {
   const r = process.env.APP_DB_ROLE?.trim();
   if (!r) return null;
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(r)) throw new Error(`APP_DB_ROLE inválido: ${r}`);
   return r;
 })();
+
+/** Papel restrito atualmente em uso (null = desligado). */
+export function appDbRole(): string | null {
+  return _appDbRole;
+}
+
+/**
+ * Valida, no boot, que dá pra baixar pro papel restrito (`APP_DB_ROLE`). Se o
+ * papel não existir/for inutilizável (ex.: rls.sql não rodou), DESLIGA o recurso
+ * com um aviso — melhor seguir sem o reforço do que quebrar toda transação
+ * tenant-scoped. Retorna true se o hardening ficou ativo.
+ */
+export async function verifyAppDbRole(logger?: {
+  info?: (o: unknown, m?: string) => void;
+  warn?: (o: unknown, m?: string) => void;
+}): Promise<boolean> {
+  if (!_appDbRole) return false;
+  try {
+    await getPrisma().$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(`SET LOCAL ROLE "${_appDbRole}"`);
+      await tx.$executeRawUnsafe("SELECT 1");
+    });
+    logger?.info?.({ role: _appDbRole }, "RLS hardening ativo (SET LOCAL ROLE por transação)");
+    return true;
+  } catch (e) {
+    logger?.warn?.(
+      { role: _appDbRole, err: (e as Error)?.message },
+      "APP_DB_ROLE definido mas inutilizável (rode rls.sql) — seguindo SEM o papel restrito",
+    );
+    _appDbRole = null; // desliga p/ não derrubar toda request tenant-scoped
+    return false;
+  }
+}
 
 /**
  * Executes `fn` inside a transaction where Postgres `app.current_tenant_id`
@@ -52,7 +85,7 @@ export async function withTenant<T>(
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
     await tx.$executeRawUnsafe(`SET LOCAL app.current_tenant_id = '${tenantId.replace(/'/g, "''")}'`);
-    if (APP_DB_ROLE) await tx.$executeRawUnsafe(`SET LOCAL ROLE "${APP_DB_ROLE}"`);
+    if (_appDbRole) await tx.$executeRawUnsafe(`SET LOCAL ROLE "${_appDbRole}"`);
     return fn(tx);
   });
 }
