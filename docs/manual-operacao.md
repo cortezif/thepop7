@@ -9,6 +9,17 @@
 > ⏱️ **Com pressa?** Veja o **[Primeiros 30 minutos](./primeiros-30-min.md)** — só o
 > caminho mínimo até a primeira venda. Este documento é a referência completa.
 
+## Índice
+
+- [Legenda de status](#legenda-de-status)
+- [Painel de integrações (status atual)](#painel-de-integrações--o-que-ligar-e-status-atual)
+- [Mapa completo — as 14 partes](#mapa-completo-as-partes)
+- **Partes 1 a 14** (cada uma com "o que fazer → o que destrava")
+- [Glossário](#glossário) — o que cada termo significa
+- [Papéis e permissões](#papéis-e-permissões) — quem pode o quê
+- [Perguntas frequentes (FAQ)](#perguntas-frequentes-faq)
+- [Primeiros 30 minutos](./primeiros-30-min.md) *(documento separado)*
+
 ## Legenda de status
 
 | Badge | Significado |
@@ -438,3 +449,92 @@
 Cada parte só entrega o máximo quando as anteriores estão alimentadas. O sistema
 funciona mesmo incompleto (o **modo mock** cobre o que faltar), mas o **valor total**
 vem do conjunto.
+
+---
+
+## Glossário
+
+| Termo | O que é |
+|-------|---------|
+| **Maya / Bia / Lia** | As personas de IA da loja. **Maya** atende e vende nas conversas; **Bia** cuida das cotações com fornecedores; **Lia** faz o pós-venda (D+1/D+7/D+14/D+30). |
+| **Tenant / loja** | Cada loja é um espaço isolado. Os dados de uma nunca se misturam com os de outra. |
+| **Segmento** | O tipo de negócio (moda, alimentação…). Define o vocabulário do catálogo, a voz da IA e se a Fabricação aparece. |
+| **Inbox / Atendimento** | A caixa única onde caem todas as conversas (WhatsApp, Instagram, Facebook). |
+| **Handoff / "aguardando humano"** | Quando a IA passa a conversa para uma pessoa (cliente pediu, perfil "atenção humana", detrator de NPS, ou pedido acima do teto). |
+| **Teto de auto-aprovação** | Valor até o qual a Maya fecha a venda sozinha. Acima dele, o pedido espera aprovação de um atendente. |
+| **Cashback** | % da compra que volta como saldo pro cliente usar depois. A Maya lembra o cliente do saldo. |
+| **NPS / detrator** | Nota de satisfação (0–10). Quem dá nota baixa (**detrator**) é encaminhado automaticamente para um humano recuperar. |
+| **Recompra / winback** | Reativação automática de quem comprou e ficou inativo. |
+| **Padrão de código** | Formato próprio de código de barras/QR das etiquetas (ex.: `26030104159030-0001-PP`), com significado legível. |
+| **Peça** | Cada item físico único registrado por etiqueta — permite contar o estoque por tamanho e dar baixa por leitura. |
+| **Mercadológica** | Rede de fornecedores + pesquisa de preços (cotação) com mapa comparativo. |
+| **Wallboard / Painel de TV** | A tela ao vivo da operação do dia, feita pra rodar numa TV. |
+| **Modo mock** | Quando uma integração não tem credencial, o sistema **simula** o serviço pra você testar o fluxo. |
+| **RLS / isolamento** | Mecanismo que garante que cada loja só enxerga os próprios dados. |
+| **LGPD** | Lei de proteção de dados — consentimento, opt-out e exclusão sob demanda. |
+| **ERP / NFe** | Sistema de gestão (Tray/Bling/Omie/VHSYS) e nota fiscal eletrônica (CPlug). |
+
+---
+
+## Papéis e permissões
+
+Três papéis (definidos em **Equipe**). A coluna diz quem **consegue** fazer.
+
+| Área | Dono | Administrador | Operador |
+|------|:----:|:-------------:|:--------:|
+| Atendimento (Inbox), assumir conversas | ✅ | ✅ | ✅ |
+| Pedidos (ver, aprovar, simular entrega, pós-venda) | ✅ | ✅ | ✅ |
+| Catálogo, Estoque, Clientes | ✅ | ✅ | ✅ |
+| Promoções, Satisfação, Compras, Mercadológica | ✅ | ✅ | ✅ |
+| Entregadores (roster e corridas) | ✅ | ✅ | ✅ |
+| **Configurações & integrações** (conectar canais, pagamento, ERP…) | ✅ | ✅ | ❌ |
+| **Financeiro** (caixa, contas, DRE) | ✅ | ✅ | ❌ |
+| **Equipe** (convidar, definir papel) | ✅ | ✅ | ❌ |
+| **Redefinir senha** de membros | ✅ | ❌ | ❌ |
+| **Painel de TV** — abrir | ✅ | ✅ | ✅ |
+| **Painel de TV** — ativar/revogar o link público | ✅ | ✅ | ❌ |
+
+> **Operador** opera o dia a dia (vende, atende, separa, entrega) sem mexer em
+> conta, dinheiro ou configuração. **Administrador** faz tudo isso. **Dono** é o
+> único que redefine senhas dos outros.
+
+---
+
+## Perguntas frequentes (FAQ)
+
+**A IA responde sem eu conectar o WhatsApp?**
+Ela já está pronta (🟢 Anthropic LIVE), mas só *responde a clientes* depois que um
+canal (WhatsApp/Instagram) está conectado. Sem credencial, dá pra testar tudo no
+**modo mock**.
+
+**Preciso preencher todas as integrações para vender?**
+Não. O mínimo é **canal + 1 produto + pagamento** (veja [Primeiros 30 minutos](./primeiros-30-min.md)).
+O resto entra aos poucos; o que faltar roda em mock.
+
+**A Maya fecha qualquer venda sozinha?**
+Só até o **teto de auto-aprovação**. Acima dele, o pedido fica "Aguardando aprovação"
+em **Pedidos** pra um atendente liberar.
+
+**Como deixo a IA mais "dura" com um cliente difícil?**
+Em **Clientes → ⚙ Perfil**, marque a tag (pechincheiro, problemático…). "Banido"
+faz a IA não atender; "Requer atendimento humano" encaminha direto pra uma pessoa.
+
+**O cliente que chama vira cadastro sozinho?**
+Sim — quem chama pelo WhatsApp/Instagram entra no CRM já com o nome do perfil e o
+canal de origem. Você completa endereço/CPF depois em **Clientes**.
+
+**Posso deixar o Painel de TV numa TV sem login?**
+Sim. **Configurações → Painel de TV → Ativar link público** e abra o link na TV.
+"Gerar novo" revoga o anterior.
+
+**Uma loja consegue ver dados de outra?**
+Não. Cada loja é isolada; toda consulta é filtrada pela loja. (Há testes
+automatizados garantindo isso a cada deploy.)
+
+**Apareceu "modo mock" / um valor simulado — está quebrado?**
+Não. É a integração ainda sem credencial rodando simulada. Conecte a credencial
+em **Configurações** para usar o serviço real.
+
+**Como sei o que já está conectado de verdade?**
+Pela tabela [Painel de integrações](#painel-de-integrações--o-que-ligar-e-status-atual)
+(gerada do status real) e pelos badges 🟢/🟡/⚪ em cada passo.
