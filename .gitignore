@@ -14,3 +14,9 @@ coverage
 /prisma/migrations/.migrate
 slide-*.jpg
 *.tsbuildinfo
+
+# Playwright (ADR-038)
+/test-results/
+/playwright-report/
+/blob-report/
+/e2e/.cache/

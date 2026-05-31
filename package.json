@@ -15,20 +15,22 @@
     "lint": "node scripts/check-deps.mjs && turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "test:e2e": "playwright test",
     "db:generate": "npm --workspace @hubadvisor/db run generate",
-    "db:migrate":  "npm --workspace @hubadvisor/db run migrate",
-    "db:studio":   "npm --workspace @hubadvisor/db run studio",
-    "dev:api":     "npm --workspace @hubadvisor/api run dev",
-    "dev:worker":  "npm --workspace @hubadvisor/worker run dev",
-    "dev:web":     "npm --workspace @hubadvisor/web run dev",
-    "bootstrap":   "node scripts/bootstrap.mjs",
-    "dev:all":     "node scripts/dev-all.mjs"
+    "db:migrate": "npm --workspace @hubadvisor/db run migrate",
+    "db:studio": "npm --workspace @hubadvisor/db run studio",
+    "dev:api": "npm --workspace @hubadvisor/api run dev",
+    "dev:worker": "npm --workspace @hubadvisor/worker run dev",
+    "dev:web": "npm --workspace @hubadvisor/web run dev",
+    "bootstrap": "node scripts/bootstrap.mjs",
+    "dev:all": "node scripts/dev-all.mjs"
   },
   "devDependencies": {
-    "turbo": "^2.0.0",
-    "typescript": "^5.5.0",
+    "@playwright/test": "^1.60.0",
     "@types/node": "^22.0.0",
-    "tsx": "^4.16.0"
+    "tsx": "^4.16.0",
+    "turbo": "^2.0.0",
+    "typescript": "^5.5.0"
   },
   "overrides": {
     "ioredis": "5.10.1"
