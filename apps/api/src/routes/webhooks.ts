@@ -1,7 +1,8 @@
 import type { FastifyPluginAsync } from "fastify";
 import { getPrisma, withTenant } from "@hubadvisor/db";
-import { tokenFromAddress } from "@hubadvisor/connectors";
+import { tokenFromAddress, fetchInstagramProfile } from "@hubadvisor/connectors";
 import { handleIncomingMessage } from "../services/conversation-service.js";
+import { getInstagramToken } from "../services/integration-service.js";
 import { captureWhatsappInbound, captureEmailInbound } from "../services/mercadologica-service.js";
 import { applyCourierWebhook } from "../services/courier-dispatch-service.js";
 
@@ -80,8 +81,19 @@ export const webhookRoutes: FastifyPluginAsync = async (app) => {
           if (!senderId || !text) continue;
           const tenantSlug = await resolveTenantByIgAccount(entry?.id);
           if (!tenantSlug) { app.log.warn({ pageId: entry?.id }, "nenhum tenant para a página IG"); continue; }
+          // Busca o nome real do perfil (Graph API) pra já cadastrar o cliente (ADR-034).
+          // Não-fatal: sem token/erro, segue só com o id (IA capta o nome na conversa).
+          let igName: string | undefined;
+          try {
+            const t = await getPrisma().tenant.findUnique({ where: { slug: tenantSlug }, select: { id: true } });
+            const token = t ? await getInstagramToken(t.id) : null;
+            if (token) {
+              const prof = await fetchInstagramProfile(senderId, token);
+              igName = prof?.name || prof?.username || undefined;
+            }
+          } catch (e) { app.log.warn({ e: String(e) }, "IG profile fetch falhou — segue sem nome"); }
           await handleIncomingMessage(
-            { tenantSlug, channel: "instagram", contact: { igHandle: senderId }, text },
+            { tenantSlug, channel: "instagram", contact: { igHandle: senderId, name: igName }, text },
             app.log,
           );
         }

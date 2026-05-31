@@ -576,6 +576,12 @@ export async function getWhatsAppStatus(tenantId: string) {
   };
 }
 
+/** Access Token do Instagram da loja (config da loja → fallback env). Null se ausente. */
+export async function getInstagramToken(tenantId: string): Promise<string | null> {
+  const cfg = await getProviderConfig(tenantId, "instagram");
+  return cfg.accessToken || process.env.INSTAGRAM_ACCESS_TOKEN || null;
+}
+
 export async function getInstagramStatus(tenantId: string) {
   const cfg = await getProviderConfig(tenantId, "instagram");
   const configured = !!cfg.accessToken;
