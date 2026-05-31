@@ -23,6 +23,7 @@ import { mercadologicaRoutes, cotacaoPublicaRoutes, cronRoutes } from "./routes/
 import { adsRoutes } from "./routes/ads.js";
 import { manufacturingRoutes } from "./routes/manufacturing.js";
 import { marketingRoutes } from "./routes/marketing.js";
+import { contactRoutes } from "./routes/contacts.js";
 import { userRoutes } from "./routes/users.js";
 import { requireAuth } from "./auth.js";
 
@@ -101,6 +102,7 @@ export function buildApp() {
     secure.register(adsRoutes,                { prefix: "/ads" });
     secure.register(manufacturingRoutes,      { prefix: "/manufacturing" });
     secure.register(marketingRoutes,          { prefix: "/marketing" });
+    secure.register(contactRoutes,            { prefix: "/contacts" });
   });
 
   // Painel estático (produção/serviço único): serve o build do web + fallback SPA.

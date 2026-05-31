@@ -253,6 +253,18 @@ export type Message = {
   createdAt: string;
 };
 
+export type ContactRow = {
+  id: string; name: string | null; phoneMasked: string | null; emailMasked: string | null;
+  igHandle: string | null; hasPhone: boolean; hasEmail: boolean;
+  consentLGPD: boolean; optOuts: string[];
+  cashbackBRL: number; ordersCount: number; totalSpentBRL: number;
+  lastOrderAt: string | null; createdAt: string;
+};
+export type ContactStats = {
+  total: number; consented: number; optedOutMarketing: number; withCashback: number;
+  reachableWhatsapp: number; reachableEmail: number;
+};
+
 export type CampaignChannel = "whatsapp" | "email" | "sms";
 export type Campaign = {
   id: string; title: string; message: string; subject: string | null;
@@ -302,6 +314,20 @@ export const api = {
   setCashbackConfig: (payload: { enabled?: boolean; pct?: number; expiryDays?: number; maxRedeemPct?: number }) =>
     post<{ ok: boolean }>(`/admin/cashback-config`, payload),
   setStoreZip: (storeZip: string | null) => post<{ ok: boolean; storeZip: string | null }>(`/admin/store-config`, { storeZip }),
+  // Clientes / CRM (ADR-031)
+  contacts: (params?: { q?: string; optedOut?: boolean; withCashback?: boolean }) => {
+    const qs = new URLSearchParams();
+    if (params?.q) qs.set("q", params.q);
+    if (params?.optedOut) qs.set("optedOut", "true");
+    if (params?.withCashback) qs.set("withCashback", "true");
+    const s = qs.toString();
+    return get<ContactRow[]>(`/contacts${s ? `?${s}` : ""}`);
+  },
+  contactStats: () => get<ContactStats>(`/contacts/stats`),
+  createContact: (input: { name?: string; phone?: string; email?: string; igHandle?: string; consentLGPD?: boolean }) =>
+    post<{ id: string; created: boolean }>(`/contacts`, input),
+  setContactConsent: (id: string, input: { consentLGPD?: boolean; optOuts?: string[] }) =>
+    patch<{ ok: boolean }>(`/contacts/${id}/consent`, input),
   // Promoções / broadcast (ADR-031)
   campaigns: () => get<Campaign[]>(`/marketing/campaigns`),
   segmentPreview: (onlyBuyers: boolean) =>
