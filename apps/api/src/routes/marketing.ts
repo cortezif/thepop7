@@ -4,6 +4,7 @@ import {
   listCampaigns, createCampaign, sendCampaign, previewSegment, sanitizeChannels, sendCashbackNudges,
 } from "../services/broadcast-service.js";
 import { expiringSoon } from "../services/cashback-service.js";
+import { marketingReport } from "../services/marketing-report-service.js";
 
 // Campanhas de promoção / broadcast (ADR-031 fase 2) — WhatsApp/e-mail/SMS.
 // Protegido por JWP (bloco `secure` do app).
@@ -19,6 +20,8 @@ const campaignBody = z.object({
 
 export const marketingRoutes: FastifyPluginAsync = async (app) => {
   app.get("/campaigns", async (req) => listCampaigns(req.auth!.tenantId));
+
+  app.get("/report", async (req) => marketingReport(req.auth!.tenantId));
 
   app.get("/segment-preview", async (req) => {
     const onlyBuyers = (req.query as any)?.onlyBuyers === "true";

@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { Megaphone, Send, Users, Mail, MessageCircle, Smartphone, CheckCircle2, Gift } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
+import { StatCard } from "../components/StatCard";
 import { Page, Card, CardHeader, Button, Badge, EmptyState, Skeleton, Tabs, inputClass } from "../components/ui";
-import { api, type Campaign, type CampaignChannel } from "../lib/api";
+import { api, type Campaign, type CampaignChannel, type MarketingReport } from "../lib/api";
+import { formatBRL } from "../lib/utils";
 
-type Tab = "campanhas" | "nova";
+type Tab = "campanhas" | "nova" | "resultados";
 
 const CHANNELS: { key: CampaignChannel; label: string; Icon: typeof Mail }[] = [
   { key: "whatsapp", label: "WhatsApp", Icon: MessageCircle },
@@ -27,10 +29,54 @@ export function Promocoes() {
         <Tabs active={tab} onChange={setTab} tabs={[
           { key: "campanhas", label: "Campanhas" },
           { key: "nova", label: "Nova campanha" },
+          { key: "resultados", label: "Resultados" },
         ]} />
       </div>
-      {tab === "campanhas" ? <Lista /> : <Nova onDone={() => setTab("campanhas")} />}
+      {tab === "campanhas" && <Lista />}
+      {tab === "nova" && <Nova onDone={() => setTab("campanhas")} />}
+      {tab === "resultados" && <Resultados />}
     </Page>
+  );
+}
+
+function Resultados() {
+  const [rep, setRep] = useState<MarketingReport | null>(null);
+  useEffect(() => { api.marketingReport().then(setRep).catch(() => setRep(null)); }, []);
+  if (!rep) return <Skeleton className="h-64" />;
+  const cb = rep.cashback;
+  const pct = Math.round(cb.redemptionRate * 100);
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Cashback</h3>
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          <StatCard label="Creditado (total)" value={formatBRL(cb.accruedBRL)} Icon={Gift} />
+          <StatCard label="Resgatado" value={formatBRL(cb.redeemedBRL)} Icon={CheckCircle2} />
+          <StatCard label="Expirado" value={formatBRL(cb.expiredBRL)} Icon={Megaphone} alert={cb.expiredBRL > 0} />
+          <StatCard label="Taxa de resgate" value={`${pct}%`} Icon={Send} />
+        </div>
+      </div>
+      <Card className="border-amber-200 bg-amber-50/50">
+        <div className="flex flex-wrap items-center justify-between gap-4 p-5">
+          <div>
+            <p className="font-medium text-foreground">Passivo em aberto: {formatBRL(cb.activeBalanceBRL)}</p>
+            <p className="text-sm text-muted-foreground">
+              Saldo vivo de {cb.contactsWithBalance} cliente(s). <b className="text-amber-700">{formatBRL(cb.expiring30BRL)}</b> vence nos próximos 30 dias —
+              é o gancho para trazer essas pessoas de volta.
+            </p>
+          </div>
+        </div>
+      </Card>
+      <div>
+        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Campanhas</h3>
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          <StatCard label="Enviadas" value={`${rep.campaigns.sent}/${rep.campaigns.total}`} Icon={Megaphone} />
+          <StatCard label="Destinatários" value={String(rep.campaigns.recipients)} Icon={Users} />
+          <StatCard label="Por WhatsApp" value={String(rep.campaigns.sentWhatsapp)} Icon={MessageCircle} />
+          <StatCard label="Por e-mail / SMS" value={`${rep.campaigns.sentEmail} / ${rep.campaigns.sentSms}`} Icon={Mail} />
+        </div>
+      </div>
+    </div>
   );
 }
 

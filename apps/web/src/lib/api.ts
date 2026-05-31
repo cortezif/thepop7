@@ -265,6 +265,15 @@ export type ContactStats = {
   reachableWhatsapp: number; reachableEmail: number;
 };
 
+export type MarketingReport = {
+  cashback: {
+    accruedBRL: number; redeemedBRL: number; expiredBRL: number;
+    activeBalanceBRL: number; expiring30BRL: number; redemptionRate: number;
+    contactsWithBalance: number;
+  };
+  campaigns: { total: number; sent: number; recipients: number; sentWhatsapp: number; sentEmail: number; sentSms: number };
+};
+
 export type CampaignChannel = "whatsapp" | "email" | "sms";
 export type Campaign = {
   id: string; title: string; message: string; subject: string | null;
@@ -329,6 +338,7 @@ export const api = {
   setContactConsent: (id: string, input: { consentLGPD?: boolean; optOuts?: string[] }) =>
     patch<{ ok: boolean }>(`/contacts/${id}/consent`, input),
   // Promoções / broadcast (ADR-031)
+  marketingReport: () => get<MarketingReport>(`/marketing/report`),
   campaigns: () => get<Campaign[]>(`/marketing/campaigns`),
   segmentPreview: (onlyBuyers: boolean) =>
     get<{ total: number; withPhone: number; withEmail: number }>(`/marketing/segment-preview?onlyBuyers=${onlyBuyers}`),
