@@ -19,6 +19,7 @@
     "docs:status": "node scripts/gen-status.mjs",
     "docs:shots": "node scripts/shots.mjs",
     "docs:gifs": "tsx scripts/gifs.mts",
+    "docs:pdf": "node scripts/manual-pdf.mjs",
     "db:generate": "npm --workspace @hubadvisor/db run generate",
     "db:migrate": "npm --workspace @hubadvisor/db run migrate",
     "db:studio": "npm --workspace @hubadvisor/db run studio",

@@ -8,6 +8,9 @@
 >
 > ⏱️ **Com pressa?** Veja o **[Primeiros 30 minutos](./primeiros-30-min.md)** — só o
 > caminho mínimo até a primeira venda. Este documento é a referência completa.
+>
+> 📄 **Para imprimir/entregar à equipe:** [manual-operacao.pdf](./manual-operacao.pdf)
+> (gerado deste mesmo conteúdo — `npm run docs:pdf`).
 
 ## Índice
 
