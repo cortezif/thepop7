@@ -129,6 +129,7 @@ export async function resolveContact(
 export async function findDuplicateContacts(tenantId: string) {
   return withTenant(tenantId, async (tx) => {
     const rows = await tx.contact.findMany({
+      where: { tenantId }, // defesa explícita: a RLS é ignorada pelo superuser
       orderBy: { createdAt: "asc" },
       select: { id: true, name: true, phone: true, igHandle: true, email: true, cpf: true, phoneHash: true, emailHash: true, cpfHash: true, createdAt: true },
     });

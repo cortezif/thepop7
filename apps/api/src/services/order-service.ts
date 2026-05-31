@@ -316,6 +316,7 @@ export async function receiveReturn(tenantId: string, returnId: string) {
 export async function listOrders(tenantId: string) {
   return withTenant(tenantId, async (tx) => {
     const orders = await tx.order.findMany({
+      where: { tenantId }, // defesa explícita: a RLS é ignorada pelo superuser
       orderBy: { createdAt: "desc" },
       take: 30,
       include: {
@@ -436,6 +437,7 @@ export async function exportOrdersCSV(tenantId: string, gatewayFeesOverride?: Re
   const fees = { ...DEFAULT_GATEWAY_FEES, ...(gatewayFeesOverride ?? {}) };
   return withTenant(tenantId, async (tx) => {
     const orders = await tx.order.findMany({
+      where: { tenantId }, // defesa explícita: a RLS é ignorada pelo superuser
       orderBy: { createdAt: "desc" },
       include: {
         contact: { select: { name: true, phone: true } },

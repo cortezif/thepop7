@@ -65,8 +65,8 @@ export async function openPurchaseRequest(tenantId: string, input: {
       data: { tenantId, type: "purchase.requested", aggregateType: "purchase_request", aggregateId: request.id, payload: { items: input.items } as any, actor: "agent" },
     });
     const suppliers = input.supplierIds?.length
-      ? await tx.supplier.findMany({ where: { id: { in: input.supplierIds } } })
-      : await tx.supplier.findMany({ take: 3 });
+      ? await tx.supplier.findMany({ where: { tenantId, id: { in: input.supplierIds } } })
+      : await tx.supplier.findMany({ where: { tenantId }, take: 3 });
     return { requestId: request.id, suppliers };
   });
 

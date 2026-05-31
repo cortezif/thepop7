@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { getPrisma } from "@hubadvisor/db";
-import { approveOrder, transitionOrder, cancelOrder } from "../services/order-service.js";
+import { approveOrder, transitionOrder, cancelOrder, listOrders, exportOrdersCSV } from "../services/order-service.js";
 import { eraseContact, exportContactData } from "../services/lgpd-service.js";
 
 // Isolamento cross-tenant de pedidos/LGPD (ADR-037). RLS é bypassada (superuser),
@@ -43,9 +43,22 @@ test("pedido/contato da loja B são intocáveis pela loja A", async () => {
     // A tenta exportar dados do contato da B → null (não vaza PII).
     assert.equal(await exportContactData(A.id, contactB.id), null);
 
+    // A LISTAGEM da loja A não enxerga o pedido da B (findMany sem where vazava
+    // os 30 mais recentes de todos os tenants — corrigido com where: { tenantId }).
+    const listA = await listOrders(A.id);
+    assert.equal(listA.some((o) => o.id === orderB.id), false, "listOrders vazou pedido de outra loja");
+
+    // O CSV contábil da loja A também não inclui o pedido da B.
+    const csvA = await exportOrdersCSV(A.id);
+    assert.equal(csvA.includes(orderB.id), false, "exportOrdersCSV vazou pedido de outra loja");
+
     // A dona (B) aprova o próprio pedido normalmente.
     const ok = await approveOrder(B.id, orderB.id);
     assert.equal(ok.ok, true);
+
+    // E a B vê o próprio pedido na listagem.
+    const listB = await listOrders(B.id);
+    assert.equal(listB.some((o) => o.id === orderB.id), true);
   } finally {
     await prisma.tenant.deleteMany({ where: { slug: { in: [A.slug, B.slug] } } }).catch(() => {});
   }
