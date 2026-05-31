@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { Bot, User, Send, Wrench, Sparkles, Brain, AlertTriangle, MessageCircle, Tag, StickyNote, UserCheck, CheckCircle2, FlaskConical } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { ChatMarkdown } from "../components/ChatMarkdown";
@@ -247,8 +247,11 @@ export function Inbox() {
               </header>
 
               <div ref={threadRef} className="flex-1 space-y-4 overflow-y-auto bg-muted/20 px-5 py-5">
-                {messages.map((m) => (
-                  <MessageBubble key={m.id} message={m} />
+                {messages.map((m, i) => (
+                  <Fragment key={m.id}>
+                    {dayChanged(messages[i - 1]?.createdAt, m.createdAt) && <DayDivider iso={m.createdAt} />}
+                    <MessageBubble message={m} />
+                  </Fragment>
                 ))}
               </div>
 
@@ -412,6 +415,33 @@ function StatusBadge({ status }: { status: string }) {
   return <Badge tone={cfg.tone}>{cfg.label}</Badge>;
 }
 
+/** true quando a mensagem cai num dia diferente da anterior (ou é a primeira). */
+function dayChanged(prevIso: string | undefined, iso: string): boolean {
+  if (!iso) return false;
+  if (!prevIso) return true;
+  return new Date(prevIso).toDateString() !== new Date(iso).toDateString();
+}
+
+/** Divisor de data ("Hoje", "Ontem" ou "31 de maio de 2026"). */
+function DayDivider({ iso }: { iso: string }) {
+  const d = new Date(iso);
+  const today = new Date(); const y = new Date(today); y.setDate(y.getDate() - 1);
+  const same = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+  const label = same(d, today) ? "Hoje" : same(d, y) ? "Ontem"
+    : d.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+  return (
+    <div className="flex items-center justify-center">
+      <span className="rounded-full bg-card px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-soft">{label}</span>
+    </div>
+  );
+}
+
+/** Quem enviou: cliente, IA ou atendente (humano). */
+function senderLabel(m: Message): string {
+  if (m.direction === "in") return "Cliente";
+  return m.llmModel ? "IA" : "Atendente";
+}
+
 /** Data/hora curta da mensagem: "hoje 15:42", "ontem 09:10" ou "31/05 15:42". */
 function fmtMsgTime(iso: string): string {
   const d = new Date(iso);
@@ -459,11 +489,9 @@ function MessageBubble({ message }: { message: Message }) {
             <AlertTriangle size={10} /> revisar: {message.reviewReasons?.join("; ")}
           </div>
         )}
-        {message.createdAt && (
-          <div className={cn("mt-1 text-[10px]", isIn ? "text-muted-foreground" : "text-primary-foreground/70")} title={new Date(message.createdAt).toLocaleString("pt-BR")}>
-            {fmtMsgTime(message.createdAt)}
-          </div>
-        )}
+        <div className={cn("mt-1 text-[10px]", isIn ? "text-muted-foreground" : "text-primary-foreground/70")} title={message.createdAt ? new Date(message.createdAt).toLocaleString("pt-BR") : undefined}>
+          {senderLabel(message)}{message.createdAt ? ` · ${fmtMsgTime(message.createdAt)}` : ""}
+        </div>
       </div>
       {isAI && (
         <span className="mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary shadow-soft">
