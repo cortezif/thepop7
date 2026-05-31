@@ -3,7 +3,7 @@ import { expect, type Page, type APIRequestContext } from "@playwright/test";
 // Helpers compartilhados dos testes E2E (ADR-038).
 
 /** Cria uma loja nova (signup via API) e injeta o token no localStorage. Isolado. */
-export async function loginFresh(page: Page, request: APIRequestContext): Promise<string> {
+export async function loginFresh(page: Page, request: APIRequestContext): Promise<{ slug: string; token: string }> {
   const slug = `e2e-${Date.now()}-${Math.floor(Math.random() * 1e5)}`;
   const res = await request.post("/api/auth/signup", {
     data: { storeName: "Loja E2E", slug, name: "QA", email: `qa@${slug}.com`, password: "senha123" },
@@ -16,7 +16,7 @@ export async function loginFresh(page: Page, request: APIRequestContext): Promis
     localStorage.setItem("hubadvisor_brand", "Loja E2E");
     localStorage.setItem("hubadvisor_role", b.role ?? "owner");
   }, { token: body.token, tenant: body.tenantSlug, role: body.user?.role });
-  return slug;
+  return { slug, token: body.token };
 }
 
 /** Coleta exceções de JS não tratadas (pageerror) — o sinal forte de bug. */

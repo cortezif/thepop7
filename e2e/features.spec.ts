@@ -42,6 +42,51 @@ test("Configurações: padrão de código gera o exemplo de roupas", async ({ pa
   expect(errors, errors.join(" | ")).toEqual([]);
 });
 
+test("Estoque: gerar código de peça com o padrão da loja", async ({ page, request }) => {
+  const errors = collectErrors(page);
+  const { slug, token } = await loginFresh(page, request);
+  // semeia um produto (a loja nova começa sem catálogo)
+  const r = await request.post("/api/catalog/products", {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { tenantSlug: slug, name: "Camiseta E2E", priceBRL: 50, costBRL: 30, variants: [{ sku: "CAM-M", size: "M", stock: 5 }] },
+  });
+  expect(r.ok(), "criar produto deve dar 2xx").toBeTruthy();
+
+  await page.goto("/estoque");
+  await page.getByRole("button", { name: /Pr[eé]-visualizar/i }).click();
+  // um código no formato do padrão de roupas (…-NNNN-M) aparece
+  await expect(page.getByText(/-\d{4}-M/).first()).toBeVisible({ timeout: 10_000 });
+  expect(errors, errors.join(" | ")).toEqual([]);
+});
+
+test("Inbox: adicionar, fixar e apagar uma nota interna", async ({ page, request }) => {
+  const errors = collectErrors(page);
+  const { slug } = await loginFresh(page, request);
+  // semeia uma conversa (endpoint público; a IA pode falhar sem chave, mas a
+  // conversa+mensagem são persistidas antes do agente).
+  const r = await request.post("/api/conversations/incoming", {
+    data: { tenantSlug: slug, channel: "manual", contact: { phone: "+5511944443333" }, text: "oi, quero comprar" },
+  });
+  expect(r.ok(), "incoming deve dar 2xx").toBeTruthy();
+
+  await page.goto("/inbox");
+  await page.getByText(/5511944443333/).first().click();
+
+  // adiciona
+  await page.getByPlaceholder(/Anota[cç][aã]o interna/i).fill("Nota E2E");
+  await page.getByRole("button", { name: /Anotar/i }).click();
+  await expect(page.getByText("Nota E2E")).toBeVisible({ timeout: 10_000 });
+
+  // fixa (o botão passa a "Desafixar")
+  await page.getByTitle("Fixar no topo").first().click();
+  await expect(page.getByTitle("Desafixar")).toBeVisible({ timeout: 10_000 });
+
+  // apaga
+  await page.getByTitle("Apagar nota").first().click();
+  await expect(page.getByText("Nota E2E")).toHaveCount(0, { timeout: 10_000 });
+  expect(errors, errors.join(" | ")).toEqual([]);
+});
+
 test("Clientes: marcar perfil (tag) de um cliente", async ({ page, request }) => {
   const errors = collectErrors(page);
   await loginFresh(page, request);
