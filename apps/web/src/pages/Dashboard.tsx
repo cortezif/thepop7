@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { TrendingUp, MessageCircle, Bot, Coins, Package, UserCheck, Wallet, Filter, AlertTriangle, FileWarning, Sparkles, Gauge } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { StatCard } from "../components/StatCard";
+import { Link } from "react-router-dom";
 import { Page, Card, CardHeader, Badge } from "../components/ui";
-import { api, type DailyMetrics, type NpsComment } from "../lib/api";
+import { api, canManage, type DailyMetrics, type NpsComment, type Cashflow } from "../lib/api";
 import { formatBRL } from "../lib/utils";
 
 export function Dashboard() {
@@ -111,6 +112,8 @@ export function Dashboard() {
           )}
         </Card>
       )}
+
+      <FinanceAlert />
 
       {/* NPS + Funil lado a lado em telas largas */}
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -227,6 +230,42 @@ export function Dashboard() {
         </div>
       </Card>
     </Page>
+  );
+}
+
+function thisMonth(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function FinanceAlert() {
+  const [cf, setCf] = useState<Cashflow | null>(null);
+  useEffect(() => { if (canManage()) api.cashflow(thisMonth()).then(setCf).catch(() => setCf(null)); }, []);
+  if (!cf) return null;
+  const hasOpen = cf.aPagarBRL > 0 || cf.aReceberBRL > 0;
+  return (
+    <Card className="mt-6">
+      <CardHeader
+        icon={Wallet}
+        title="Financeiro do mês"
+        subtitle="Caixa realizado + contas em aberto."
+        action={<Link to="/financeiro" className="text-sm font-medium text-primary hover:underline">Abrir →</Link>}
+      />
+      <div className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-4">
+        <StatCard label="Saldo do mês" value={formatBRL(cf.saldoBRL)} Icon={Wallet} alert={cf.saldoBRL < 0} />
+        <StatCard label="A pagar" value={formatBRL(cf.aPagarBRL)} Icon={TrendingUp} />
+        <StatCard label="A receber" value={formatBRL(cf.aReceberBRL)} Icon={Coins} />
+        <StatCard label="Vencidas" value={formatBRL(cf.vencidasBRL)} Icon={AlertTriangle} alert={cf.vencidasBRL > 0} />
+      </div>
+      {cf.vencidasBRL > 0 && (
+        <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-sm text-amber-700">
+          ⚠️ {formatBRL(cf.vencidasBRL)} em contas vencidas. <Link to="/financeiro" className="font-medium underline">Ver contas em aberto</Link> para regularizar.
+        </p>
+      )}
+      {!hasOpen && cf.vencidasBRL === 0 && (
+        <p className="mt-4 text-sm text-muted-foreground">Nenhuma conta em aberto. 🎉</p>
+      )}
+    </Card>
   );
 }
 
