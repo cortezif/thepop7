@@ -40,7 +40,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Node 22: o runner de testes (`node --test`) precisa de 21+ para
+          # expandir glob (src/**/*.test.ts). Node 20 não expande.
+          node-version: 22
           cache: npm
 
       # npm ci roda o postinstall do @hubadvisor/db (prisma generate) → tipos prontos.
