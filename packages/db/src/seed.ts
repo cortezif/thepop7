@@ -276,7 +276,7 @@ async function main() {
 
   // ── Barcodes ─────────────────────────────────────────────────────────────────
   for (const p of productDefs) {
-    const { id: productId, variants } = productMap[p.externalId];
+    const { id: productId, variants } = productMap[p.externalId]!;
     for (const v of variants) {
       await prisma.productBarcode.upsert({
         where: { tenantId_barcode: { tenantId: tenant.id, barcode: v.barcode } },
@@ -361,7 +361,7 @@ async function main() {
 
   // ── Entradas de estoque (purchase_in) ────────────────────────────────────────
   for (const p of productDefs) {
-    const { id: productId, variants } = productMap[p.externalId];
+    const { id: productId, variants } = productMap[p.externalId]!;
     for (const v of variants) {
       const qtdInicial = v.stock + 3;
       const already = await prisma.stockMovement.findFirst({
@@ -461,7 +461,7 @@ async function main() {
       order = await prisma.order.create({
         data: {
           tenantId: tenant.id,
-          contactId: contactMap[o.contactName],
+          contactId: contactMap[o.contactName]!,
           externalId: o.key,
           status: o.status as any,
           paymentMethod: o.paymentMethod as any,
@@ -480,7 +480,7 @@ async function main() {
           nfeNumber: o.nfeNumber,
           items: {
             create: o.items.map(i => ({
-              productId: productMap[i.externalId].id,
+              productId: productMap[i.externalId]!.id,
               variantSku: i.variantSku,
               quantity: i.qty,
               unitPriceBRL: i.unitPrice,
@@ -507,7 +507,7 @@ async function main() {
         await prisma.stockMovement.create({
           data: {
             tenantId: tenant.id, barcode: v.barcode,
-            productId: productMap[item.externalId].id, variantSku: item.variantSku,
+            productId: productMap[item.externalId]!.id, variantSku: item.variantSku,
             type: "sale_out", quantity: item.qty, refType: "order", refId: orderId, actor: "system",
           },
         });
@@ -640,7 +640,7 @@ async function main() {
     });
     await prisma.quote.create({
       data: {
-        tenantId: tenant.id, requestId: pr1.id, supplierId: supplierMap["Confecções Brás"],
+        tenantId: tenant.id, requestId: pr1.id, supplierId: supplierMap["Confecções Brás"]!,
         items: [
           { variantSku: "BL-001-G-AZUL", quantity: 5, unitPrice: 98.0 },
           { variantSku: "BL-007-PP-ROSA", quantity: 8, unitPrice: 45.0 },
@@ -652,7 +652,7 @@ async function main() {
     });
     await prisma.quote.create({
       data: {
-        tenantId: tenant.id, requestId: pr1.id, supplierId: supplierMap["Atacado Goiânia Moda"],
+        tenantId: tenant.id, requestId: pr1.id, supplierId: supplierMap["Atacado Goiânia Moda"]!,
         items: [
           { variantSku: "BL-001-G-AZUL", quantity: 5, unitPrice: 105.0 },
           { variantSku: "BL-007-PP-ROSA", quantity: 8, unitPrice: 52.0 },
@@ -681,7 +681,7 @@ async function main() {
     });
     await prisma.quote.create({
       data: {
-        tenantId: tenant.id, requestId: pr2.id, supplierId: supplierMap["Studio Moda Feira"],
+        tenantId: tenant.id, requestId: pr2.id, supplierId: supplierMap["Studio Moda Feira"]!,
         items: [
           { variantSku: "BL-005-P-VERDE", quantity: 4, unitPrice: 125.0 },
           { variantSku: "BL-005-G-VERDE", quantity: 3, unitPrice: 125.0 },
