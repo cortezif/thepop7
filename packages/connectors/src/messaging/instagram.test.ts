@@ -13,8 +13,7 @@ test("fetchInstagramProfile: sem igsid ou token → null (sem chamar rede)", asy
 
 test("fetchInstagramProfile: erro de rede → null", async () => {
   const orig = globalThis.fetch;
-  // @ts-expect-error mock
-  globalThis.fetch = async () => { throw new Error("boom"); };
+  globalThis.fetch = (async () => { throw new Error("boom"); }) as typeof fetch;
   try {
     assert.equal(await fetchInstagramProfile("igsid", "tok"), null);
   } finally {
@@ -24,8 +23,7 @@ test("fetchInstagramProfile: erro de rede → null", async () => {
 
 test("fetchInstagramProfile: resposta ok devolve nome/username", async () => {
   const orig = globalThis.fetch;
-  // @ts-expect-error mock
-  globalThis.fetch = async () => ({ ok: true, json: async () => ({ name: "Maria Silva", username: "maria.sil" }) });
+  globalThis.fetch = (async () => ({ ok: true, json: async () => ({ name: "Maria Silva", username: "maria.sil" }) })) as unknown as typeof fetch;
   try {
     const p = await fetchInstagramProfile("igsid", "tok");
     assert.deepEqual(p, { name: "Maria Silva", username: "maria.sil" });
