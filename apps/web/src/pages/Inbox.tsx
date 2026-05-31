@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from "react";
-import { Bot, User, Send, Wrench, Sparkles, Brain, AlertTriangle, MessageCircle, Tag, StickyNote, UserCheck, CheckCircle2, FlaskConical } from "lucide-react";
+import { Bot, User, Send, Wrench, Sparkles, Brain, AlertTriangle, MessageCircle, Tag, StickyNote, UserCheck, CheckCircle2, FlaskConical, Pin } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { ChatMarkdown } from "../components/ChatMarkdown";
 import { Card, Button, Badge, EmptyState, Tabs, inputClass } from "../components/ui";
@@ -46,6 +46,10 @@ export function Inbox() {
     if (!selected) return;
     setNotes((ns) => ns.filter((n) => n.id !== noteId)); // otimista
     try { await api.deleteNote(selected, noteId); } catch (e) { setError(String(e)); loadNotes(selected); }
+  }
+  async function togglePin(noteId: string, pinned: boolean) {
+    if (!selected) return;
+    try { await api.pinNote(selected, noteId, pinned); await loadNotes(selected); } catch (e) { setError(String(e)); }
   }
   async function toggleAssign() {
     if (!selected || !current) return;
@@ -263,11 +267,16 @@ export function Inbox() {
                 {notes.length > 0 && (
                   <div className="mt-1.5 max-h-24 space-y-1 overflow-y-auto">
                     {notes.map((n) => (
-                      <div key={n.id} className="group flex items-start gap-1.5 text-xs text-muted-foreground">
+                      <div key={n.id} className={cn("group flex items-start gap-1.5 rounded px-1 text-xs text-muted-foreground", n.pinned && "bg-amber-50")}>
+                        {n.pinned && <Pin size={11} className="mt-0.5 shrink-0 -rotate-45 text-amber-600" />}
                         <span className="flex-1">
                           <span className="text-foreground">{n.text}</span>
                           <span className="ml-1 opacity-60">— {n.authorName ?? "operador"}{n.createdAt ? `, ${fmtMsgTime(n.createdAt)}` : ""}</span>
                         </span>
+                        <button onClick={() => togglePin(n.id, !n.pinned)} title={n.pinned ? "Desafixar" : "Fixar no topo"}
+                          className={cn("shrink-0 transition-opacity hover:text-amber-600", n.pinned ? "text-amber-600" : "opacity-0 group-hover:opacity-100")}>
+                          <Pin size={12} className="-rotate-45" />
+                        </button>
                         <button onClick={() => removeNote(n.id)} title="Apagar nota"
                           className="shrink-0 opacity-0 transition-opacity hover:text-primary group-hover:opacity-100">✕</button>
                       </div>

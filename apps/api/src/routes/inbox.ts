@@ -120,7 +120,7 @@ export const inboxRoutes: FastifyPluginAsync = async (app) => {
     const tenant = await resolveTenant((req.query as any).tenantSlug);
     if (!tenant) return reply.code(404).send({ error: "tenant not found" });
     return withTenant(tenant.id, async (tx) =>
-      tx.conversationNote.findMany({ where: { conversationId: id }, orderBy: { createdAt: "asc" } })
+      tx.conversationNote.findMany({ where: { conversationId: id }, orderBy: [{ pinned: "desc" }, { createdAt: "asc" }] })
     );
   });
 
@@ -134,6 +134,21 @@ export const inboxRoutes: FastifyPluginAsync = async (app) => {
     return withTenant(tenant.id, async (tx) =>
       tx.conversationNote.create({ data: { conversationId: id, text: body.data.text, authorId: req.auth?.sub, authorName: req.auth?.email } })
     );
+  });
+
+  // PATCH /inbox/conversations/:id/notes/:noteId/pin — fixa/desafixa uma nota
+  app.patch("/conversations/:id/notes/:noteId/pin", async (req, reply) => {
+    const { id, noteId } = req.params as any;
+    const body = z.object({ tenantSlug: z.string(), pinned: z.boolean() }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+    const tenant = await resolveTenant(body.data.tenantSlug);
+    if (!tenant) return reply.code(404).send({ error: "tenant not found" });
+    return withTenant(tenant.id, async (tx) => {
+      const conv = await tx.conversation.findFirst({ where: { id, tenantId: tenant.id }, select: { id: true } });
+      if (!conv) return reply.code(404).send({ error: "conversa não encontrada" });
+      const r = await tx.conversationNote.updateMany({ where: { id: noteId, conversationId: id }, data: { pinned: body.data.pinned } });
+      return { ok: r.count > 0, pinned: body.data.pinned };
+    });
   });
 
   // DELETE /inbox/conversations/:id/notes/:noteId — apaga uma nota interna

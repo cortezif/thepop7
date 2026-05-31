@@ -471,6 +471,7 @@ model ConversationNote {
   authorId       String?
   authorName     String?
   text           String
+  pinned         Boolean  @default(false) // nota fixada no topo
   createdAt      DateTime @default(now())
 
   @@index([conversationId, createdAt])

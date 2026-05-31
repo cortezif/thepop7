@@ -275,7 +275,7 @@ export type Conversation = {
   assignedToName?: string | null;
 };
 
-export type ConversationNote = { id: string; text: string; authorName?: string | null; createdAt: string };
+export type ConversationNote = { id: string; text: string; authorName?: string | null; pinned?: boolean; createdAt: string };
 
 export type Message = {
   id: string;
@@ -359,6 +359,8 @@ export const api = {
     post<ConversationNote>(`/inbox/conversations/${conversationId}/notes`, { text }),
   deleteNote: (conversationId: string, noteId: string) =>
     del<{ ok: boolean }>(`/inbox/conversations/${conversationId}/notes/${noteId}`),
+  pinNote: (conversationId: string, noteId: string, pinned: boolean) =>
+    patch<{ ok: boolean; pinned: boolean }>(`/inbox/conversations/${conversationId}/notes/${noteId}/pin`, { pinned }),
   assignToMe: (conversationId: string, unassign?: boolean) =>
     post<{ ok: boolean; assignedToName?: string | null }>(`/inbox/conversations/${conversationId}/assign`, { unassign }),
   suggestReply: (conversationId: string) =>
