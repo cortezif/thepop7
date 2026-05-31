@@ -369,6 +369,7 @@ export const api = {
   mergeContacts: (idA: string, idB: string) =>
     post<{ merged: boolean; primaryId: string; mergedId?: string }>(`/admin/identity/merge`, { idA, idB }),
   dailyMetrics: () => get<DailyMetrics>(`/metrics/daily`),
+  npsComments: () => get<NpsComment[]>(`/metrics/nps-comments`),
   reorder: () => get<ReorderSuggestion[]>(`/purchasing/reorder`),
   purchaseRequests: () => get<PurchaseRequest[]>(`/purchasing/requests`),
   purchaseCloseMessage: (requestId: string) =>
@@ -789,6 +790,7 @@ export type DailyMetrics = {
 };
 
 export type NpsStat = { score: number; responses: number; promotores: number; neutros: number; detratores: number };
+export type NpsComment = { id: string; score: number; comment: string; kind: string; createdAt: string; band: "promotor" | "neutro" | "detrator" };
 
 export type Budget = {
   monthlyBudgetBRL: number;

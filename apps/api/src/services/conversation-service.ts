@@ -9,7 +9,7 @@ import type { FastifyBaseLogger } from "fastify";
 import { searchProducts, type CustomerProfile, type ProductFilter } from "./product-search.js";
 import { createOrder, cancelOrder, startReturn, getOrderStatus } from "./order-service.js";
 import { resolveContact } from "./identity-service.js";
-import { parseNpsScore, recordNps } from "./nps.js";
+import { parseNpsScore, recordNps, npsReply, npsBand, pendingDetractorComment, attachNpsComment } from "./nps.js";
 
 type IncomingDTO = {
   tenantSlug: string;
@@ -98,6 +98,25 @@ export async function handleIncomingMessage(dto: IncomingDTO, log: FastifyBaseLo
   // Captura de NPS (ADR-017): nota 0-10 após marco D+14/D+30 recente (≤7d) → registra
   // e agradece, sem acionar o agente (não gasta IA).
   const npsScore = parseNpsScore(dto.text);
+
+  // Captura do COMENTÁRIO de detrator: se há um NPS de detrator recente sem
+  // comentário e esta mensagem NÃO é uma nota, trata-a como a justificativa. A
+  // conversa já está em handoff (escalada no recebimento da nota baixa) — só
+  // registra e confirma; o humano cuida da recuperação.
+  if (npsScore == null && dto.text.trim().length > 1) {
+    const pending = await pendingDetractorComment(tenant.id, contact.id);
+    if (pending) {
+      await attachNpsComment(tenant.id, pending.id, dto.text.trim());
+      const ack = "Muito obrigada por compartilhar 💛 Já passei seu retorno pra nossa equipe dar uma olhada com carinho — em breve a gente te procura.";
+      await withTenant(tenant.id, async (tx) => {
+        await tx.message.create({ data: { conversationId: conversation.id, direction: "out", type: "text", content: ack } });
+        await tx.conversation.update({ where: { id: conversation.id }, data: { lastMessageAt: new Date() } });
+      });
+      log.info({ npsId: pending.id }, "NPS: comentário de detrator capturado (ADR-017)");
+      return { conversationId: conversation.id, reply: ack, toolCalls: [], cost: null };
+    }
+  }
+
   if (npsScore != null) {
     const npsOrderId = await withTenant(tenant.id, async (tx) => {
       const orders = await tx.order.findMany({ where: { contactId: contact.id }, select: { id: true } });
@@ -115,13 +134,17 @@ export async function handleIncomingMessage(dto: IncomingDTO, log: FastifyBaseLo
     });
     if (npsOrderId) {
       await recordNps(tenant.id, { contactId: contact.id, orderId: npsOrderId, kind: "produto", score: npsScore });
-      const thanks = `Obrigada pela nota ${npsScore}! 💛 Seu feedback ajuda muito a gente a melhorar.`;
+      const reply = npsReply(npsScore);
+      const isDetractor = npsBand(npsScore) === "detrator";
       await withTenant(tenant.id, async (tx) => {
-        await tx.message.create({ data: { conversationId: conversation.id, direction: "out", type: "text", content: thanks } });
-        await tx.conversation.update({ where: { id: conversation.id }, data: { lastMessageAt: new Date() } });
+        await tx.message.create({ data: { conversationId: conversation.id, direction: "out", type: "text", content: reply } });
+        const data: Record<string, unknown> = { lastMessageAt: new Date() };
+        // Detrator → escala pra humano recuperar o cliente (e captura o motivo na próxima msg).
+        if (isDetractor) { data.status = "handed_off"; data.handoffReason = `NPS detrator: nota ${npsScore}`; }
+        await tx.conversation.update({ where: { id: conversation.id }, data });
       });
-      log.info({ score: npsScore, orderId: npsOrderId }, "NPS capturado (ADR-017)");
-      return { conversationId: conversation.id, reply: thanks, toolCalls: [], cost: null, npsCaptured: npsScore };
+      log.info({ score: npsScore, orderId: npsOrderId, detractor: isDetractor }, "NPS capturado (ADR-017)");
+      return { conversationId: conversation.id, reply, toolCalls: [], cost: null, npsCaptured: npsScore, handoff: isDetractor || undefined };
     }
   }
 

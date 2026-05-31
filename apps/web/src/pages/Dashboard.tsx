@@ -3,7 +3,7 @@ import { TrendingUp, MessageCircle, Bot, Coins, Package, UserCheck, Wallet, Filt
 import { PageHeader } from "../components/PageHeader";
 import { StatCard } from "../components/StatCard";
 import { Page, Card, CardHeader, Badge } from "../components/ui";
-import { api, type DailyMetrics } from "../lib/api";
+import { api, type DailyMetrics, type NpsComment } from "../lib/api";
 import { formatBRL } from "../lib/utils";
 
 export function Dashboard() {
@@ -175,6 +175,8 @@ export function Dashboard() {
         )}
       </div>
 
+      <NpsComments />
+
       {/* Distribuição de modelos — mostra o smart routing economizando */}
       {m && Object.keys(m.modelDistribution).length > 0 && (
         <Card className="mt-6">
@@ -225,6 +227,35 @@ export function Dashboard() {
         </div>
       </Card>
     </Page>
+  );
+}
+
+function NpsComments() {
+  const [list, setList] = useState<NpsComment[] | null>(null);
+  useEffect(() => { api.npsComments().then(setList).catch(() => setList([])); }, []);
+  if (!list || list.length === 0) return null;
+  const tone = (b: NpsComment["band"]) => b === "detrator" ? "text-primary" : b === "promotor" ? "text-emerald-600" : "text-foreground";
+  return (
+    <Card className="mt-6">
+      <CardHeader
+        icon={Sparkles}
+        title="Feedback dos clientes (NPS)"
+        subtitle="Comentários recentes. Detratores já foram escalados pra atendimento humano recuperar o cliente."
+      />
+      <div className="mt-5 space-y-3">
+        {list.map((c) => (
+          <div key={c.id} className="flex gap-3 rounded-lg border border-border bg-muted/20 p-3">
+            <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-background font-serif text-sm font-semibold ${tone(c.band)}`}>{c.score}</div>
+            <div className="min-w-0">
+              <p className="text-sm text-foreground">{c.comment}</p>
+              <p className="mt-0.5 text-[11px] uppercase tracking-wider text-muted-foreground">
+                {c.band} · {new Date(c.createdAt).toLocaleDateString("pt-BR")}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
   );
 }
 

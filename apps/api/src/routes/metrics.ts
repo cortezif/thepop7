@@ -1,9 +1,16 @@
 import type { FastifyPluginAsync } from "fastify";
 import { getPrisma, withTenant } from "@hubadvisor/db";
 import { computeFinancials, computeFunnel } from "../services/order-service.js";
-import { npsSummary } from "../services/nps.js";
+import { npsSummary, npsComments } from "../services/nps.js";
 
 export const metricsRoutes: FastifyPluginAsync = async (app) => {
+  // GET /metrics/nps-comments?tenantSlug=... — comentários recentes (detratores/neutros).
+  app.get("/nps-comments", async (req, reply) => {
+    const tenant = await getPrisma().tenant.findUnique({ where: { slug: (req.query as any).tenantSlug as string } });
+    if (!tenant) return reply.code(404).send({ error: "tenant not found" });
+    return npsComments(tenant.id);
+  });
+
   // GET /metrics/daily?tenantSlug=...
   // Agrega métricas do dia corrente (e totais) pro painel.
   app.get("/daily", async (req, reply) => {
