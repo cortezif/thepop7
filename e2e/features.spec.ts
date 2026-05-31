@@ -87,6 +87,40 @@ test("Inbox: adicionar, fixar e apagar uma nota interna", async ({ page, request
   expect(errors, errors.join(" | ")).toEqual([]);
 });
 
+test("Estoque: registrar peças e dar baixa (venda) por código", async ({ page, request }) => {
+  const errors = collectErrors(page);
+  const { slug, token } = await loginFresh(page, request);
+  const H = { Authorization: `Bearer ${token}` };
+  await request.post("/api/catalog/products", {
+    headers: H, data: { tenantSlug: slug, name: "Saia E2E", priceBRL: 80, costBRL: 40, variants: [{ sku: "SAIA-G", size: "G", stock: 3 }] },
+  });
+  // imprime 2 etiquetas (CSV) → registra 2 peças e devolve os códigos
+  const csv = await (await request.post("/api/stock/pattern-labels?format=csv", {
+    headers: H, data: { tenantSlug: slug, variantSku: "SAIA-G", quantity: 2 },
+  })).text();
+  const code = csv.split(/\r?\n/)[1].split(";")[0].replace(/^﻿/, "");
+  expect(code, "código gerado").toMatch(/-\d{4}-G/);
+
+  await page.goto("/estoque");
+  await expect(page.getByText(/Estoque por tamanho/i)).toBeVisible({ timeout: 10_000 });
+  await page.getByPlaceholder(/c[oó]digo da pe[cç]a/i).fill(code);
+  await page.getByRole("button", { name: /Dar baixa/i }).click();
+  await expect(page.getByText(/Baixa OK|vendida/i)).toBeVisible({ timeout: 10_000 });
+  expect(errors, errors.join(" | ")).toEqual([]);
+});
+
+test("Mercadológica: cadastrar um fornecedor", async ({ page, request }) => {
+  const errors = collectErrors(page);
+  await loginFresh(page, request);
+  await page.goto("/mercadologica");
+  await page.getByRole("button", { name: /Fornecedores/i }).click(); // aba
+  await page.getByRole("button", { name: /Novo fornecedor/i }).click();
+  await page.getByPlaceholder(/Nome \/ Raz[aã]o social/i).fill("Fornecedor E2E");
+  await page.getByRole("button", { name: /^Salvar$/i }).click();
+  await expect(page.getByText("Fornecedor E2E")).toBeVisible({ timeout: 10_000 });
+  expect(errors, errors.join(" | ")).toEqual([]);
+});
+
 test("Clientes: marcar perfil (tag) de um cliente", async ({ page, request }) => {
   const errors = collectErrors(page);
   await loginFresh(page, request);
