@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancela runs antigos do mesmo branch/PR ao subir um novo commit.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: thepop
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/thepop?schema=public
+      # Chave de teste (32 bytes hex) — NÃO é segredo de produção.
+      PII_KEY: 00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff
+      JWT_SECRET: ci-secret
+      USE_MOCK_CONNECTORS: "true"
+      NODE_OPTIONS: "--max-old-space-size=4096"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # npm ci roda o postinstall do @hubadvisor/db (prisma generate) → tipos prontos.
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Lint de dependências (sem fantasmas)
+        run: npm run check:deps
+
+      # Concorrência limitada evita OOM do turbo rodando muitos tsc/tsx em paralelo.
+      - name: Typecheck (todos os workspaces)
+        run: npx turbo run typecheck --concurrency=1
+
+      - name: Aplicar schema no Postgres
+        run: npx -w @hubadvisor/db prisma db push --skip-generate
+
+      - name: Testes unitários
+        run: npx turbo run test --concurrency=2
+
+      - name: Testes de integração (Postgres)
+        run: npm run -w @hubadvisor/api test:integration
+
+      - name: Instalar Chromium (Playwright)
+        run: npx playwright install --with-deps chromium
+
+      - name: Testes E2E (Playwright)
+        run: npm run test:e2e
+
+      - name: Subir relatório do Playwright se falhar
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
