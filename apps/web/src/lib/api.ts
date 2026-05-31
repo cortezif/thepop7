@@ -294,9 +294,22 @@ export type Message = {
 export type ContactRow = {
   id: string; name: string | null; phoneMasked: string | null; emailMasked: string | null;
   igHandle: string | null; channel: string | null; hasPhone: boolean; hasEmail: boolean;
+  city: string | null; state: string | null; hasAddress: boolean;
   consentLGPD: boolean; optOuts: string[]; tags: string[]; autoTags: string[];
   cashbackBRL: number; ordersCount: number; totalSpentBRL: number;
   lastOrderAt: string | null; createdAt: string;
+};
+// Cadastro completo do cliente (ADR-039): contato + endereço estruturado.
+export type ContactInput = {
+  name?: string; phone?: string; email?: string; igHandle?: string; cpf?: string;
+  cep?: string; street?: string; number?: string; complement?: string;
+  district?: string; city?: string; state?: string; consentLGPD?: boolean;
+};
+export type ContactDetail = {
+  id: string; name: string | null; phone: string | null; email: string | null; cpf: string | null;
+  igHandle: string | null; cep: string | null; street: string | null; number: string | null;
+  complement: string | null; district: string | null; city: string | null; state: string | null;
+  consentLGPD: boolean;
 };
 export type ContactStats = {
   total: number; consented: number; optedOutMarketing: number; withCashback: number;
@@ -409,8 +422,11 @@ export const api = {
     return get<ContactRow[]>(`/contacts${s ? `?${s}` : ""}`);
   },
   contactStats: () => get<ContactStats>(`/contacts/stats`),
-  createContact: (input: { name?: string; phone?: string; email?: string; igHandle?: string; consentLGPD?: boolean }) =>
+  createContact: (input: ContactInput) =>
     post<{ id: string; created: boolean }>(`/contacts`, input),
+  getContact: (id: string) => get<ContactDetail>(`/contacts/${id}`),
+  updateContact: (id: string, input: ContactInput) =>
+    patch<{ ok: boolean }>(`/contacts/${id}`, input),
   setContactConsent: (id: string, input: { consentLGPD?: boolean; optOuts?: string[] }) =>
     patch<{ ok: boolean }>(`/contacts/${id}/consent`, input),
   setContactTags: (id: string, tags: string[]) =>

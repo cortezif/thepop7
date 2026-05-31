@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
-import { Users, UserPlus, Search, Gift, ShoppingBag, MessageCircle, Mail, ShieldCheck, BellOff, Instagram, UserCog } from "lucide-react";
+import { useEffect, useState, type ChangeEvent } from "react";
+import { Users, UserPlus, Search, Gift, ShoppingBag, MessageCircle, Mail, ShieldCheck, BellOff, Instagram, UserCog, MapPin } from "lucide-react";
 import { CUSTOMER_TAGS } from "@hubadvisor/shared/customer-tags";
 import { PageHeader } from "../components/PageHeader";
 import { StatCard } from "../components/StatCard";
 import { Page, Card, CardHeader, Button, Badge, EmptyState, Skeleton, inputClass } from "../components/ui";
-import { api, type ContactRow, type ContactStats } from "../lib/api";
+import { api, type ContactRow, type ContactStats, type ContactInput, type ContactDetail } from "../lib/api";
 import { formatBRL } from "../lib/utils";
 
 export function Clientes() {
@@ -101,6 +101,13 @@ function Row({ c, onChange }: { c: ContactRow; onChange: () => void }) {
   const [tags, setTags] = useState<string[]>(c.tags ?? []);
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+  const [detail, setDetail] = useState<ContactDetail | null>(null);
+
+  async function openEdit() {
+    setShowEdit((v) => !v);
+    if (!detail) { try { setDetail(await api.getContact(c.id)); } catch { /* noop */ } }
+  }
 
   async function toggleTag(key: string) {
     const next = tags.includes(key) ? tags.filter((t) => t !== key) : [...tags, key];
@@ -147,6 +154,7 @@ function Row({ c, onChange }: { c: ContactRow; onChange: () => void }) {
           {c.phoneMasked && <span className="flex items-center gap-1"><MessageCircle className="h-3 w-3" /> {c.phoneMasked}</span>}
           {c.emailMasked && <span className="flex items-center gap-1"><Mail className="h-3 w-3" /> {c.emailMasked}</span>}
           {c.igHandle && <span>@{c.igHandle}</span>}
+          {c.city && <span className="flex items-center gap-1 text-[11px]"><MapPin className="h-3 w-3" /> {c.city}{c.state ? `/${c.state}` : ""}</span>}
           {!c.phoneMasked && !c.emailMasked && !c.igHandle && "—"}
         </div>
       </td>
@@ -178,6 +186,20 @@ function Row({ c, onChange }: { c: ContactRow; onChange: () => void }) {
             })}
           </div>
           <p className="mt-2 text-[11px] text-muted-foreground">“Banido” = a IA não atende. “Requer atendimento humano” = encaminha direto para uma pessoa. As demais ajustam o tom. <b>Novo/Frequente são automáticos pelos pedidos</b> (mostrados com “· auto”) — marque manualmente só se quiser forçar.</p>
+
+          <div className="mt-4 border-t border-border/60 pt-3">
+            <button onClick={openEdit} className="text-xs font-medium text-primary hover:underline">
+              {showEdit ? "▾ Fechar edição do cadastro" : "▸ Editar dados cadastrais (contato + endereço)"}
+            </button>
+            {showEdit && (detail
+              ? <div className="mt-3"><ContactForm
+                  initial={detailToInput(detail)} submitLabel="Salvar cadastro"
+                  onSubmit={async (input) => {
+                    try { await api.updateContact(c.id, input); setDetail({ ...detail, ...input } as ContactDetail); onChange(); return { ok: true }; }
+                    catch (e: any) { return { ok: false, error: e?.message ?? "falha ao salvar" }; }
+                  }} /></div>
+              : <p className="mt-2 text-xs text-muted-foreground">Carregando…</p>)}
+          </div>
         </td>
       </tr>
     )}
@@ -186,41 +208,105 @@ function Row({ c, onChange }: { c: ContactRow; onChange: () => void }) {
 }
 
 function NovoCliente({ onDone }: { onDone: () => void }) {
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
-  const [consent, setConsent] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState("");
+  return (
+    <Card className="mb-4">
+      <CardHeader title="Novo cliente" subtitle="Nome e ao menos um contato são obrigatórios. O CEP preenche o endereço automaticamente." />
+      <div className="px-5 pb-5">
+        <ContactForm submitLabel="Cadastrar" onSubmit={async (input) => {
+          try {
+            const r = await api.createContact(input);
+            if (!r.created) return { ok: false, error: "Cliente já existe (telefone/e-mail/CPF/Instagram)." };
+            onDone(); return { ok: true };
+          } catch (e: any) { return { ok: false, error: e?.message ?? "falha ao salvar" }; }
+        }} />
+      </div>
+    </Card>
+  );
+}
 
-  async function save() {
-    setErr("");
-    if (!phone.trim() && !email.trim()) { setErr("Informe telefone ou e-mail."); return; }
-    setSaving(true);
+const UFS = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
+
+function detailToInput(d: ContactDetail): ContactInput {
+  return {
+    name: d.name ?? undefined, phone: d.phone ?? undefined, email: d.email ?? undefined,
+    igHandle: d.igHandle ?? undefined, cpf: d.cpf ?? undefined,
+    cep: d.cep ?? undefined, street: d.street ?? undefined, number: d.number ?? undefined,
+    complement: d.complement ?? undefined, district: d.district ?? undefined,
+    city: d.city ?? undefined, state: d.state ?? undefined, consentLGPD: d.consentLGPD,
+  };
+}
+
+/** Formulário de cadastro completo do cliente (criar e editar). ADR-039. */
+function ContactForm({ initial, submitLabel, onSubmit }: {
+  initial?: ContactInput;
+  submitLabel: string;
+  onSubmit: (input: ContactInput) => Promise<{ ok: boolean; error?: string }>;
+}) {
+  const [f, setF] = useState<ContactInput>({ consentLGPD: true, ...initial });
+  const [saving, setSaving] = useState(false);
+  const [cepBusy, setCepBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const set = (k: keyof ContactInput) => (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    setF((s) => ({ ...s, [k]: e.target.value }));
+
+  // Preenche o endereço a partir do CEP (ViaCEP). Gracioso: falha não trava nada.
+  async function lookupCep() {
+    const cep = (f.cep ?? "").replace(/\D/g, "");
+    if (cep.length !== 8) return;
+    setCepBusy(true);
     try {
-      const r = await api.createContact({ name: name || undefined, phone: phone || undefined, email: email || undefined, consentLGPD: consent });
-      if (!r.created) setErr("Cliente já existe (telefone/e-mail).");
-      else onDone();
-    } catch (e: any) { setErr(e?.message ?? "falha ao salvar"); }
-    finally { setSaving(false); }
+      const j = await (await fetch(`https://viacep.com.br/ws/${cep}/json/`)).json();
+      if (!j.erro) setF((s) => ({
+        ...s,
+        street: s.street || j.logradouro || "", district: s.district || j.bairro || "",
+        city: s.city || j.localidade || "", state: s.state || j.uf || "",
+      }));
+    } catch { /* offline / cep inexistente — segue manual */ }
+    finally { setCepBusy(false); }
+  }
+
+  async function submit() {
+    setErr("");
+    if (!f.name?.trim()) { setErr("Informe o nome."); return; }
+    if (!f.phone?.trim() && !f.email?.trim() && !f.igHandle?.trim()) {
+      setErr("Informe ao menos um contato: WhatsApp/telefone, e-mail ou Instagram."); return;
+    }
+    setSaving(true);
+    const r = await onSubmit(f);
+    setSaving(false);
+    if (!r.ok) setErr(r.error ?? "falha ao salvar");
   }
 
   return (
-    <Card className="mb-4">
-      <CardHeader title="Novo cliente" subtitle="Telefone em formato internacional (ex.: 5583999990000)." />
-      <div className="grid gap-3 px-5 pb-5 md:grid-cols-2">
-        {err && <div className="md:col-span-2 rounded-lg bg-rose-50 px-4 py-2 text-sm text-rose-700">{err}</div>}
-        <input className={inputClass} placeholder="Nome" value={name} onChange={(e) => setName(e.target.value)} />
-        <input className={inputClass} placeholder="Telefone (E.164)" value={phone} onChange={(e) => setPhone(e.target.value)} />
-        <input className={inputClass} placeholder="E-mail" value={email} onChange={(e) => setEmail(e.target.value)} />
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
-          Cliente consentiu receber promoções (LGPD)
-        </label>
-        <div className="md:col-span-2">
-          <Button onClick={save} disabled={saving}><UserPlus className="h-4 w-4" /> {saving ? "Salvando…" : "Cadastrar"}</Button>
-        </div>
+    <div className="grid gap-3 md:grid-cols-2">
+      {err && <div className="md:col-span-2 rounded-lg bg-rose-50 px-4 py-2 text-sm text-rose-700">{err}</div>}
+      <input className={inputClass} placeholder="Nome *" value={f.name ?? ""} onChange={set("name")} />
+      <input className={inputClass} placeholder="WhatsApp / Telefone (ex.: 5583999990000)" value={f.phone ?? ""} onChange={set("phone")} />
+      <input className={inputClass} placeholder="E-mail" value={f.email ?? ""} onChange={set("email")} />
+      <input className={inputClass} placeholder="Instagram (sem @)" value={f.igHandle ?? ""} onChange={set("igHandle")} />
+      <input className={inputClass} placeholder="CPF" value={f.cpf ?? ""} onChange={set("cpf")} />
+
+      <div className="md:col-span-2 mt-1 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+        <MapPin className="h-3.5 w-3.5" /> Endereço {cepBusy && <span className="text-primary">buscando CEP…</span>}
       </div>
-    </Card>
+      <input className={inputClass} placeholder="CEP" value={f.cep ?? ""} onChange={set("cep")} onBlur={lookupCep} />
+      <input className={inputClass} placeholder="Logradouro (rua/av.)" value={f.street ?? ""} onChange={set("street")} />
+      <input className={inputClass} placeholder="Número" value={f.number ?? ""} onChange={set("number")} />
+      <input className={inputClass} placeholder="Complemento" value={f.complement ?? ""} onChange={set("complement")} />
+      <input className={inputClass} placeholder="Bairro" value={f.district ?? ""} onChange={set("district")} />
+      <input className={inputClass} placeholder="Cidade" value={f.city ?? ""} onChange={set("city")} />
+      <select className={inputClass} value={f.state ?? ""} onChange={set("state")}>
+        <option value="">UF</option>
+        {UFS.map((u) => <option key={u} value={u}>{u}</option>)}
+      </select>
+
+      <label className="md:col-span-2 flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={!!f.consentLGPD} onChange={(e) => setF((s) => ({ ...s, consentLGPD: e.target.checked }))} />
+        Cliente consentiu receber promoções (LGPD)
+      </label>
+      <div className="md:col-span-2">
+        <Button onClick={submit} disabled={saving || cepBusy}><UserPlus className="h-4 w-4" /> {saving ? "Salvando…" : submitLabel}</Button>
+      </div>
+    </div>
   );
 }

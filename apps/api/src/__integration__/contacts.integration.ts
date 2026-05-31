@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { getPrisma, withTenant } from "@hubadvisor/db";
 import { withTestTenant } from "./helpers.js";
-import { listContacts, contactStats, createContactManual, updateContactConsent } from "../services/contact-service.js";
+import { listContacts, contactStats, createContactManual, updateContactConsent, getContactDetail, updateContactProfile } from "../services/contact-service.js";
 import { resolveContact } from "../services/identity-service.js";
 
 // Cadastro de clientes / CRM (ADR-031): criação cifrada+dedup, agregados
@@ -43,6 +43,47 @@ test("CRM: cria (dedup), agrega cashback/pedidos e gere opt-out", async () => {
     assert.equal(stats2.reachableWhatsapp, 0);
 
     await prisma.cashbackEntry.deleteMany({ where: { tenantId } });
+  });
+});
+
+test("cadastro completo: endereço + CPF, detalhe decifrado e edição (ADR-039)", async () => {
+  await withTestTenant(async (tenantId) => {
+    const r = await createContactManual(tenantId, {
+      name: "Cliente Completo", phone: "5583988887777", email: "completo@ex.com", cpf: "390.533.447-05",
+      cep: "01001-000", street: "Praça da Sé", number: "100", district: "Sé", city: "São Paulo", state: "sp",
+      consentLGPD: true,
+    });
+    assert.equal(r.created, true);
+
+    // Listagem expõe cidade/UF e o flag de endereço.
+    const row = (await listContacts(tenantId)).find((c) => c.id === r.id)!;
+    assert.equal(row.city, "São Paulo");
+    assert.equal(row.state, "SP");
+    assert.equal(row.hasAddress, true);
+
+    // Detalhe devolve PII decifrada + endereço normalizado (CEP só dígitos, UF 2 letras).
+    const d = (await getContactDetail(tenantId, r.id))!;
+    assert.equal(d.phone, "5583988887777");
+    assert.equal(d.email, "completo@ex.com");
+    assert.equal(d.cpf, "39053344705", "CPF guardado só com dígitos");
+    assert.equal(d.cep, "01001000");
+    assert.equal(d.state, "SP");
+
+    // Dedup por CPF (mesmo CPF, outro telefone → não duplica).
+    const dup = await createContactManual(tenantId, { name: "Outro", cpf: "39053344705", phone: "5583900000000" });
+    assert.equal(dup.created, false);
+    assert.equal(dup.id, r.id);
+
+    // Edição parcial: muda número/cidade, preserva o resto.
+    await updateContactProfile(tenantId, r.id, { number: "250", complement: "ap 12", city: "Campinas" });
+    const d2 = (await getContactDetail(tenantId, r.id))!;
+    assert.equal(d2.number, "250");
+    assert.equal(d2.complement, "ap 12");
+    assert.equal(d2.city, "Campinas");
+    assert.equal(d2.phone, "5583988887777", "telefone preservado na edição parcial");
+
+    // Isolamento: outra loja não acessa o detalhe pelo id.
+    assert.equal(await getContactDetail("tenant-fantasma", r.id), null);
   });
 });
 

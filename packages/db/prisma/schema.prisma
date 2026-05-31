@@ -294,6 +294,16 @@ model Contact {
 
   name      String?
 
+  // Endereço completo do cliente (cadastro CRM — ADR-039). Texto puro, mesmo
+  // tratamento do endereço de entrega dos pedidos (Order.shippingAddress).
+  cep         String?
+  street      String?  // logradouro
+  number      String?  // número
+  complement  String?  // complemento
+  district    String?  // bairro
+  city        String?
+  state       String?  // UF
+
   // Perfil enriquecido (ADR-007)
   height       Int?    // cm
   bust         Int?    // cm

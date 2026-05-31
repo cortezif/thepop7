@@ -28,6 +28,9 @@ export type ContactView = {
   emailMasked: string | null;
   igHandle: string | null;
   channel: string | null; // canal de origem (whatsapp | instagram)
+  city: string | null;
+  state: string | null;
+  hasAddress: boolean;
   hasPhone: boolean;
   hasEmail: boolean;
   consentLGPD: boolean;
@@ -51,6 +54,7 @@ export async function listContacts(
     select: {
       id: true, name: true, phone: true, email: true, igHandle: true,
       preferredChannel: true, consentLGPD: true, optOuts: true, tags: true, createdAt: true,
+      city: true, state: true, cep: true, street: true,
     },
     orderBy: { createdAt: "desc" },
     take: 1000,
@@ -84,6 +88,9 @@ export async function listContacts(
       emailMasked: maskEmail(decryptPII(c.email)),
       igHandle: c.igHandle,
       channel: c.preferredChannel ?? (c.igHandle ? "instagram" : c.phone ? "whatsapp" : null),
+      city: c.city,
+      state: c.state,
+      hasAddress: !!(c.cep || c.street || c.city),
       hasPhone: !!c.phone,
       hasEmail: !!c.email,
       consentLGPD: c.consentLGPD,
@@ -119,18 +126,42 @@ export async function contactStats(tenantId: string) {
   };
 }
 
-export async function createContactManual(
-  tenantId: string,
-  input: { name?: string; phone?: string; email?: string; igHandle?: string; consentLGPD?: boolean },
-) {
+// Campos de endereço estruturado do cliente (ADR-039). Texto puro.
+export type ContactAddress = {
+  cep?: string; street?: string; number?: string; complement?: string;
+  district?: string; city?: string; state?: string;
+};
+export type ContactInput = ContactAddress & {
+  name?: string; phone?: string; email?: string; igHandle?: string; cpf?: string; consentLGPD?: boolean;
+};
+
+const ADDR_KEYS = ["cep", "street", "number", "complement", "district", "city", "state"] as const;
+
+/** Normaliza os campos de endereço (trim; UF em maiúsculas; vazio → null). */
+function addressData(input: ContactAddress): Record<string, string | null> {
+  const out: Record<string, string | null> = {};
+  for (const k of ADDR_KEYS) {
+    const v = (input as any)[k];
+    if (v === undefined) continue;
+    let s = typeof v === "string" ? v.trim() : "";
+    if (k === "state") s = s.toUpperCase().slice(0, 2);
+    if (k === "cep") s = s.replace(/\D/g, "").slice(0, 8);
+    out[k] = s || null;
+  }
+  return out;
+}
+
+export async function createContactManual(tenantId: string, input: ContactInput) {
   const phone = input.phone?.trim() || undefined;
   const email = input.email?.trim() || undefined;
+  const cpf = input.cpf?.replace(/\D/g, "").trim() || undefined;
   return withTenant(tenantId, async (tx) => {
-    // Dedup por hash forte (não cria duplicado se já existe telefone/e-mail).
+    // Dedup por hash forte (não cria duplicado se já existe telefone/e-mail/CPF).
     const ors = [
       phone ? { phoneHash: hashPII(phone) } : null,
       email ? { emailHash: hashPII(email) } : null,
-      input.igHandle ? { igHandle: input.igHandle } : null,
+      cpf ? { cpfHash: hashPII(cpf) } : null,
+      input.igHandle ? { igHandle: input.igHandle.trim() } : null,
     ].filter(Boolean) as any[];
     if (ors.length) {
       const dup = await tx.contact.findFirst({ where: { tenantId, OR: ors } });
@@ -143,10 +174,59 @@ export async function createContactManual(
         igHandle: input.igHandle?.trim() || null,
         phone: encryptPII(phone), phoneHash: hashPII(phone),
         email: encryptPII(email), emailHash: hashPII(email),
+        cpf: encryptPII(cpf), cpfHash: hashPII(cpf),
         consentLGPD: !!input.consentLGPD,
+        ...addressData(input),
       },
     });
     return { id: c.id, created: true as const };
+  });
+}
+
+/** Cadastro completo (decifrado) de um contato — pré-preenche o editor. Owner. */
+export async function getContactDetail(tenantId: string, id: string) {
+  const c = await getPrisma().contact.findFirst({
+    where: { id, tenantId },
+    select: {
+      id: true, name: true, phone: true, email: true, cpf: true, igHandle: true,
+      cep: true, street: true, number: true, complement: true, district: true, city: true, state: true,
+      consentLGPD: true,
+    },
+  });
+  if (!c) return null;
+  return {
+    id: c.id, name: c.name,
+    phone: decryptPII(c.phone), email: decryptPII(c.email), cpf: decryptPII(c.cpf),
+    igHandle: c.igHandle,
+    cep: c.cep, street: c.street, number: c.number, complement: c.complement,
+    district: c.district, city: c.city, state: c.state,
+    consentLGPD: c.consentLGPD,
+  };
+}
+
+/** Edita o cadastro completo do cliente (re-cifra PII e recalcula os hashes). */
+export async function updateContactProfile(tenantId: string, id: string, input: ContactInput) {
+  return withTenant(tenantId, async (tx) => {
+    const exists = await tx.contact.findFirst({ where: { id, tenantId }, select: { id: true } });
+    if (!exists) throw new Error("contato não encontrado");
+    const data: Record<string, unknown> = { ...addressData(input) };
+    if (input.name !== undefined) data.name = input.name.trim() || null;
+    if (input.igHandle !== undefined) data.igHandle = input.igHandle.trim() || null;
+    if (typeof input.consentLGPD === "boolean") data.consentLGPD = input.consentLGPD;
+    if (input.phone !== undefined) {
+      const p = input.phone.trim() || undefined;
+      data.phone = encryptPII(p); data.phoneHash = hashPII(p);
+    }
+    if (input.email !== undefined) {
+      const e = input.email.trim() || undefined;
+      data.email = encryptPII(e); data.emailHash = hashPII(e);
+    }
+    if (input.cpf !== undefined) {
+      const cf = input.cpf.replace(/\D/g, "").trim() || undefined;
+      data.cpf = encryptPII(cf); data.cpfHash = hashPII(cf);
+    }
+    await tx.contact.update({ where: { id }, data });
+    return { ok: true };
   });
 }
 
