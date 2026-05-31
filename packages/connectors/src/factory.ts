@@ -1,6 +1,6 @@
 import type {
   ErpConnector, LogisticsConnector, PaymentConnector,
-  FiscalConnector, MessagingConnector, CourierConnector
+  FiscalConnector, MessagingConnector, CourierConnector, SmsConnector
 } from "./types.js";
 import { MockErp }            from "./erp/mock-erp.js";
 import { MockLogistics }      from "./logistics/mock-logistics.js";
@@ -15,6 +15,8 @@ import { MelhorEnvio }        from "./logistics/melhor-envio.js";
 import { LalamoveCourier }    from "./courier/lalamove.js";
 import { OpenDeliveryCourier } from "./courier/open-delivery.js";
 import { MockCourier }        from "./courier/mock-courier.js";
+import { ZenviaSms, zenviaConfigured } from "./sms/zenvia.js";
+import { MockSms }            from "./sms/mock-sms.js";
 import { MercadoPago }        from "./payment/mercado-pago.js";
 import { PlugNotas }          from "./fiscal/plug-notas.js";
 import { CplugFiscal }        from "./fiscal/cplug.js";
@@ -112,6 +114,13 @@ export function buildCourierForTenant(opts: {
   }
   if (!opts.lalamoveCreds) return new MockCourier();
   return createFailover<CourierConnector>([new LalamoveCourier(opts.lalamoveCreds), new MockCourier()], { label: "courier:lalamove", log });
+}
+
+export function getSmsConnector(creds?: { token?: string; from?: string }): SmsConnector {
+  if (forceMocks()) return new MockSms();
+  if (creds?.token && creds?.from) return new ZenviaSms(creds);
+  if (zenviaConfigured()) return new ZenviaSms();
+  return new MockSms();
 }
 
 export function getPaymentConnector(accessToken?: string): PaymentConnector {

@@ -99,6 +99,10 @@ export const PROVIDER_FIELDS: Record<string, CredField[]> = {
     { key: "clientSecret", label: "Client Secret", secret: true, env: "OPENDELIVERY_CLIENT_SECRET", required: true },
     { key: "baseUrl", label: "Base URL (do operador logístico)", secret: false, env: "OPENDELIVERY_BASE_URL", required: true },
   ],
+  zenvia: [
+    { key: "token", label: "API Token", secret: true, env: "ZENVIA_TOKEN", required: true },
+    { key: "from", label: "Remetente (sender)", secret: false, env: "ZENVIA_FROM", required: true },
+  ],
 };
 
 function readDbConfig(row: Awaited<ReturnType<typeof getIntegration>>): Record<string, string> {
@@ -691,4 +695,22 @@ export async function getOpenDeliveryCreds(tenantId: string): Promise<{ clientId
   const cfg = await getProviderConfig(tenantId, "opendelivery");
   if (!cfg.clientId || !cfg.clientSecret || !cfg.baseUrl) return null;
   return { clientId: cfg.clientId, clientSecret: cfg.clientSecret, baseUrl: cfg.baseUrl };
+}
+
+// ── SMS (Zenvia) — broadcast de promoções (ADR-031) ──────────────────────────
+export async function getZenviaStatus(tenantId: string) {
+  const configured = await isAppConfigured(tenantId, "zenvia");
+  return {
+    provider: "zenvia" as const,
+    connected: configured,
+    status: configured ? "connected" : "disconnected",
+    appConfigured: configured,
+    note: configured ? "SMS (Zenvia) configurado para promoções." : "Informe o API Token e o remetente da Zenvia para enviar SMS.",
+  };
+}
+
+export async function getSmsCreds(tenantId: string): Promise<{ token: string; from: string } | null> {
+  const cfg = await getProviderConfig(tenantId, "zenvia");
+  if (!cfg.token || !cfg.from) return null;
+  return { token: cfg.token, from: cfg.from };
 }

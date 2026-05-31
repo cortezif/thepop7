@@ -8,7 +8,7 @@ import {
   getMeStatus, refreshMe, disconnectMe, buildMeUrl,
   getBlingStatus, refreshBling, disconnectBling, buildBlingUrl,
   getOmieStatus, getVhsysStatus,
-  getLalamoveStatus, getOpenDeliveryStatus,
+  getLalamoveStatus, getOpenDeliveryStatus, getZenviaStatus,
   getWhatsAppStatus, getInstagramStatus, getCplugStatus, getAnthropicStatus,
   getProviderConfig, isAppConfigured, saveProviderConfig, getMaskedConfig, PROVIDER_FIELDS,
 } from "../services/integration-service.js";
@@ -194,6 +194,11 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
     const t = await resolveTenant((req.query as any).tenantSlug);
     if (!t) return reply.code(404).send({ error: "tenant not found" });
     return getOpenDeliveryStatus(t.id);
+  });
+  app.get("/zenvia", async (req, reply) => {
+    const t = await resolveTenant((req.query as any).tenantSlug);
+    if (!t) return reply.code(404).send({ error: "tenant not found" });
+    return getZenviaStatus(t.id);
   });
 
   // ── CREDENCIAIS por loja (genérico p/ qualquer provider) ─────────────────────

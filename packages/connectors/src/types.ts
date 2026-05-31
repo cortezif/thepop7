@@ -136,6 +136,13 @@ export type CourierStatus = {
 };
 
 // ============================================================
+// SMS (broadcast de promoções — ADR-031)
+// ============================================================
+export interface SmsConnector {
+  send(input: { to: string; text: string }): Promise<{ ok: boolean; externalId?: string; skipped?: boolean; error?: string }>;
+}
+
+// ============================================================
 // PAGAMENTO
 // ============================================================
 export interface PaymentConnector {

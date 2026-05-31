@@ -25,6 +25,7 @@ export function Settings() {
       <CPlugStatus />
       <LalamoveStatus />
       <OpenDeliveryStatus />
+      <ZenviaStatus />
       <AnthropicStatus />
     </div>
   );
@@ -503,6 +504,18 @@ function InstagramStatus() {
       description="Canal de atendimento via Direct. Configure após aprovação Meta."
       provider="instagram"
       loadFn={() => api.integrationStatus("instagram")}
+    />
+  );
+}
+
+function ZenviaStatus() {
+  return (
+    <EnvIntegration
+      icon={<MessageCircle className="h-5 w-5 text-muted-foreground" />}
+      title="SMS (Zenvia)"
+      description="Envio de SMS para promoções/broadcast. Informe o API Token e o remetente da Zenvia."
+      provider="zenvia"
+      loadFn={() => api.integrationStatus("zenvia")}
     />
   );
 }
