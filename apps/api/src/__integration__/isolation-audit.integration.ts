@@ -8,6 +8,7 @@ import { cashbackBalance } from "../services/cashback-service.js";
 import { marketingReport } from "../services/marketing-report-service.js";
 import { listContacts, contactStats, createContactManual } from "../services/contact-service.js";
 import { cashflow, listEntries, createEntry, monthKey } from "../services/finance-service.js";
+import { createCourier, listCouriers, createJobForOrder, listJobs } from "../services/courier-service.js";
 
 process.env.JWT_SECRET = process.env.JWT_SECRET ?? "itest-secret";
 
@@ -16,6 +17,9 @@ const sfx = Date.now();
 let tA = "", tB = "", reqB = "", contactB = "";
 
 before(async () => {
+  // Slate limpa: remove restos de execuções anteriores interrompidas (banco
+  // compartilhado). Sem isto, contagens exatas por tenant ficam flaky.
+  await prisma.tenant.deleteMany({ where: { slug: { startsWith: "itest-iso" } } }).catch(() => {});
   const a = await prisma.tenant.create({ data: { slug: `itest-isoa-${sfx}`, name: "A", status: "active", agentPersona: "Maya", agentTone: "x", policies: {} } });
   const b = await prisma.tenant.create({ data: { slug: `itest-isob-${sfx}`, name: "B", status: "active", agentPersona: "Maya", agentTone: "x", policies: {} } });
   tA = a.id; tB = b.id;
@@ -34,6 +38,12 @@ before(async () => {
   await prisma.cashbackEntry.create({ data: { tenantId: tB, contactId: contactB, kind: "accrual", amountBRL: 15, remainingBRL: 15, expiresAt: new Date(Date.now() + 30 * 864e5) } });
   await createCampaign(tB, { title: "Promo B", message: "oi", channels: ["whatsapp"] });
   await createEntry(tB, { type: "despesa", category: "aluguel", amountBRL: 999 });
+
+  // Entregadores da loja B (ADR-033): entregador + corrida.
+  const courierB = await createCourier(tB, { name: "EntB", vehicle: "moto" });
+  // Reusa o contato CliB (não cria outro — senão quebra a contagem de contatos).
+  const orderB = await prisma.order.create({ data: { tenantId: tB, contactId: c.id, status: "paid", subtotalBRL: 30, totalBRL: 30 } });
+  await createJobForOrder(tB, orderB.id, { courierId: courierB.id, feeBRL: 5 });
 });
 after(async () => {
   await prisma.tenant.deleteMany({ where: { slug: { in: [`itest-isoa-${sfx}`, `itest-isob-${sfx}`] } } }).catch(() => {});
@@ -80,4 +90,11 @@ test("financeiro (ADR-032) não vaza entre lojas", async () => {
   assert.equal((await listEntries(tB, m)).length, 1, "B vê o próprio");
   assert.equal((await cashflow(tA, m)).despesasBRL, 0, "caixa de A não soma despesa da B");
   assert.equal((await cashflow(tB, m)).despesasBRL, 999);
+});
+
+test("entregadores (ADR-033) não vazam entre lojas", async () => {
+  assert.equal((await listCouriers(tA)).length, 0, "A não vê o entregador da B");
+  assert.equal((await listCouriers(tB)).length, 1, "B vê o próprio");
+  assert.equal((await listJobs(tA)).length, 0, "A não vê a corrida da B");
+  assert.equal((await listJobs(tB)).length, 1, "B vê a própria");
 });
