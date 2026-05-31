@@ -105,6 +105,7 @@ model Tenant {
   productionBatches ProductionBatch[]
   deliveryTariff   DeliveryTariff?
   cashbackEntries  CashbackEntry[]
+  marketingCampaigns MarketingCampaign[]
 
   @@map("tenants")
 }
@@ -1173,4 +1174,31 @@ model CashbackEntry {
   @@index([tenantId, contactId])
   @@index([tenantId, kind, expiresAt])
   @@map("cashback_entries")
+}
+
+// Campanha de promoção / broadcast (ADR-031). Envia uma mensagem a um segmento de
+// contatos (que deram consentimento e não optaram por sair de "marketing") por
+// WhatsApp / e-mail / SMS. Distinto de AdCampaign (Meta Ads — mídia paga).
+model MarketingCampaign {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  title     String
+  message   String
+  subject   String?   // assunto do e-mail
+  channels  String[]  // whatsapp | email | sms
+  onlyBuyers Boolean  @default(false) // só quem já comprou
+
+  status    String   @default("rascunho") // rascunho | enviada
+  recipients   Int    @default(0)
+  sentWhatsapp Int    @default(0)
+  sentEmail    Int    @default(0)
+  sentSms      Int    @default(0)
+  skipped      Int    @default(0)   // sem canal alcançável
+  sentAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, status])
+  @@map("marketing_campaigns")
 }

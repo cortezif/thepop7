@@ -253,6 +253,15 @@ export type Message = {
   createdAt: string;
 };
 
+export type CampaignChannel = "whatsapp" | "email" | "sms";
+export type Campaign = {
+  id: string; title: string; message: string; subject: string | null;
+  channels: CampaignChannel[]; onlyBuyers: boolean;
+  status: "rascunho" | "enviada";
+  recipients: number; sentWhatsapp: number; sentEmail: number; sentSms: number; skipped: number;
+  sentAt: string | null; createdAt: string;
+};
+
 export const api = {
   listConversations: (status?: string) =>
     get<Conversation[]>(`/inbox/conversations${status ? `?status=${status}` : ""}`),
@@ -293,6 +302,13 @@ export const api = {
   setCashbackConfig: (payload: { enabled?: boolean; pct?: number; expiryDays?: number; maxRedeemPct?: number }) =>
     post<{ ok: boolean }>(`/admin/cashback-config`, payload),
   setStoreZip: (storeZip: string | null) => post<{ ok: boolean; storeZip: string | null }>(`/admin/store-config`, { storeZip }),
+  // Promoções / broadcast (ADR-031)
+  campaigns: () => get<Campaign[]>(`/marketing/campaigns`),
+  segmentPreview: (onlyBuyers: boolean) =>
+    get<{ total: number; withPhone: number; withEmail: number }>(`/marketing/segment-preview?onlyBuyers=${onlyBuyers}`),
+  createCampaign: (input: { title: string; message: string; subject?: string; channels: CampaignChannel[]; onlyBuyers?: boolean }) =>
+    post<Campaign>(`/marketing/campaigns`, input),
+  sendCampaign: (id: string) => post<Campaign>(`/marketing/campaigns/${id}/send`, {}),
   segmentPresets: () => get<SegmentPreset[]>(`/admin/segment-presets`),
   setSegment: (payload: { segment: string; styles?: string[]; occasions?: string[]; applyVoice?: boolean }) =>
     post<{ ok: boolean; segment: string; catalogVocab: { styles: string[]; occasions: string[] } | null; voiceApplied?: boolean }>(`/admin/segment-config`, payload),
