@@ -111,6 +111,8 @@ model Tenant {
   cashbackEntries  CashbackEntry[]
   marketingCampaigns MarketingCampaign[]
   financialEntries FinancialEntry[]
+  couriers         Courier[]
+  deliveryJobs     DeliveryJob[]
 
   @@map("tenants")
 }
@@ -1235,4 +1237,49 @@ model FinancialEntry {
   @@index([tenantId, date])
   @@index([tenantId, status, dueDate])
   @@map("financial_entries")
+}
+
+// Entregador próprio cadastrado pela loja (ADR-033) — app de entregas para cidade
+// do interior. Acessa as próprias corridas por um token (sem senha).
+model Courier {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name        String
+  phone       String?  // contato (texto puro — é um prestador, não cliente)
+  vehicle     String   @default("moto") // moto | carro | bike | a_pe
+  active      Boolean  @default(true)
+  accessToken String   @unique // link do app do entregador (/entregador/:token)
+  createdAt   DateTime @default(now())
+
+  jobs        DeliveryJob[]
+
+  @@index([tenantId])
+  @@map("couriers")
+}
+
+// Corrida de entrega (ADR-033). Liga um pedido a um entregador próprio e segue o
+// ciclo pendente → atribuído → aceito → coletado → entregue (ou cancelado).
+model DeliveryJob {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orderId     String
+  courierId   String?
+  courier     Courier? @relation(fields: [courierId], references: [id], onDelete: SetNull)
+
+  status      String   @default("pendente") // pendente|atribuido|aceito|coletado|entregue|cancelado
+  feeBRL      Decimal? @db.Decimal(10, 2)    // pagamento do entregador
+  address     String?  // endereço de entrega (snapshot)
+  notes       String?
+  assignedAt  DateTime?
+  acceptedAt  DateTime?
+  pickedUpAt  DateTime?
+  deliveredAt DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, status])
+  @@index([courierId, status])
+  @@map("delivery_jobs")
 }

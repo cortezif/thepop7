@@ -290,6 +290,16 @@ export type MarketingReport = {
 export type FinanceEntry = { id: string; type: "receita" | "despesa"; category: string; description: string | null; amountBRL: number; date: string; status: "pago" | "pendente"; dueDate: string | null; createdAt: string };
 export type OpenAccount = FinanceEntry & { overdue: boolean };
 export type FinanceTrendPoint = { month: string; receitasBRL: number; despesasBRL: number; saldoBRL: number };
+export type CourierVehicle = "moto" | "carro" | "bike" | "a_pe";
+export type Courier = { id: string; name: string; phone: string | null; vehicle: CourierVehicle; active: boolean; accessToken: string; createdAt: string };
+export type JobStatus = "pendente" | "atribuido" | "aceito" | "coletado" | "entregue" | "cancelado";
+export type DeliveryJob = {
+  id: string; orderId: string; courierId: string | null; status: JobStatus;
+  feeBRL: number | null; address: string | null; notes: string | null;
+  assignedAt: string | null; acceptedAt: string | null; pickedUpAt: string | null; deliveredAt: string | null; createdAt: string;
+  courier?: { name: string; vehicle: CourierVehicle } | null;
+};
+export type CourierAppData = { courier: { name: string; vehicle: CourierVehicle }; jobs: DeliveryJob[] };
 export type Cashflow = {
   month: string; vendasBRL: number; ordersCount: number;
   receitasManuaisBRL: number; receitasBRL: number; despesasBRL: number; saldoBRL: number;
@@ -402,6 +412,15 @@ export const api = {
   openAccounts: () => get<OpenAccount[]>(`/finance/open-accounts`),
   payFinanceEntry: (id: string) => patch<{ ok: boolean }>(`/finance/entries/${id}/pay`, {}),
   financeTrend: () => get<FinanceTrendPoint[]>(`/finance/trend`),
+  // Entregadores (ADR-033)
+  couriers: () => get<Courier[]>(`/couriers`),
+  createCourier: (input: { name: string; phone?: string; vehicle?: CourierVehicle }) => post<Courier>(`/couriers`, input),
+  updateCourier: (id: string, input: { name?: string; phone?: string | null; vehicle?: CourierVehicle; active?: boolean }) =>
+    patch<{ ok: boolean }>(`/couriers/${id}`, input),
+  deliveryJobs: (status?: string) => get<DeliveryJob[]>(`/couriers/jobs${status ? `?status=${status}` : ""}`),
+  createDeliveryJob: (input: { orderId: string; courierId?: string; feeBRL?: number; notes?: string }) => post<DeliveryJob>(`/couriers/jobs`, input),
+  assignDeliveryJob: (id: string, courierId: string) => patch<DeliveryJob>(`/couriers/jobs/${id}/assign`, { courierId }),
+  setDeliveryJobStatus: (id: string, status: string) => patch<DeliveryJob>(`/couriers/jobs/${id}/status`, { status }),
   npsBoard: (band?: "promotor" | "neutro" | "detrator") =>
     get<NpsBoard>(`/metrics/nps${band ? `?band=${band}` : ""}`),
   reorder: () => get<ReorderSuggestion[]>(`/purchasing/reorder`),
@@ -645,6 +664,18 @@ export async function openMercAttachment(id: string) {
   const url = URL.createObjectURL(blob);
   window.open(url, "_blank");
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+// ── App do entregador (sem auth) — tela /entregador/:token (ADR-033) ──
+export async function fetchCourierApp(token: string) {
+  const res = await fetch(`/api/entregador/${token}`);
+  if (!res.ok) throw new Error("acesso inválido");
+  return res.json() as Promise<CourierAppData>;
+}
+export async function courierJobAction(token: string, jobId: string, action: "aceitar" | "coletar" | "entregar") {
+  const res = await fetch(`/api/entregador/${token}/jobs/${jobId}/${action}`, { method: "POST" });
+  if (!res.ok) throw new Error("não foi possível atualizar");
+  return res.json() as Promise<DeliveryJob>;
 }
 
 // ── Cotação pública (sem auth) — usada na tela /cotacao/:token ──

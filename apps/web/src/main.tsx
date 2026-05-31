@@ -24,6 +24,8 @@ import { Promocoes } from "./pages/Promocoes";
 import { Clientes } from "./pages/Clientes";
 import { Satisfacao } from "./pages/Satisfacao";
 import { Financeiro } from "./pages/Financeiro";
+import { Entregadores } from "./pages/Entregadores";
+import { EntregadorApp } from "./pages/EntregadorApp";
 import { CotacaoPublica } from "./pages/CotacaoPublica";
 import "./styles/globals.css";
 
@@ -43,6 +45,7 @@ createRoot(document.getElementById("root")!).render(
           <Route path="/promocoes" element={<Promocoes />} />
           <Route path="/satisfacao" element={<Satisfacao />} />
           <Route path="/financeiro" element={<Financeiro />} />
+          <Route path="/entregadores" element={<Entregadores />} />
           <Route path="/pedidos"  element={<Pedidos />} />
           <Route path="/estoque"  element={<Estoque />} />
           <Route path="/insumos"  element={<Insumos />} />
@@ -56,6 +59,7 @@ createRoot(document.getElementById("root")!).render(
         </Route>
         <Route path="/plataforma" element={<Plataforma />} />
         <Route path="/cotacao/:token" element={<CotacaoPublica />} />
+        <Route path="/entregador/:token" element={<EntregadorApp />} />
       </Routes>
     </BrowserRouter>
   </StrictMode>
