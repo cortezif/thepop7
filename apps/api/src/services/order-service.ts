@@ -8,6 +8,7 @@ import { summarizeFinancials, buildFunnel, DEFAULT_GATEWAY_FEES } from "./financ
 import { enqueuePostSale } from "../lib/post-sale-queue.js";
 import { issueNfeForOrder } from "./fiscal-service.js";
 import { recordMovement } from "./stock-movement-service.js";
+import { accrueCashback, redeemForOrder } from "./cashback-service.js";
 
 /**
  * Cria pedido a partir de itens + endereço, gera cobrança PIX e devolve
@@ -15,8 +16,8 @@ import { recordMovement } from "./stock-movement-service.js";
  * só após pagamento (via webhook, não aqui).
  */
 type CreateOrderResult =
-  | { orderId: string; totalBRL: number; subtotalBRL: number; shippingBRL: number; pendingApproval: true }
-  | { orderId: string; totalBRL: number; subtotalBRL: number; shippingBRL: number; pix: { qrCode?: string; qrCodeBase64?: string; expiresAt?: string } };
+  | { orderId: string; totalBRL: number; subtotalBRL: number; shippingBRL: number; cashbackRedeemedBRL?: number; pendingApproval: true }
+  | { orderId: string; totalBRL: number; subtotalBRL: number; shippingBRL: number; cashbackRedeemedBRL?: number; pix: { qrCode?: string; qrCodeBase64?: string; expiresAt?: string } };
 
 export async function createOrder(input: {
   tenantId: string;
@@ -34,7 +35,6 @@ export async function createOrder(input: {
 }): Promise<CreateOrderResult> {
   return withTenant(input.tenantId, async (tx) => {
     const subtotal = input.items.reduce((s, i) => s + i.unitPriceBRL * i.quantity, 0);
-    const total = subtotal + input.shippingBRL;
 
     const order = await tx.order.create({
       data: {
@@ -44,7 +44,7 @@ export async function createOrder(input: {
         shippingZip: input.shippingZip,
         subtotalBRL: subtotal,
         shippingBRL: input.shippingBRL,
-        totalBRL: total,
+        totalBRL: subtotal + input.shippingBRL,
         carrier: input.carrier,
         metadata: ((): Record<string, unknown> | undefined => {
           const m: Record<string, unknown> = {};
@@ -63,13 +63,21 @@ export async function createOrder(input: {
       },
     });
 
+    // Cashback (ADR-031): resgate automático do crédito disponível (até o teto),
+    // FIFO pelos créditos que vencem primeiro, abatendo do total.
+    const cashbackRedeemed = await redeemForOrder(input.tenantId, input.contactId, subtotal, order.id, undefined, tx);
+    const total = Math.round((subtotal + input.shippingBRL - cashbackRedeemed) * 100) / 100;
+    if (cashbackRedeemed > 0) {
+      await tx.order.update({ where: { id: order.id }, data: { cashbackRedeemedBRL: cashbackRedeemed, totalBRL: total } });
+    }
+
     await tx.domainEvent.create({
-      data: { tenantId: input.tenantId, type: EVENTS.ORDER_CREATED, aggregateType: "order", aggregateId: order.id, payload: { total, pendingApproval: !!input.pendingApproval }, actor: "agent" },
+      data: { tenantId: input.tenantId, type: EVENTS.ORDER_CREATED, aggregateType: "order", aggregateId: order.id, payload: { total, cashbackRedeemed, pendingApproval: !!input.pendingApproval }, actor: "agent" },
     });
 
     // Pendente de aprovação: não gera PIX agora.
     if (input.pendingApproval) {
-      return { orderId: order.id, totalBRL: total, subtotalBRL: subtotal, shippingBRL: input.shippingBRL, pendingApproval: true as const };
+      return { orderId: order.id, totalBRL: total, subtotalBRL: subtotal, shippingBRL: input.shippingBRL, cashbackRedeemedBRL: cashbackRedeemed, pendingApproval: true as const };
     }
 
     // Gera cobrança PIX (mock em dev)
@@ -93,6 +101,7 @@ export async function createOrder(input: {
       totalBRL: total,
       subtotalBRL: subtotal,
       shippingBRL: input.shippingBRL,
+      cashbackRedeemedBRL: cashbackRedeemed,
       pix: { qrCode: charge.pixQrCode, qrCodeBase64: charge.pixQrCodeBase64, expiresAt: charge.expiresAt },
     };
   });
@@ -165,6 +174,15 @@ export async function transitionOrder(tenantId: string, orderId: string, to: Ord
   if (to === "paid") {
     const nfe = await issueNfeForOrder(tenantId, orderId);
     (result as any).nfe = nfe;
+
+    // Cashback ao pagar (ADR-031): acumula % do subtotal, idempotente por pedido.
+    try {
+      const ord = await prisma.order.findUnique({ where: { id: orderId }, select: { contactId: true, subtotalBRL: true } });
+      if (ord) {
+        const acc = await accrueCashback(tenantId, ord.contactId, Number(ord.subtotalBRL), orderId);
+        (result as any).cashback = acc;
+      }
+    } catch (e) { /* gracioso: cashback não desfaz o pagamento */ }
   }
 
   // ADR-010: ao entregar, agenda os marcos proativos da Lia (D+1/D+7/D+14/D+30)

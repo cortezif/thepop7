@@ -65,6 +65,13 @@ model Tenant {
   // Limites
   monthlyAIBudgetBRL Decimal @default(500.00) @db.Decimal(10, 2)
 
+  // Cashback / fidelidade (ADR-031). Crédito acumulado por compra, com validade,
+  // resgatável (abate) no próximo pedido até um teto. Default desligado.
+  cashbackEnabled      Boolean @default(false)
+  cashbackPct          Float   @default(10)   // % do subtotal que vira crédito
+  cashbackExpiryDays   Int     @default(60)   // validade do crédito (dias)
+  cashbackMaxRedeemPct Float   @default(50)   // teto: % do pedido pagável com crédito
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -97,6 +104,7 @@ model Tenant {
   billsOfMaterials BillOfMaterials[]
   productionBatches ProductionBatch[]
   deliveryTariff   DeliveryTariff?
+  cashbackEntries  CashbackEntry[]
 
   @@map("tenants")
 }
@@ -305,6 +313,7 @@ model Contact {
   orders        Order[]
   conversations Conversation[]
   reservations  StockReservation[]
+  cashbackEntries CashbackEntry[]
 
   @@index([tenantId, phoneHash])
   @@index([tenantId, emailHash])
@@ -522,6 +531,8 @@ model Order {
   // Valores
   subtotalBRL Decimal  @db.Decimal(10, 2) @default(0)
   shippingBRL Decimal  @db.Decimal(10, 2) @default(0)
+  // Cashback resgatado neste pedido (ADR-031) — abate do total.
+  cashbackRedeemedBRL Decimal @db.Decimal(10, 2) @default(0)
   // Custo real do frete pago à transportadora (ADR-017). null = ainda não
   // informado → tratado como pass-through (resultado de frete 0) no financeiro.
   shippingCostBRL Decimal? @db.Decimal(10, 2)
@@ -1135,4 +1146,31 @@ model DeliveryTariff {
   updatedAt DateTime @updatedAt
 
   @@map("delivery_tariffs")
+}
+
+// Lançamento de cashback (ADR-031). Razão append-only por cliente.
+//  - kind "accrual": crédito ganho numa compra; `amountBRL` positivo, `remainingBRL`
+//    é quanto ainda está disponível (decrementado nos resgates, FIFO), `expiresAt`
+//    é a validade.
+//  - kind "redeem": crédito usado num pedido; `amountBRL` negativo, refId = pedido.
+//  - kind "expire": crédito que venceu sem uso; `amountBRL` negativo.
+// Saldo = Σ remainingBRL dos accruals não-expirados.
+model CashbackEntry {
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contactId  String
+  contact    Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  kind         String   // accrual | redeem | expire | adjust
+  amountBRL    Decimal  @db.Decimal(10, 2)            // sinalizado: + entra, - sai
+  remainingBRL Decimal  @default(0) @db.Decimal(10, 2) // só accrual: saldo ainda disponível
+  orderId      String?
+  expiresAt    DateTime?                               // só accrual
+  note         String?
+  createdAt    DateTime @default(now())
+
+  @@index([tenantId, contactId])
+  @@index([tenantId, kind, expiresAt])
+  @@map("cashback_entries")
 }

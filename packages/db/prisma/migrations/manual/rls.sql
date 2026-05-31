@@ -22,7 +22,8 @@ DECLARE
     -- Defesa em profundidade: tabelas tenant-scoped que dependiam só do código.
     -- (NÃO inclui wholesale_*/b2b_buyers: são marketplace cross-tenant — ADR-024.)
     'purchase_requests','quotes','supplier_offers','price_researches','price_research_invites',
-    'price_quotes','research_attachments','nps_responses','ad_campaigns','audit_logs'
+    'price_quotes','research_attachments','nps_responses','ad_campaigns','audit_logs',
+    'cashback_entries'
   ];
 BEGIN
   FOREACH t IN ARRAY tables LOOP

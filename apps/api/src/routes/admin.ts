@@ -40,7 +40,36 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       catalogVocab: tenant.catalogVocab ?? null,
       productionEnabled: tenant.productionEnabled,
       storeZip: (tenant.policies as any)?.storeZip ?? null,
+      cashback: {
+        enabled: tenant.cashbackEnabled,
+        pct: tenant.cashbackPct,
+        expiryDays: tenant.cashbackExpiryDays,
+        maxRedeemPct: tenant.cashbackMaxRedeemPct,
+      },
     };
+  });
+
+  // POST /admin/cashback-config — regras de cashback (ADR-031)
+  app.post("/cashback-config", adminOnly, async (req, reply) => {
+    const body = z.object({
+      tenantSlug: z.string(),
+      enabled: z.boolean().optional(),
+      pct: z.number().min(0).max(100).optional(),
+      expiryDays: z.number().int().min(1).max(3650).optional(),
+      maxRedeemPct: z.number().min(0).max(100).optional(),
+    }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+    const tenant = await resolveTenant(body.data.tenantSlug);
+    if (!tenant) return reply.code(404).send({ error: "tenant not found" });
+    const data: Record<string, unknown> = {};
+    if ("enabled" in body.data) data.cashbackEnabled = body.data.enabled;
+    if (body.data.pct != null) data.cashbackPct = body.data.pct;
+    if (body.data.expiryDays != null) data.cashbackExpiryDays = body.data.expiryDays;
+    if (body.data.maxRedeemPct != null) data.cashbackMaxRedeemPct = body.data.maxRedeemPct;
+    await withTenant(tenant.id, async (tx) => {
+      await tx.tenant.update({ where: { id: tenant.id }, data });
+    });
+    return { ok: true, ...data };
   });
 
   // POST /admin/store-config — CEP de origem da loja (entregas on-demand). ADR-030.

@@ -11,6 +11,7 @@ export function Settings() {
       <PageHeader eyebrow="CONFIGURAÇÕES" title="Automação & Integrações" />
       <KillSwitch />
       <SegmentConfig />
+      <CashbackConfig />
       <Retention />
       <IdentityMerge />
       <TrayIntegration />
@@ -269,6 +270,53 @@ function OAuthIntegration({
 }
 
 // ── Integrações específicas ──────────────────────────────────────────────────
+
+function CashbackConfig() {
+  const [enabled, setEnabled] = useState(false);
+  const [pct, setPct] = useState("10");
+  const [expiry, setExpiry] = useState("60");
+  const [maxRedeem, setMaxRedeem] = useState("50");
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api.getConfig().then((c) => {
+      if (c.cashback) { setEnabled(c.cashback.enabled); setPct(String(c.cashback.pct)); setExpiry(String(c.cashback.expiryDays)); setMaxRedeem(String(c.cashback.maxRedeemPct)); }
+    }).catch(() => {});
+  }, []);
+
+  async function save() {
+    setBusy(true); setMsg(null);
+    try {
+      await api.setCashbackConfig({ enabled, pct: Number(pct), expiryDays: Number(expiry), maxRedeemPct: Number(maxRedeem) });
+      setMsg("Cashback salvo.");
+    } catch (e) { setMsg(String(e)); } finally { setBusy(false); }
+  }
+
+  const fld = "w-24 rounded-md border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary";
+  return (
+    <div className="mt-6 rounded-lg border border-border bg-background p-6">
+      <div className="flex items-center gap-2">
+        <Tag size={18} className="text-primary" />
+        <h2 className="font-serif text-lg font-bold">Cashback (fidelidade)</h2>
+        <label className="ml-auto flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} /> Ativo
+        </label>
+      </div>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Crédito ganho por compra, com validade, abatido automaticamente no próximo pedido (até o teto).
+        A Maya avisa o saldo para incentivar a volta ("você tem R$X, use antes de expirar").
+      </p>
+      <div className="mt-4 flex flex-wrap items-end gap-4">
+        <label className="text-xs font-medium text-muted-foreground">% por compra<br /><input className={fld} value={pct} onChange={(e) => setPct(e.target.value)} inputMode="decimal" /></label>
+        <label className="text-xs font-medium text-muted-foreground">Validade (dias)<br /><input className={fld} value={expiry} onChange={(e) => setExpiry(e.target.value)} inputMode="numeric" /></label>
+        <label className="text-xs font-medium text-muted-foreground">Teto de resgate (%)<br /><input className={fld} value={maxRedeem} onChange={(e) => setMaxRedeem(e.target.value)} inputMode="decimal" /></label>
+        <button onClick={save} disabled={busy} className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">{busy ? "Salvando…" : "Salvar"}</button>
+      </div>
+      {msg && <p className="mt-3 text-sm text-muted-foreground">{msg}</p>}
+    </div>
+  );
+}
 
 function TrayIntegration() {
   const [st, setSt] = useState<TrayStatus | null>(null);

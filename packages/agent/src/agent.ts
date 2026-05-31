@@ -141,6 +141,9 @@ async function executeTool(name: string, input: unknown, tools: AgentToolImpl): 
       case "cancelar_pedido":      return await tools.cancelarPedido(i.pedidoId, i.motivo);
       case "iniciar_devolucao":    return await tools.iniciarDevolucao(i.pedidoId, i.motivo);
       case "escalar_para_humano":  return await tools.escalarParaHumano(i.motivo);
+      case "consultar_cashback":
+        if (!tools.consultarCashback) return { saldoBRL: 0 };
+        return await tools.consultarCashback();
       case "consultar_ficha":
         if (!tools.consultarFicha) return { erro: "Ficha técnica indisponível nesta loja." };
         return await tools.consultarFicha(i.sku);

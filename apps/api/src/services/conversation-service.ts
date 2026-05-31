@@ -1,5 +1,6 @@
 import { runAgentTurn, summarizeConversation, extractProductAttributes, DEFAULT_CASCADE, PRODUCTION_TOOL_DEFS, type AgentConfig, type ConversationContext, type AgentToolImpl } from "@hubadvisor/agent";
 import { getTariff, quoteDelivery, courierQuoteForTenant } from "./delivery-service.js";
+import { cashbackBalance } from "./cashback-service.js";
 import { getPrisma, withTenant, decryptPII, resolveTenantCredentials } from "@hubadvisor/db";
 import { buildErpForTenant, getLogisticsConnector, getMessagingConnector } from "@hubadvisor/connectors";
 import { resolveErpCreds } from "../lib/erp.js";
@@ -653,6 +654,12 @@ function buildAgentTools(tenantId: string, contactId: string, conversationId: st
       const r = await startReturn(tenantId, pedidoId, motivo);
       log.info({ pedidoId, ok: r.ok }, "tool:iniciar_devolucao");
       return r;
+    },
+
+    async consultarCashback() {
+      const saldoBRL = await cashbackBalance(tenantId, contactId);
+      log.info({ saldoBRL }, "tool:consultar_cashback");
+      return { saldoBRL };
     },
 
     async escalarParaHumano(motivo) {

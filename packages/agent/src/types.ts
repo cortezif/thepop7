@@ -96,6 +96,9 @@ export interface AgentToolImpl {
 
   escalarParaHumano(motivo: string): Promise<{ escalado: boolean }>;
 
+  // Cashback / fidelidade (ADR-031). Saldo disponível da cliente atual.
+  consultarCashback?(): Promise<{ saldoBRL: number }>;
+
   // Fabricação (ADR-030 — Fase 4). Opcionais: só implementadas/oferecidas a
   // lojas com `productionEnabled`. Quando ausentes, o agent responde indisponível.
   consultarFicha?(sku: string): Promise<{

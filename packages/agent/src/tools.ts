@@ -178,6 +178,14 @@ export const TOOL_DEFS: Anthropic.Messages.Tool[] = [
     },
   },
   {
+    name: "consultar_cashback",
+    description:
+      "Consulta o saldo de CASHBACK (crédito de fidelidade) da cliente. Use quando " +
+      "ela perguntar do crédito/saldo, ou para incentivar a compra ('você tem R$X de " +
+      "cashback, dá pra usar agora antes de expirar'). Não tem argumentos — usa a cliente atual.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
     name: "escalar_para_humano",
     description:
       "Encaminha a conversa para um atendente humano. Use SEM HESITAR quando: cliente pede atendente, cliente está frustrada, situação delicada (reclamação séria, problema fiscal, caso especial), você falhou 3+ vezes em entender.",
