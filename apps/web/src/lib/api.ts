@@ -111,6 +111,19 @@ export async function downloadLabels(format: "csv" | "zpl") {
   return { missing: Number(missing ?? 0) };
 }
 
+/** Baixa o CSV do caixa do mês (com header de auth). */
+export async function downloadCashflowCsv(month: string) {
+  const res = await fetch(`/api/finance/export.csv?month=${month}&tenantSlug=${tenantSlug()}`, { headers: authHeaders() });
+  if (res.status === 401) { on401(); throw new Error("não autenticado"); }
+  if (!res.ok) throw new Error(`export → ${res.status}`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = `caixa-${month}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
 /** Baixa o CSV de pedidos com o header de auth (link <a> não manda token). */
 export async function downloadOrdersCsv() {
   const res = await fetch(`/api/orders/export.csv?tenantSlug=${tenantSlug()}`, { headers: authHeaders() });
@@ -274,11 +287,13 @@ export type MarketingReport = {
   campaigns: { total: number; sent: number; recipients: number; sentWhatsapp: number; sentEmail: number; sentSms: number };
 };
 
-export type FinanceEntry = { id: string; type: "receita" | "despesa"; category: string; description: string | null; amountBRL: number; date: string; createdAt: string };
+export type FinanceEntry = { id: string; type: "receita" | "despesa"; category: string; description: string | null; amountBRL: number; date: string; status: "pago" | "pendente"; dueDate: string | null; createdAt: string };
+export type OpenAccount = FinanceEntry & { overdue: boolean };
 export type Cashflow = {
   month: string; vendasBRL: number; ordersCount: number;
   receitasManuaisBRL: number; receitasBRL: number; despesasBRL: number; saldoBRL: number;
   byCategory: { type: "receita" | "despesa"; category: string; totalBRL: number }[];
+  aPagarBRL: number; aReceberBRL: number; vencidasBRL: number;
 };
 
 export type CampaignChannel = "whatsapp" | "email" | "sms";
@@ -380,9 +395,11 @@ export const api = {
   // Financeiro / fluxo de caixa (ADR-032)
   cashflow: (month: string) => get<Cashflow>(`/finance/cashflow?month=${month}`),
   financeEntries: (month: string) => get<FinanceEntry[]>(`/finance/entries?month=${month}`),
-  createFinanceEntry: (input: { type: "receita" | "despesa"; category: string; description?: string; amountBRL: number; date?: string }) =>
+  createFinanceEntry: (input: { type: "receita" | "despesa"; category: string; description?: string; amountBRL: number; date?: string; status?: "pago" | "pendente"; dueDate?: string }) =>
     post<FinanceEntry>(`/finance/entries`, input),
   deleteFinanceEntry: (id: string) => del<{ ok: boolean }>(`/finance/entries/${id}`),
+  openAccounts: () => get<OpenAccount[]>(`/finance/open-accounts`),
+  payFinanceEntry: (id: string) => patch<{ ok: boolean }>(`/finance/entries/${id}/pay`, {}),
   npsBoard: (band?: "promotor" | "neutro" | "detrator") =>
     get<NpsBoard>(`/metrics/nps${band ? `?band=${band}` : ""}`),
   reorder: () => get<ReorderSuggestion[]>(`/purchasing/reorder`),

@@ -63,11 +63,25 @@ export async function cashflow(tenantId: string, month: string) {
   });
   const vendasBRL = r2(paidOrders.reduce((s, o) => s + num(o.totalBRL), 0));
 
+  // Caixa REALIZADO = só lançamentos pagos (pendentes são contas a pagar/receber).
   const entries = await prisma.financialEntry.findMany({
-    where: { tenantId, date: { gte: range.start, lt: range.end } },
+    where: { tenantId, status: "pago", date: { gte: range.start, lt: range.end } },
     select: { type: true, category: true, amountBRL: true },
   });
   const sum = summarizeEntries(entries.map((e) => ({ type: e.type, category: e.category, amountBRL: num(e.amountBRL) })));
+
+  // Contas em aberto (pendentes) — visão prospectiva, global (não presa ao mês).
+  const pend = await prisma.financialEntry.findMany({
+    where: { tenantId, status: "pendente" },
+    select: { type: true, amountBRL: true, dueDate: true },
+  });
+  const today = new Date();
+  let aPagarBRL = 0, aReceberBRL = 0, vencidasBRL = 0;
+  for (const p of pend) {
+    const v = num(p.amountBRL);
+    if (p.type === "despesa") aPagarBRL += v; else aReceberBRL += v;
+    if (p.dueDate && new Date(p.dueDate) < today) vencidasBRL += v;
+  }
 
   const receitasBRL = r2(vendasBRL + sum.receitasManuaisBRL);
   return {
@@ -79,24 +93,43 @@ export async function cashflow(tenantId: string, month: string) {
     despesasBRL: sum.despesasBRL,
     saldoBRL: r2(receitasBRL - sum.despesasBRL),
     byCategory: sum.byCategory,
+    aPagarBRL: r2(aPagarBRL),
+    aReceberBRL: r2(aReceberBRL),
+    vencidasBRL: r2(vencidasBRL),
   };
 }
 
 export async function listEntries(tenantId: string, month: string) {
   const range = monthRange(month) ?? monthRange(monthKey(new Date()))!;
   const rows = await getPrisma().financialEntry.findMany({
-    where: { tenantId, date: { gte: range.start, lt: range.end } },
+    where: { tenantId, status: "pago", date: { gte: range.start, lt: range.end } },
     orderBy: { date: "desc" },
     take: 500,
   });
   return rows.map((e) => ({ ...e, amountBRL: num(e.amountBRL) }));
 }
 
+/** Contas em aberto (pendentes), ordenadas por vencimento; marca as vencidas. */
+export async function openAccounts(tenantId: string) {
+  const rows = await getPrisma().financialEntry.findMany({
+    where: { tenantId, status: "pendente" },
+    orderBy: [{ dueDate: "asc" }, { createdAt: "asc" }],
+    take: 500,
+  });
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  return rows.map((e) => ({
+    ...e, amountBRL: num(e.amountBRL),
+    overdue: !!e.dueDate && new Date(e.dueDate) < today,
+  }));
+}
+
 export async function createEntry(
   tenantId: string,
-  input: { type: EntryType; category: string; description?: string; amountBRL: number; date?: string },
+  input: { type: EntryType; category: string; description?: string; amountBRL: number; date?: string; status?: string; dueDate?: string },
 ) {
+  const pendente = input.status === "pendente";
   const date = input.date ? new Date(input.date) : new Date();
+  const due = input.dueDate ? new Date(input.dueDate) : null;
   return withTenant(tenantId, (tx) =>
     tx.financialEntry.create({
       data: {
@@ -106,9 +139,33 @@ export async function createEntry(
         description: input.description?.trim() || null,
         amountBRL: Math.abs(r2(input.amountBRL)),
         date: isNaN(date.getTime()) ? new Date() : date,
+        status: pendente ? "pendente" : "pago",
+        dueDate: due && !isNaN(due.getTime()) ? due : null,
       },
     }),
   );
+}
+
+/** Baixa uma conta pendente: vira "pago" e o caixa passa a contar na data informada. */
+export async function payEntry(tenantId: string, id: string, paidDate?: string) {
+  const d = paidDate ? new Date(paidDate) : new Date();
+  return withTenant(tenantId, async (tx) => {
+    const e = await tx.financialEntry.findFirst({ where: { id, tenantId }, select: { id: true } });
+    if (!e) throw new Error("lançamento não encontrado");
+    await tx.financialEntry.update({ where: { id }, data: { status: "pago", date: isNaN(d.getTime()) ? new Date() : d } });
+    return { ok: true };
+  });
+}
+
+/** CSV do caixa realizado do mês (lançamentos pagos). */
+export async function cashflowCsv(tenantId: string, month: string): Promise<string> {
+  const rows = await listEntries(tenantId, month);
+  const esc = (s: string) => `"${s.replace(/"/g, '""')}"`;
+  const header = "data,tipo,categoria,descricao,valor";
+  const lines = rows.map((e) =>
+    [e.date.toISOString().slice(0, 10), e.type, e.category, esc(e.description ?? ""), e.amountBRL.toFixed(2)].join(","),
+  );
+  return [header, ...lines].join("\n");
 }
 
 export async function deleteEntry(tenantId: string, id: string) {

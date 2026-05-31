@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { getPrisma } from "@hubadvisor/db";
 import { withTestTenant } from "./helpers.js";
-import { cashflow, createEntry, listEntries, deleteEntry, monthKey } from "../services/finance-service.js";
+import { cashflow, createEntry, listEntries, deleteEntry, monthKey, openAccounts, payEntry, cashflowCsv } from "../services/finance-service.js";
 
 // Fluxo de caixa (ADR-032): vendas (pedidos pagos) + lançamentos manuais. test:integration.
 
@@ -43,6 +43,41 @@ test("cashflow: soma vendas pagas do mês + receitas/despesas manuais", async ()
     const cf2 = await cashflow(tenantId, month);
     assert.equal(cf2.receitasManuaisBRL, 0);
     assert.equal(cf2.saldoBRL, 70, "200 − 130");
+
+    await prisma.financialEntry.deleteMany({ where: { tenantId } });
+  });
+});
+
+test("contas a pagar: pendente não entra no caixa; baixar move pro realizado", async () => {
+  await withTestTenant(async (tenantId) => {
+    const month = monthKey(new Date());
+    const ontem = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+
+    // Conta a pagar pendente, vencida ontem.
+    const conta = await createEntry(tenantId, { type: "despesa", category: "fornecedor", amountBRL: 300, status: "pendente", dueDate: ontem });
+
+    // Não conta no caixa realizado; aparece como a pagar/vencida.
+    const cf = await cashflow(tenantId, month);
+    assert.equal(cf.despesasBRL, 0, "pendente não entra no caixa");
+    assert.equal(cf.aPagarBRL, 300);
+    assert.equal(cf.vencidasBRL, 300, "vencida ontem");
+    assert.equal((await listEntries(tenantId, month)).length, 0, "lista do mês só mostra pagos");
+
+    const open = await openAccounts(tenantId);
+    assert.equal(open.length, 1);
+    assert.equal(open[0]!.overdue, true);
+
+    // Baixa → vira despesa realizada hoje.
+    await payEntry(tenantId, conta.id);
+    const cf2 = await cashflow(tenantId, month);
+    assert.equal(cf2.despesasBRL, 300, "após baixar, entra no caixa");
+    assert.equal(cf2.aPagarBRL, 0);
+    assert.equal((await openAccounts(tenantId)).length, 0, "não está mais em aberto");
+
+    // CSV do mês inclui o lançamento pago.
+    const csv = await cashflowCsv(tenantId, month);
+    assert.match(csv, /data,tipo,categoria,descricao,valor/);
+    assert.match(csv, /despesa,fornecedor,.*,300\.00/);
 
     await prisma.financialEntry.deleteMany({ where: { tenantId } });
   });

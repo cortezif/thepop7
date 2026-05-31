@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { Wallet, TrendingUp, TrendingDown, Plus, Trash2, ChevronLeft, ChevronRight, ShoppingBag } from "lucide-react";
+import { Wallet, TrendingUp, TrendingDown, Plus, Trash2, ChevronLeft, ChevronRight, ShoppingBag, Download, AlertTriangle, CheckCircle2, CalendarClock } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { StatCard } from "../components/StatCard";
 import { Page, Card, CardHeader, Button, Badge, EmptyState, Skeleton, inputClass } from "../components/ui";
-import { api, type Cashflow, type FinanceEntry } from "../lib/api";
+import { api, downloadCashflowCsv, type Cashflow, type FinanceEntry, type OpenAccount } from "../lib/api";
 import { formatBRL } from "../lib/utils";
 
 const DESPESA_CATS = ["fornecedor", "salario", "aluguel", "marketing", "imposto", "frete", "outro"];
@@ -27,12 +27,14 @@ export function Financeiro() {
   const [month, setMonth] = useState(thisMonth());
   const [cf, setCf] = useState<Cashflow | null>(null);
   const [entries, setEntries] = useState<FinanceEntry[] | null>(null);
+  const [open, setOpen] = useState<OpenAccount[] | null>(null);
   const [adding, setAdding] = useState(false);
 
   function load() {
     setCf(null); setEntries(null);
     api.cashflow(month).then(setCf).catch(() => setCf(null));
     api.financeEntries(month).then(setEntries).catch(() => setEntries([]));
+    api.openAccounts().then(setOpen).catch(() => setOpen([]));
   }
   useEffect(load, [month]);
 
@@ -44,7 +46,10 @@ export function Financeiro() {
           title="Financeiro"
           subtitle="Receitas de vendas entram automaticamente dos pedidos pagos. Registre despesas e outras receitas para ver o saldo do mês."
         />
-        <Button className="mt-2 shrink-0" onClick={() => setAdding((v) => !v)}><Plus className="h-4 w-4" /> Lançamento</Button>
+        <div className="mt-2 flex shrink-0 gap-2">
+          <Button variant="outline" onClick={() => downloadCashflowCsv(month)}><Download className="h-4 w-4" /> CSV</Button>
+          <Button onClick={() => setAdding((v) => !v)}><Plus className="h-4 w-4" /> Lançamento</Button>
+        </div>
       </div>
 
       <div className="mb-6 flex items-center gap-3">
@@ -63,6 +68,33 @@ export function Financeiro() {
       )}
 
       {adding && <NovoLancamento onDone={() => { setAdding(false); load(); }} />}
+
+      {open && open.length > 0 && (
+        <Card className="mb-6 border-amber-200 bg-amber-50/40">
+          <CardHeader
+            icon={CalendarClock}
+            title="Contas em aberto"
+            subtitle={cf ? `A pagar ${formatBRL(cf.aPagarBRL)} · a receber ${formatBRL(cf.aReceberBRL)}${cf.vencidasBRL > 0 ? ` · ${formatBRL(cf.vencidasBRL)} vencido` : ""}` : undefined}
+          />
+          <div className="divide-y divide-border/60">
+            {open.map((e) => (
+              <div key={e.id} className="flex items-center gap-3 p-4">
+                {e.overdue ? <AlertTriangle className="h-4 w-4 text-primary" /> : <CalendarClock className="h-4 w-4 text-muted-foreground" />}
+                <div className="min-w-0">
+                  <p className="font-medium capitalize text-foreground">{e.category}{e.description ? <span className="font-normal text-muted-foreground"> · {e.description}</span> : ""}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {e.type === "despesa" ? "a pagar" : "a receber"}
+                    {e.dueDate ? ` · vence ${new Date(e.dueDate).toLocaleDateString("pt-BR")}` : ""}
+                    {e.overdue ? " · vencida" : ""}
+                  </p>
+                </div>
+                <span className={`ml-auto font-medium ${e.type === "despesa" ? "text-primary" : "text-emerald-600"}`}>{formatBRL(e.amountBRL)}</span>
+                <Button variant="outline" onClick={() => api.payFinanceEntry(e.id).then(load)}><CheckCircle2 className="h-4 w-4" /> Baixar</Button>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {cf && cf.byCategory.length > 0 && (
         <Card className="mb-6">
@@ -110,6 +142,8 @@ function NovoLancamento({ onDone }: { onDone: () => void }) {
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [pendente, setPendente] = useState(false);
+  const [dueDate, setDueDate] = useState(new Date().toISOString().slice(0, 10));
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
@@ -121,7 +155,11 @@ function NovoLancamento({ onDone }: { onDone: () => void }) {
     if (!amt || amt <= 0) { setErr("Informe um valor válido."); return; }
     setSaving(true);
     try {
-      await api.createFinanceEntry({ type, category, description: description || undefined, amountBRL: amt, date });
+      await api.createFinanceEntry({
+        type, category, description: description || undefined, amountBRL: amt, date,
+        status: pendente ? "pendente" : "pago",
+        dueDate: pendente ? dueDate : undefined,
+      });
       onDone();
     } catch (e: any) { setErr(e?.message ?? "falha ao salvar"); }
     finally { setSaving(false); }
@@ -144,8 +182,12 @@ function NovoLancamento({ onDone }: { onDone: () => void }) {
           {cats.map((c) => <option key={c} value={c} className="capitalize">{c}</option>)}
         </select>
         <input className={inputClass} placeholder="Valor (R$)" value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" />
-        <input className={inputClass} type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        <input className={inputClass} type="date" value={pendente ? dueDate : date} onChange={(e) => (pendente ? setDueDate : setDate)(e.target.value)} title={pendente ? "Vencimento" : "Data de caixa"} />
         <input className={`${inputClass} md:col-span-2`} placeholder="Descrição (opcional)" value={description} onChange={(e) => setDescription(e.target.value)} />
+        <label className="flex items-center gap-2 text-sm md:col-span-2">
+          <input type="checkbox" checked={pendente} onChange={(e) => setPendente(e.target.checked)} />
+          É uma conta {type === "despesa" ? "a pagar" : "a receber"} (pendente) — a data acima vira o vencimento.
+        </label>
         <div className="md:col-span-2">
           <Button onClick={save} disabled={saving}><Plus className="h-4 w-4" /> {saving ? "Salvando…" : "Adicionar"}</Button>
         </div>
