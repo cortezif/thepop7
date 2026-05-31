@@ -76,6 +76,14 @@ body = body.replace(/<p><img src="([^"]+)"(?:\s+alt="([^"]*)")?[^>]*><\/p>/g,
   (m, src, alt) => `<figure class="shot"><div class="shot-bar"><i></i><i></i><i></i><span class="shot-url">painel · hubadvisor</span></div>` +
     `<div class="shot-body"><img src="${src}"></div></figure>${alt ? `<p class="shot-cap">${alt}</p>` : ""}`);
 
+// Selos de status (🟢/🟡/⚪) viram pílulas coloridas.
+body = body
+  .replace(/🟢\s*<strong>LIVE<\/strong>|🟢\s*LIVE/g, '<span class="pill live">Live</span>')
+  .replace(/🟢\s*nativo/g, '<span class="pill live">Nativo</span>')
+  .replace(/🟢\s*\(habilitada[^)]*\)/g, '<span class="pill live">Ativo</span>')
+  .replace(/🟡\s*<strong>Aguardando credencial<\/strong>|🟡\s*Aguardando(?:\s*credencial)?/g, '<span class="pill wait">Aguardando</span>')
+  .replace(/⚪\s*<strong>Opcional \/ avançado<\/strong>|⚪\s*Opcional/g, '<span class="pill opt">Opcional</span>');
+
 // 2) Sumário
 const FRONT = [["sec-legenda", "Legenda de status"], ["sec-integracoes", "Painel de integrações"], ["sec-mapa", "Mapa completo"]];
 const BACK = [["sec-glossario", "Glossário"], ["sec-papeis", "Papéis e permissões"], ["sec-faq", "Perguntas frequentes"]];
@@ -208,6 +216,13 @@ tbody tr:nth-child(even) td{ background:#fbf7f9; }
 .howto li{ counter-increment:s;position:relative;padding-left:26pt;margin:6pt 0;font-size:10pt; }
 .howto li::before{ content:counter(s);position:absolute;left:0;top:.5pt;width:17pt;height:17pt;border-radius:50%;background:var(--brand);color:#fff;font-family:'Space Grotesk';font-weight:700;font-size:8.5pt;display:flex;align-items:center;justify-content:center; }
 .howto li b{ color:var(--brand-d); }
+
+/* selos de status como pílulas */
+.pill{ display:inline-block;font-family:'Inter';font-weight:700;font-size:6.5pt;letter-spacing:.6px;text-transform:uppercase;padding:1.5pt 7pt;border-radius:20px;vertical-align:middle; }
+.pill.live{ background:#e3f5e8;color:#1f7a3d; }
+.pill.wait{ background:#fdf2e0;color:#9a6a14; }
+.pill.opt{ background:#eceef2;color:#5a6170; }
+h3 .pill, h2 .pill{ vertical-align:middle;margin-left:2pt; }
 `;
 
 const pagedSrc = readFileSync("scripts/paged.polyfill.js", "utf8");
