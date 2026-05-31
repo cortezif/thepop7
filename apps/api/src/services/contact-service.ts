@@ -26,6 +26,7 @@ export type ContactView = {
   phoneMasked: string | null;
   emailMasked: string | null;
   igHandle: string | null;
+  channel: string | null; // canal de origem (whatsapp | instagram)
   hasPhone: boolean;
   hasEmail: boolean;
   consentLGPD: boolean;
@@ -46,7 +47,7 @@ export async function listContacts(
     where: { tenantId },
     select: {
       id: true, name: true, phone: true, email: true, igHandle: true,
-      consentLGPD: true, optOuts: true, createdAt: true,
+      preferredChannel: true, consentLGPD: true, optOuts: true, createdAt: true,
     },
     orderBy: { createdAt: "desc" },
     take: 1000,
@@ -79,6 +80,7 @@ export async function listContacts(
       phoneMasked: maskPhone(decryptPII(c.phone)),
       emailMasked: maskEmail(decryptPII(c.email)),
       igHandle: c.igHandle,
+      channel: c.preferredChannel ?? (c.igHandle ? "instagram" : c.phone ? "whatsapp" : null),
       hasPhone: !!c.phone,
       hasEmail: !!c.email,
       consentLGPD: c.consentLGPD,

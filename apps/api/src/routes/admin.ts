@@ -40,6 +40,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       catalogVocab: tenant.catalogVocab ?? null,
       productionEnabled: tenant.productionEnabled,
       storeZip: (tenant.policies as any)?.storeZip ?? null,
+      storeAddress: (tenant.policies as any)?.storeAddress ?? null,
       cashback: {
         enabled: tenant.cashbackEnabled,
         pct: tenant.cashbackPct,
@@ -95,19 +96,30 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
     return { ok: true, ...data };
   });
 
-  // POST /admin/store-config — CEP de origem da loja (entregas on-demand). ADR-030.
+  // POST /admin/store-config — CEP de origem da loja (entregas on-demand, ADR-030)
+  // + endereço da loja para RETIRADA (ADR-034). Ambos opcionais.
   app.post("/store-config", adminOnly, async (req, reply) => {
-    const body = z.object({ tenantSlug: z.string(), storeZip: z.string().nullable() }).safeParse(req.body);
+    const body = z.object({
+      tenantSlug: z.string(),
+      storeZip: z.string().nullable().optional(),
+      storeAddress: z.string().nullable().optional(),
+    }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
     const tenant = await resolveTenant(body.data.tenantSlug);
     if (!tenant) return reply.code(404).send({ error: "tenant not found" });
-    const zip = (body.data.storeZip ?? "").replace(/\D/g, "").slice(0, 8) || null;
     const policies = { ...((tenant.policies as Record<string, unknown>) ?? {}) };
-    if (zip) policies.storeZip = zip; else delete policies.storeZip;
+    if (body.data.storeZip !== undefined) {
+      const zip = (body.data.storeZip ?? "").replace(/\D/g, "").slice(0, 8) || null;
+      if (zip) policies.storeZip = zip; else delete policies.storeZip;
+    }
+    if (body.data.storeAddress !== undefined) {
+      const addr = (body.data.storeAddress ?? "").trim().slice(0, 300) || null;
+      if (addr) policies.storeAddress = addr; else delete policies.storeAddress;
+    }
     await withTenant(tenant.id, async (tx) => {
       await tx.tenant.update({ where: { id: tenant.id }, data: { policies: policies as any } });
     });
-    return { ok: true, storeZip: zip };
+    return { ok: true, storeZip: (policies.storeZip as string) ?? null, storeAddress: (policies.storeAddress as string) ?? null };
   });
 
   // GET /admin/segment-presets — tipos de negócio disponíveis (ADR-029)

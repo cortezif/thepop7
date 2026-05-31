@@ -75,7 +75,7 @@ export async function mergeContacts(tx: Tx, tenantId: string, idA: string, idB: 
  */
 export async function resolveContact(
   tx: Tx, tenantId: string,
-  ids: { phone?: string; igHandle?: string; email?: string; name?: string }
+  ids: { phone?: string; igHandle?: string; email?: string; name?: string; preferredChannel?: string }
 ) {
   // Busca por HASH (phone/email cifrados não são pesquisáveis por texto). igHandle é texto puro.
   const ors: Prisma.ContactWhereInput[] = [];
@@ -88,11 +88,14 @@ export async function resolveContact(
     : [];
 
   if (matches.length === 0) {
+    // Novo cliente entrando pelo WhatsApp/IG → já registra com canal de origem
+    // (ADR-034). Aparece no cadastro de clientes (CRM) automaticamente.
     return tx.contact.create({
       data: {
         tenantId, igHandle: ids.igHandle, name: ids.name,
         phone: encryptPII(ids.phone), phoneHash: hashPII(ids.phone),
         email: encryptPII(ids.email), emailHash: hashPII(ids.email),
+        preferredChannel: ids.preferredChannel === "whatsapp" || ids.preferredChannel === "instagram" ? ids.preferredChannel : undefined,
       },
     });
   }
@@ -112,6 +115,7 @@ export async function resolveContact(
   if (ids.igHandle && !canonical!.igHandle) patch.igHandle = ids.igHandle;
   if (ids.email && !canonical!.emailHash) { patch.email = encryptPII(ids.email); patch.emailHash = hashPII(ids.email); }
   if (ids.name && !canonical!.name) patch.name = ids.name;
+  if ((ids.preferredChannel === "whatsapp" || ids.preferredChannel === "instagram") && !canonical!.preferredChannel) patch.preferredChannel = ids.preferredChannel;
   if (Object.keys(patch).length) {
     return tx.contact.update({ where: { id: primaryId }, data: patch });
   }

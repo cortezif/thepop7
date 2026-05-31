@@ -13,6 +13,7 @@ export function Settings() {
       <SegmentConfig />
       <CashbackConfig />
       <WinbackConfig />
+      <StorePickupConfig />
       <Retention />
       <IdentityMerge />
       <TrayIntegration />
@@ -313,6 +314,45 @@ function CashbackConfig() {
         <label className="text-xs font-medium text-muted-foreground">% por compra<br /><input className={fld} value={pct} onChange={(e) => setPct(e.target.value)} inputMode="decimal" /></label>
         <label className="text-xs font-medium text-muted-foreground">Validade (dias)<br /><input className={fld} value={expiry} onChange={(e) => setExpiry(e.target.value)} inputMode="numeric" /></label>
         <label className="text-xs font-medium text-muted-foreground">Teto de resgate (%)<br /><input className={fld} value={maxRedeem} onChange={(e) => setMaxRedeem(e.target.value)} inputMode="decimal" /></label>
+        <button onClick={save} disabled={busy} className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">{busy ? "Salvando…" : "Salvar"}</button>
+      </div>
+      {msg && <p className="mt-3 text-sm text-muted-foreground">{msg}</p>}
+    </div>
+  );
+}
+
+function StorePickupConfig() {
+  const [addr, setAddr] = useState("");
+  const [saved, setSaved] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.getConfig().then((c) => { if (c.storeAddress) { setAddr(c.storeAddress); setSaved(c.storeAddress); } }).catch(() => {});
+  }, []);
+
+  async function save() {
+    setBusy(true); setMsg(null);
+    try { const r = await api.setStoreAddress(addr.trim() || null); setSaved(r.storeAddress); setMsg("Endereço salvo."); }
+    catch (e) { setMsg(String(e)); } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="mt-6 rounded-lg border border-border bg-background p-6">
+      <div className="flex items-center gap-2">
+        <Store size={18} className="text-primary" />
+        <h2 className="font-serif text-lg font-bold">Retirada na loja</h2>
+        {saved && <span className="ml-auto rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800">Ativa</span>}
+      </div>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Informe o endereço (e horário) da loja. Com ele preenchido, a IA pode oferecer a opção de o cliente
+        <b> retirar o pedido na loja</b> (sem frete) — e diz onde e quando buscar.
+      </p>
+      <div className="mt-4 flex flex-wrap items-end gap-3">
+        <input
+          className="min-w-[320px] flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+          placeholder="Ex.: Rua das Flores, 123 — Centro. Seg–Sex 9h às 18h, Sáb 9h às 13h."
+          value={addr} onChange={(e) => setAddr(e.target.value)} />
         <button onClick={save} disabled={busy} className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">{busy ? "Salvando…" : "Salvar"}</button>
       </div>
       {msg && <p className="mt-3 text-sm text-muted-foreground">{msg}</p>}

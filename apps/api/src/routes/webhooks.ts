@@ -37,6 +37,11 @@ export const webhookRoutes: FastifyPluginAsync = async (app) => {
       // WhatsApp Cloud API
       if (value?.messaging_product === "whatsapp") {
         const msgs = value?.messages ?? [];
+        // O payload traz o nome de perfil de quem mandou (value.contacts[].profile.name)
+        // — usamos pra já cadastrar o cliente com nome (ADR-034).
+        const waContacts = value?.contacts ?? [];
+        const nameOf = (waId: string): string | undefined =>
+          waContacts.find((c: any) => c?.wa_id === waId)?.profile?.name || undefined;
         for (const msg of msgs) {
           if (msg.type !== "text" && msg.type !== "image") continue;
           const from = msg.from; // E.164 sem +
@@ -56,7 +61,7 @@ export const webhookRoutes: FastifyPluginAsync = async (app) => {
           const tenantSlug = await resolveTenantByPhone(toPhone);
           if (!tenantSlug) { app.log.warn({ toPhone }, "nenhum tenant para o número WA"); continue; }
           await handleIncomingMessage(
-            { tenantSlug, channel: "whatsapp", contact: { phone: `+${from}` }, text },
+            { tenantSlug, channel: "whatsapp", contact: { phone: `+${from}`, name: nameOf(from) }, text },
             app.log,
           );
         }

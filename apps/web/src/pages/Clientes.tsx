@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Users, UserPlus, Search, Gift, ShoppingBag, MessageCircle, Mail, ShieldCheck, BellOff } from "lucide-react";
+import { Users, UserPlus, Search, Gift, ShoppingBag, MessageCircle, Mail, ShieldCheck, BellOff, Instagram } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { StatCard } from "../components/StatCard";
 import { Page, Card, CardHeader, Button, Badge, EmptyState, Skeleton, inputClass } from "../components/ui";
@@ -105,7 +105,11 @@ function Row({ c, onChange }: { c: ContactRow; onChange: () => void }) {
   return (
     <tr className="border-b border-border/60 last:border-0 hover:bg-muted/30">
       <td className="px-4 py-3">
-        <div className="font-medium text-foreground">{c.name ?? "—"}</div>
+        <div className="flex items-center gap-1.5 font-medium text-foreground">
+          {c.name ?? "—"}
+          {c.channel === "whatsapp" && <Badge tone="success"><MessageCircle className="h-3 w-3" /> WhatsApp</Badge>}
+          {c.channel === "instagram" && <Badge tone="accent"><Instagram className="h-3 w-3" /> Instagram</Badge>}
+        </div>
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           {c.consentLGPD ? <Badge tone="success"><ShieldCheck className="h-3 w-3" /> consentido</Badge> : <span>sem consentimento</span>}
         </div>

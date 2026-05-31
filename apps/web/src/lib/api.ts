@@ -268,7 +268,7 @@ export type Message = {
 
 export type ContactRow = {
   id: string; name: string | null; phoneMasked: string | null; emailMasked: string | null;
-  igHandle: string | null; hasPhone: boolean; hasEmail: boolean;
+  igHandle: string | null; channel: string | null; hasPhone: boolean; hasEmail: boolean;
   consentLGPD: boolean; optOuts: string[];
   cashbackBRL: number; ordersCount: number; totalSpentBRL: number;
   lastOrderAt: string | null; createdAt: string;
@@ -354,7 +354,7 @@ export const api = {
   deleteProduct: (id: string) => del<{ ok: boolean }>(`/catalog/products/${id}`),
   syncCatalog: () => post<{ ok: boolean; upserted: number }>(`/catalog/sync`, {}),
   cacheStats: () => get<any>(`/admin/cache/stats`),
-  getConfig: () => get<{ aiEnabled: boolean; monthlyAIBudgetBRL: number; autoApproveMaxBRL: number; retentionDays: number | null; orderRetentionDays: number | null; segment?: string; catalogVocab?: { styles?: string[]; occasions?: string[] } | null; productionEnabled?: boolean; storeZip?: string | null; cashback?: { enabled: boolean; pct: number; expiryDays: number; maxRedeemPct: number }; winback?: { enabled: boolean; inactiveDays: number } }>(`/admin/config`),
+  getConfig: () => get<{ aiEnabled: boolean; monthlyAIBudgetBRL: number; autoApproveMaxBRL: number; retentionDays: number | null; orderRetentionDays: number | null; segment?: string; catalogVocab?: { styles?: string[]; occasions?: string[] } | null; productionEnabled?: boolean; storeZip?: string | null; storeAddress?: string | null; cashback?: { enabled: boolean; pct: number; expiryDays: number; maxRedeemPct: number }; winback?: { enabled: boolean; inactiveDays: number } }>(`/admin/config`),
   setWinbackConfig: (payload: { enabled?: boolean; inactiveDays?: number }) =>
     post<{ ok: boolean }>(`/admin/winback-config`, payload),
   sendWinback: (inactiveDays?: number) =>
@@ -362,6 +362,7 @@ export const api = {
   setCashbackConfig: (payload: { enabled?: boolean; pct?: number; expiryDays?: number; maxRedeemPct?: number }) =>
     post<{ ok: boolean }>(`/admin/cashback-config`, payload),
   setStoreZip: (storeZip: string | null) => post<{ ok: boolean; storeZip: string | null }>(`/admin/store-config`, { storeZip }),
+  setStoreAddress: (storeAddress: string | null) => post<{ ok: boolean; storeAddress: string | null }>(`/admin/store-config`, { storeAddress }),
   // Clientes / CRM (ADR-031)
   contacts: (params?: { q?: string; optedOut?: boolean; withCashback?: boolean }) => {
     const qs = new URLSearchParams();

@@ -1,8 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { getPrisma } from "@hubadvisor/db";
+import { getPrisma, withTenant } from "@hubadvisor/db";
 import { withTestTenant } from "./helpers.js";
 import { listContacts, contactStats, createContactManual, updateContactConsent } from "../services/contact-service.js";
+import { resolveContact } from "../services/identity-service.js";
 
 // Cadastro de clientes / CRM (ADR-031): criação cifrada+dedup, agregados
 // (cashback/pedidos) e gestão de consentimento. test:integration (Postgres).
@@ -42,5 +43,26 @@ test("CRM: cria (dedup), agrega cashback/pedidos e gere opt-out", async () => {
     assert.equal(stats2.reachableWhatsapp, 0);
 
     await prisma.cashbackEntry.deleteMany({ where: { tenantId } });
+  });
+});
+
+test("auto-cadastro: contato do WhatsApp/IG entra no CRM com nome e canal de origem (ADR-034)", async () => {
+  await withTestTenant(async (tenantId) => {
+    // Chegou pelo WhatsApp com nome de perfil → cria já cadastrado.
+    const wa = await withTenant(tenantId, (tx) => resolveContact(tx, tenantId, { phone: "+5583999990001", name: "Maria do WhatsApp", preferredChannel: "whatsapp" }));
+    // Chegou pelo Instagram (sem nome) → cria com canal instagram.
+    await withTenant(tenantId, (tx) => resolveContact(tx, tenantId, { igHandle: "ig_user_123", preferredChannel: "instagram" }));
+
+    const list = await listContacts(tenantId);
+    assert.equal(list.length, 2, "ambos no cadastro de clientes");
+    const maria = list.find((c) => c.id === wa.id)!;
+    assert.equal(maria.name, "Maria do WhatsApp");
+    assert.equal(maria.channel, "whatsapp");
+    const ig = list.find((c) => c.igHandle === "ig_user_123")!;
+    assert.equal(ig.channel, "instagram");
+
+    // Reentrada pelo mesmo telefone não duplica e não apaga o canal já gravado.
+    await withTenant(tenantId, (tx) => resolveContact(tx, tenantId, { phone: "+5583999990001", preferredChannel: "whatsapp" }));
+    assert.equal((await listContacts(tenantId)).length, 2, "não duplicou");
   });
 });

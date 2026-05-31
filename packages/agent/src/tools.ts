@@ -114,11 +114,12 @@ export const TOOL_DEFS: Anthropic.Messages.Tool[] = [
     name: "criar_pedido",
     description:
       "Cria o pedido com os itens escolhidos e gera o PIX pra pagamento. " +
-      "Use SÓ quando a cliente confirmou claramente que quer fechar a compra, " +
-      "informou o CEP e escolheu o frete. Retorna o código PIX copia-e-cola.",
+      "Use SÓ quando a cliente confirmou claramente que quer fechar a compra " +
+      "e escolheu como receber: entrega (informe o CEP) OU retirada na loja " +
+      "(retiradaNaLoja=true, sem frete). Retorna o código PIX copia-e-cola.",
     input_schema: {
       type: "object",
-      required: ["itens", "cep"],
+      required: ["itens"],
       properties: {
         itens: {
           type: "array",
@@ -131,7 +132,8 @@ export const TOOL_DEFS: Anthropic.Messages.Tool[] = [
             },
           },
         },
-        cep:          { type: "string", description: "CEP de entrega, só dígitos" },
+        cep:          { type: "string", description: "CEP de entrega, só dígitos. Obrigatório para entrega; dispensável na retirada na loja." },
+        retiradaNaLoja: { type: "boolean", description: "true quando a cliente prefere RETIRAR o pedido na loja em vez de receber em casa — frete fica R$0. Informe o endereço/horário da loja (está nas políticas da loja). Não precisa de CEP." },
         servicoFrete: { type: "string", description: "Serviço de transportadora escolhido (ex: 'Correios Sedex'). Opcional." },
         entregaPropria: { type: "boolean", description: "true se a entrega for própria (motoboy/carro da loja, tabela de faixas) em vez de transportadora. Use o que a cliente escolheu." },
         distanciaKm:    { type: "number", description: "Distância até a cliente em km. Obrigatório quando entregaPropria=true (calcula moto/carro e o valor)." },

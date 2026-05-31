@@ -80,7 +80,9 @@ export interface AgentToolImpl {
 
   criarPedido(input: {
     itens: Array<{ sku: string; quantidade: number }>;
-    cep: string;
+    cep?: string;
+    // Retirada na loja (ADR-034): sem frete, cliente busca no balcão.
+    retiradaNaLoja?: boolean;
     servicoFrete?: string;
     // Fabricação (ADR-030 — Fase 4): entrega própria no lugar da transportadora.
     entregaPropria?: boolean;

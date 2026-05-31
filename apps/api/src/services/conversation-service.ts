@@ -37,6 +37,7 @@ export async function handleIncomingMessage(dto: IncomingDTO, log: FastifyBaseLo
       phone:    dto.contact.phone,
       igHandle: dto.contact.igHandle,
       name:     dto.contact.name,
+      preferredChannel: dto.channel === "manual" ? undefined : dto.channel,
     });
 
     let conversation = await tx.conversation.findFirst({
@@ -579,10 +580,20 @@ function buildAgentTools(tenantId: string, contactId: string, conversationId: st
         orderVol += (it.quantidade ?? 1) * (dbProduct.deliveryVolume ?? 1);
       }
 
-      // Frete: entrega própria (motoboy/carro da loja) OU transportadora (Melhor Envio).
+      // Frete: retirada na loja, entrega própria (motoboy/carro), entregador on-demand
+      // ou transportadora (Melhor Envio).
       let shipBRL = 0;
       let shipCarrier: string | undefined;
-      if (input.entregaPropria) {
+      // Retirada na loja (ADR-034): sem frete; não precisa de CEP.
+      const retira = !!input.retiradaNaLoja;
+      const shippingZip = retira ? (input.cep || opts.storeZip || "00000000") : (input.cep ?? "");
+      if (!retira && !input.cep) {
+        return { error: "Para entrega preciso do CEP. Se a cliente prefere retirar na loja, refaça com retiradaNaLoja=true." } as any;
+      }
+      if (retira) {
+        shipBRL = 0;
+        shipCarrier = "Retirada na loja";
+      } else if (input.entregaPropria) {
         const tariff = await getTariff(tenantId);
         if (!tariff.configured) {
           return { error: "Entrega própria não está configurada nesta loja. Refaça o pedido com frete de transportadora (sem entregaPropria)." } as any;
@@ -599,7 +610,7 @@ function buildAgentTools(tenantId: string, contactId: string, conversationId: st
         const tariff = await getTariff(tenantId);
         const modal = orderVol <= tariff.motoVolumeLimit ? "moto" : "carro";
         const itemsValueBRL = items.reduce((s, i) => s + i.unitPriceBRL * i.quantity, 0);
-        const cq = await courierQuoteForTenant(tenantId, { fromCep, toCep: input.cep, modal, itemsValueBRL });
+        const cq = await courierQuoteForTenant(tenantId, { fromCep, toCep: shippingZip, modal, itemsValueBRL });
         if (!cq.ok) {
           log.warn({ reason: cq.reason }, "tool:criar_pedido — cotação de entregador falhou");
           return { error: `Não consegui cotar o entregador (${cq.reason}). Ofereça outra forma de entrega (própria ou transportadora).` } as any;
@@ -608,7 +619,7 @@ function buildAgentTools(tenantId: string, contactId: string, conversationId: st
         shipCarrier = `Entregador ${cq.modal}${cq.mock ? " (simulado)" : ` (${cq.provider})`}`;
       } else {
         const quotes = await logistics.quote({
-          fromZip: "01310-100", toZip: input.cep,
+          fromZip: "01310-100", toZip: shippingZip,
           items: [{ weightG: 500, widthCm: 30, heightCm: 5, lengthCm: 30, valueBRL: 200 }],
         });
         const chosen = input.servicoFrete
@@ -626,7 +637,7 @@ function buildAgentTools(tenantId: string, contactId: string, conversationId: st
         // Cria o pedido como PENDENTE (sem PIX) e parqueia pra aprovação humana.
         const pending = await createOrder({
           tenantId, contactId, items,
-          shippingZip: input.cep,
+          shippingZip,
           shippingBRL: shipBRL,
           carrier: shipCarrier,
           pendingApproval: true,
@@ -647,7 +658,7 @@ function buildAgentTools(tenantId: string, contactId: string, conversationId: st
 
       const result = await createOrder({
         tenantId, contactId, items,
-        shippingZip: input.cep,
+        shippingZip,
         shippingBRL: shipBRL,
         carrier: shipCarrier,
         desiredDate: input.dataDesejada,

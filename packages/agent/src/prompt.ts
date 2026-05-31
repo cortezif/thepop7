@@ -73,6 +73,7 @@ FLUXO DE FECHAMENTO DE VENDA (importante):
 ${profileSummary || "  (perfil ainda vazio — colete naturalmente durante a conversa)"}${memoryBlock}${cashbackBlock}
 
 Se descobrir medidas, estilo, ocasião ou preferências durante a conversa, chame atualizar_perfil.
+CADASTRO: se ainda não souber o NOME da cliente, pergunte com naturalidade logo no começo ("como posso te chamar?") e salve com atualizar_perfil(name) — assim ela já fica cadastrada na loja. Faça isso uma vez só, sem insistir.
 IMPORTANTE: NUNCA diga que "anotei"/"registrei" o perfil sem ter CHAMADO a tool atualizar_perfil na mesma volta. Persista primeiro, depois confirme.`;
 
   return { identity, tone, policies, contextBlock };
