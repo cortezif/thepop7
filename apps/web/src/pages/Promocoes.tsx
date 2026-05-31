@@ -3,7 +3,7 @@ import { Megaphone, Send, Users, Mail, MessageCircle, Smartphone, CheckCircle2, 
 import { PageHeader } from "../components/PageHeader";
 import { StatCard } from "../components/StatCard";
 import { Page, Card, CardHeader, Button, Badge, EmptyState, Skeleton, Tabs, inputClass } from "../components/ui";
-import { api, type Campaign, type CampaignChannel, type MarketingReport } from "../lib/api";
+import { api, type Campaign, type CampaignChannel, type CampaignAudience, type MarketingReport } from "../lib/api";
 import { formatBRL } from "../lib/utils";
 
 type Tab = "campanhas" | "nova" | "resultados";
@@ -159,7 +159,8 @@ function Lista() {
               const meta = CHANNELS.find((x) => x.key === ch)!;
               return <Badge key={ch} tone="neutral"><meta.Icon className="h-3 w-3" /> {meta.label}</Badge>;
             })}
-            {c.onlyBuyers && <Badge tone="neutral"><Users className="h-3 w-3" /> só compradores</Badge>}
+            {c.audience === "compradores" && <Badge tone="neutral"><Users className="h-3 w-3" /> compradores</Badge>}
+            {c.audience === "inativos" && <Badge tone="accent"><Users className="h-3 w-3" /> recompra · {c.inactiveDays}d+ inativos</Badge>}
             {c.status === "enviada" && (
               <span className="ml-auto">
                 {c.recipients} contatos · WhatsApp {c.sentWhatsapp} · e-mail {c.sentEmail} · SMS {c.sentSms}
@@ -178,12 +179,16 @@ function Nova({ onDone }: { onDone: () => void }) {
   const [message, setMessage] = useState("");
   const [subject, setSubject] = useState("");
   const [channels, setChannels] = useState<CampaignChannel[]>(["whatsapp"]);
-  const [onlyBuyers, setOnlyBuyers] = useState(false);
+  const [audience, setAudience] = useState<CampaignAudience>("todos");
+  const [inactiveDays, setInactiveDays] = useState(60);
   const [preview, setPreview] = useState<{ total: number; withPhone: number; withEmail: number } | null>(null);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
-  useEffect(() => { api.segmentPreview(onlyBuyers).then(setPreview).catch(() => setPreview(null)); }, [onlyBuyers]);
+  useEffect(() => {
+    setPreview(null);
+    api.segmentPreview(audience, audience === "inativos" ? inactiveDays : undefined).then(setPreview).catch(() => setPreview(null));
+  }, [audience, inactiveDays]);
 
   function toggle(ch: CampaignChannel) {
     setChannels((cur) => cur.includes(ch) ? cur.filter((x) => x !== ch) : [...cur, ch]);
@@ -195,7 +200,7 @@ function Nova({ onDone }: { onDone: () => void }) {
     if (channels.length === 0) { setErr("Selecione ao menos um canal."); return; }
     setSaving(true);
     try {
-      const c = await api.createCampaign({ title, message, subject: subject || undefined, channels, onlyBuyers });
+      const c = await api.createCampaign({ title, message, subject: subject || undefined, channels, audience, inactiveDays: audience === "inativos" ? inactiveDays : undefined });
       if (thenSend) await api.sendCampaign(c.id);
       onDone();
     } catch (e: any) { setErr(e?.message ?? "falha ao salvar"); }
@@ -240,10 +245,31 @@ function Nova({ onDone }: { onDone: () => void }) {
           </div>
         )}
 
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={onlyBuyers} onChange={(e) => setOnlyBuyers(e.target.checked)} />
-          Enviar só para quem já comprou
-        </label>
+        <div>
+          <label className="mb-1 block text-sm font-medium">Público</label>
+          <div className="flex flex-wrap gap-2">
+            {([
+              { key: "todos", label: "Todos os clientes" },
+              { key: "compradores", label: "Quem já comprou" },
+              { key: "inativos", label: "Recompra (inativos)" },
+            ] as { key: CampaignAudience; label: string }[]).map((a) => (
+              <button key={a.key} type="button" onClick={() => setAudience(a.key)}
+                className={`rounded-lg border px-3 py-2 text-sm transition-colors ${
+                  audience === a.key ? "border-primary bg-accent-soft text-primary-strong" : "border-border text-muted-foreground hover:bg-muted/60"
+                }`}>
+                {a.label}
+              </button>
+            ))}
+          </div>
+          {audience === "inativos" && (
+            <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+              Sem comprar há
+              <input type="number" min={1} className={`${inputClass} w-20`} value={inactiveDays}
+                onChange={(e) => setInactiveDays(Math.max(1, Number(e.target.value) || 1))} />
+              dias ou mais. Respeita o opt-out de “recompra”.
+            </div>
+          )}
+        </div>
 
         {preview && (
           <div className="rounded-lg bg-muted/40 px-4 py-3 text-sm text-muted-foreground">

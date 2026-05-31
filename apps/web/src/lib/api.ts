@@ -275,9 +275,11 @@ export type MarketingReport = {
 };
 
 export type CampaignChannel = "whatsapp" | "email" | "sms";
+export type CampaignAudience = "todos" | "compradores" | "inativos";
 export type Campaign = {
   id: string; title: string; message: string; subject: string | null;
   channels: CampaignChannel[]; onlyBuyers: boolean;
+  audience: CampaignAudience; inactiveDays: number | null;
   status: "rascunho" | "enviada";
   recipients: number; sentWhatsapp: number; sentEmail: number; sentSms: number; skipped: number;
   sentAt: string | null; createdAt: string;
@@ -340,9 +342,10 @@ export const api = {
   // Promoções / broadcast (ADR-031)
   marketingReport: () => get<MarketingReport>(`/marketing/report`),
   campaigns: () => get<Campaign[]>(`/marketing/campaigns`),
-  segmentPreview: (onlyBuyers: boolean) =>
-    get<{ total: number; withPhone: number; withEmail: number }>(`/marketing/segment-preview?onlyBuyers=${onlyBuyers}`),
-  createCampaign: (input: { title: string; message: string; subject?: string; channels: CampaignChannel[]; onlyBuyers?: boolean }) =>
+  segmentPreview: (audience: CampaignAudience, inactiveDays?: number) =>
+    get<{ total: number; withPhone: number; withEmail: number }>(
+      `/marketing/segment-preview?audience=${audience}${inactiveDays ? `&inactiveDays=${inactiveDays}` : ""}`),
+  createCampaign: (input: { title: string; message: string; subject?: string; channels: CampaignChannel[]; audience?: CampaignAudience; inactiveDays?: number }) =>
     post<Campaign>(`/marketing/campaigns`, input),
   sendCampaign: (id: string) => post<Campaign>(`/marketing/campaigns/${id}/send`, {}),
   cashbackNudgePreview: (withinDays = 5) =>

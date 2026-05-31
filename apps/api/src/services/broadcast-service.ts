@@ -9,14 +9,26 @@ import { getSmsCreds } from "./integration-service.js";
 import { expiringSoon, markNudged } from "./cashback-service.js";
 
 export type Channel = "whatsapp" | "email" | "sms";
-export type SegmentFilter = { onlyBuyers?: boolean };
+export type Audience = "todos" | "compradores" | "inativos";
+export type SegmentFilter = { onlyBuyers?: boolean; inactiveDays?: number; excludeOptOuts?: string[] };
+
+export const DEFAULT_INACTIVE_DAYS = 60;
+
+/** Traduz a audiência da campanha em filtro de segmento. */
+export function filterForAudience(audience: Audience, inactiveDays?: number): SegmentFilter {
+  if (audience === "compradores") return { onlyBuyers: true };
+  // Recompra: inativos há N dias; respeita também o opt-out "recompra".
+  if (audience === "inativos") return { inactiveDays: inactiveDays ?? DEFAULT_INACTIVE_DAYS, excludeOptOuts: ["marketing", "recompra"] };
+  return {};
+}
 
 export type CampaignInput = {
   title: string;
   message: string;
   subject?: string;
   channels: Channel[];
-  onlyBuyers?: boolean;
+  audience?: Audience;
+  inactiveDays?: number;
 };
 
 const VALID_CHANNELS: Channel[] = ["whatsapp", "email", "sms"];
@@ -27,23 +39,35 @@ export function sanitizeChannels(channels: unknown): Channel[] {
   return [...new Set(out)];
 }
 
-// Contatos elegíveis: do tenant, que NÃO optaram por sair de "marketing".
-// onlyBuyers → apenas quem já tem ao menos um pedido.
+// Contatos elegíveis: do tenant, que NÃO optaram por sair dos canais pedidos.
+// onlyBuyers/inactiveDays → restringe a quem já comprou (e há quanto tempo).
 // O opt-out é filtrado em JS: o Prisma `NOT { has }` exclui até arrays vazios.
 async function segmentContacts(tenantId: string, filter: SegmentFilter) {
-  const rows = await getPrisma().contact.findMany({
-    where: {
-      tenantId,
-      ...(filter.onlyBuyers ? { orders: { some: {} } } : {}),
-    },
+  const prisma = getPrisma();
+  const needBuyers = filter.onlyBuyers || filter.inactiveDays != null;
+  const rows = await prisma.contact.findMany({
+    where: { tenantId, ...(needBuyers ? { orders: { some: {} } } : {}) },
     select: { id: true, name: true, phone: true, email: true, igHandle: true, optOuts: true },
   });
-  return rows.filter((c) => !c.optOuts.includes("marketing"));
+  const exclude = filter.excludeOptOuts ?? ["marketing"];
+  let list = rows.filter((c) => !exclude.some((o) => c.optOuts.includes(o)));
+
+  if (filter.inactiveDays != null) {
+    const cutoff = new Date(Date.now() - filter.inactiveDays * 86_400_000);
+    const last = await prisma.order.groupBy({
+      by: ["contactId"],
+      where: { tenantId, contactId: { in: list.map((c) => c.id) } },
+      _max: { createdAt: true },
+    });
+    const lastBy = new Map(last.map((o) => [o.contactId, o._max.createdAt]));
+    list = list.filter((c) => { const d = lastBy.get(c.id); return d != null && d <= cutoff; });
+  }
+  return list;
 }
 
-// Quantos contatos o segmento alcança, por canal disponível.
-export async function previewSegment(tenantId: string, filter: SegmentFilter) {
-  const contacts = await segmentContacts(tenantId, filter);
+// Quantos contatos a audiência alcança, por canal disponível.
+export async function previewSegment(tenantId: string, audience: Audience = "todos", inactiveDays?: number) {
+  const contacts = await segmentContacts(tenantId, filterForAudience(audience, inactiveDays));
   let withPhone = 0, withEmail = 0;
   for (const c of contacts) {
     if (c.phone) withPhone++;
@@ -54,6 +78,7 @@ export async function previewSegment(tenantId: string, filter: SegmentFilter) {
 
 export async function createCampaign(tenantId: string, input: CampaignInput) {
   const channels = sanitizeChannels(input.channels);
+  const audience: Audience = input.audience ?? "todos";
   return withTenant(tenantId, (tx) =>
     tx.marketingCampaign.create({
       data: {
@@ -62,7 +87,9 @@ export async function createCampaign(tenantId: string, input: CampaignInput) {
         message: input.message.trim(),
         subject: input.subject?.trim() || null,
         channels,
-        onlyBuyers: !!input.onlyBuyers,
+        audience,
+        inactiveDays: audience === "inativos" ? (input.inactiveDays ?? DEFAULT_INACTIVE_DAYS) : null,
+        onlyBuyers: audience !== "todos",
       },
     }),
   );
@@ -90,7 +117,7 @@ export async function sendCampaign(tenantId: string, campaignId: string) {
   enterCredentials(await resolveTenantCredentials(tenantId));
   const smsCreds = (await getSmsCreds(tenantId)) ?? undefined;
 
-  const contacts = await segmentContacts(tenantId, { onlyBuyers: camp.onlyBuyers });
+  const contacts = await segmentContacts(tenantId, filterForAudience(camp.audience as Audience, camp.inactiveDays ?? undefined));
   let sentWhatsapp = 0, sentEmail = 0, sentSms = 0, skipped = 0;
 
   for (const c of contacts) {

@@ -15,7 +15,8 @@ const campaignBody = z.object({
   message: z.string().min(1),
   subject: z.string().nullable().optional(),
   channels: z.array(z.enum(["whatsapp", "email", "sms"])).min(1),
-  onlyBuyers: z.boolean().optional(),
+  audience: z.enum(["todos", "compradores", "inativos"]).optional(),
+  inactiveDays: z.number().int().min(1).max(3650).optional(),
 });
 
 export const marketingRoutes: FastifyPluginAsync = async (app) => {
@@ -24,8 +25,10 @@ export const marketingRoutes: FastifyPluginAsync = async (app) => {
   app.get("/report", async (req) => marketingReport(req.auth!.tenantId));
 
   app.get("/segment-preview", async (req) => {
-    const onlyBuyers = (req.query as any)?.onlyBuyers === "true";
-    return previewSegment(req.auth!.tenantId, { onlyBuyers });
+    const q = req.query as any;
+    const audience = ["todos", "compradores", "inativos"].includes(q?.audience) ? q.audience : "todos";
+    const inactiveDays = q?.inactiveDays ? Number(q.inactiveDays) : undefined;
+    return previewSegment(req.auth!.tenantId, audience, inactiveDays);
   });
 
   app.post("/campaigns", async (req, reply) => {
@@ -38,7 +41,8 @@ export const marketingRoutes: FastifyPluginAsync = async (app) => {
       message: body.data.message,
       subject: body.data.subject ?? undefined,
       channels,
-      onlyBuyers: body.data.onlyBuyers,
+      audience: body.data.audience,
+      inactiveDays: body.data.inactiveDays,
     });
   });
 

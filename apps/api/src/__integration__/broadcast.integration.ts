@@ -19,7 +19,7 @@ test("broadcast: segmenta (exclui opt-out de marketing) e envia por canal dispon
     // C: só e-mail → elegível, mas sem telefone
     await prisma.contact.create({ data: { tenantId, name: "Cao", email: encryptPII("cao@ex.com") } });
 
-    const seg = await previewSegment(tenantId, {});
+    const seg = await previewSegment(tenantId, "todos");
     assert.equal(seg.total, 2, "Ana + Cao (Bia excluída por opt-out)");
     assert.equal(seg.withPhone, 1, "só Ana tem telefone");
     assert.equal(seg.withEmail, 1, "só Cao tem e-mail");
@@ -38,6 +38,35 @@ test("broadcast: segmenta (exclui opt-out de marketing) e envia por canal dispon
 
     // reenvio bloqueado
     await assert.rejects(() => sendCampaign(tenantId, camp.id), /já enviada/);
+
+    await prisma.marketingCampaign.deleteMany({ where: { tenantId } });
+  });
+});
+
+test("winback: audiência 'inativos' pega só quem não compra há N dias e respeita opt-out recompra", async () => {
+  await withTestTenant(async (tenantId) => {
+    const old = new Date(Date.now() - 90 * 86_400_000);
+    // Ana: comprou há 90d → inativa, elegível
+    const ana = await prisma.contact.create({ data: { tenantId, name: "Ana", phone: encryptPII("5583999990001") } });
+    await prisma.order.create({ data: { tenantId, contactId: ana.id, status: "paid", subtotalBRL: 100, totalBRL: 100, createdAt: old } });
+    // Bia: comprou ontem → ativa, fora da audiência
+    const bia = await prisma.contact.create({ data: { tenantId, name: "Bia", phone: encryptPII("5583999990002") } });
+    await prisma.order.create({ data: { tenantId, contactId: bia.id, status: "paid", subtotalBRL: 50, totalBRL: 50 } });
+    // Cao: inativa há 90d MAS optou por sair de "recompra" → excluída
+    const cao = await prisma.contact.create({ data: { tenantId, name: "Cao", phone: encryptPII("5583999990003"), optOuts: ["recompra"] } });
+    await prisma.order.create({ data: { tenantId, contactId: cao.id, status: "paid", subtotalBRL: 70, totalBRL: 70, createdAt: old } });
+    // Dan: nunca comprou → não é recompra
+    await prisma.contact.create({ data: { tenantId, name: "Dan", phone: encryptPII("5583999990004") } });
+
+    const seg = await previewSegment(tenantId, "inativos", 60);
+    assert.equal(seg.total, 1, "só Ana (Bia ativa, Cao opt-out recompra, Dan nunca comprou)");
+
+    const camp = await createCampaign(tenantId, { title: "Volte!", message: "Sentimos sua falta 💛", channels: ["whatsapp"], audience: "inativos", inactiveDays: 60 });
+    assert.equal(camp.audience, "inativos");
+    assert.equal(camp.inactiveDays, 60);
+    const sent = await sendCampaign(tenantId, camp.id);
+    assert.equal(sent.recipients, 1);
+    assert.equal(sent.sentWhatsapp, 1);
 
     await prisma.marketingCampaign.deleteMany({ where: { tenantId } });
   });

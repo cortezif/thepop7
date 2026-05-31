@@ -1189,7 +1189,9 @@ model MarketingCampaign {
   message   String
   subject   String?   // assunto do e-mail
   channels  String[]  // whatsapp | email | sms
-  onlyBuyers Boolean  @default(false) // só quem já comprou
+  onlyBuyers Boolean  @default(false) // legado/relatório: audience != "todos"
+  audience   String   @default("todos") // todos | compradores | inativos (recompra)
+  inactiveDays Int?    // p/ audience "inativos": sem comprar há N dias
 
   status    String   @default("rascunho") // rascunho | enviada
   recipients   Int    @default(0)
