@@ -37,6 +37,12 @@ const CSS = `
   hr { border: none; border-top: 1px solid #eee; margin: 14pt 0; }
   ul { padding-left: 18pt; }
   li { page-break-inside: avoid; }
+  /* Caixas "🖱️ Passo a passo" (tutorial click-a-clique) */
+  .howto { border: 1px solid #e4b9cc; border-radius: 8px; margin: 8pt 0 12pt; overflow: hidden; page-break-inside: avoid; }
+  .howto-bar { background: #b11e54; color: #fff; font-weight: 700; font-size: 10pt; padding: 5pt 12pt; }
+  .howto ol { margin: 8pt 0; padding-left: 30pt; }
+  .howto li { margin: 4pt 0; }
+  .howto li b { color: #7a2247; }
 `;
 
 const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><style>${CSS}</style></head><body>${body}</body></html>`;
