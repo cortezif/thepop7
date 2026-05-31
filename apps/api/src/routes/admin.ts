@@ -46,7 +46,30 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
         expiryDays: tenant.cashbackExpiryDays,
         maxRedeemPct: tenant.cashbackMaxRedeemPct,
       },
+      winback: {
+        enabled: tenant.winbackEnabled,
+        inactiveDays: tenant.winbackInactiveDays,
+      },
     };
+  });
+
+  // POST /admin/winback-config — recompra automática (ADR-031)
+  app.post("/winback-config", adminOnly, async (req, reply) => {
+    const body = z.object({
+      tenantSlug: z.string(),
+      enabled: z.boolean().optional(),
+      inactiveDays: z.number().int().min(1).max(3650).optional(),
+    }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+    const tenant = await resolveTenant(body.data.tenantSlug);
+    if (!tenant) return reply.code(404).send({ error: "tenant not found" });
+    const data: Record<string, unknown> = {};
+    if ("enabled" in body.data) data.winbackEnabled = body.data.enabled;
+    if (body.data.inactiveDays != null) data.winbackInactiveDays = body.data.inactiveDays;
+    await withTenant(tenant.id, async (tx) => {
+      await tx.tenant.update({ where: { id: tenant.id }, data });
+    });
+    return { ok: true, ...data };
   });
 
   // POST /admin/cashback-config — regras de cashback (ADR-031)

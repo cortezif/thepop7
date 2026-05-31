@@ -12,6 +12,7 @@ export function Settings() {
       <KillSwitch />
       <SegmentConfig />
       <CashbackConfig />
+      <WinbackConfig />
       <Retention />
       <IdentityMerge />
       <TrayIntegration />
@@ -313,6 +314,53 @@ function CashbackConfig() {
         <label className="text-xs font-medium text-muted-foreground">Validade (dias)<br /><input className={fld} value={expiry} onChange={(e) => setExpiry(e.target.value)} inputMode="numeric" /></label>
         <label className="text-xs font-medium text-muted-foreground">Teto de resgate (%)<br /><input className={fld} value={maxRedeem} onChange={(e) => setMaxRedeem(e.target.value)} inputMode="decimal" /></label>
         <button onClick={save} disabled={busy} className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">{busy ? "Salvando…" : "Salvar"}</button>
+      </div>
+      {msg && <p className="mt-3 text-sm text-muted-foreground">{msg}</p>}
+    </div>
+  );
+}
+
+function WinbackConfig() {
+  const [enabled, setEnabled] = useState(false);
+  const [days, setDays] = useState("60");
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api.getConfig().then((c) => {
+      if (c.winback) { setEnabled(c.winback.enabled); setDays(String(c.winback.inactiveDays)); }
+    }).catch(() => {});
+  }, []);
+
+  async function save() {
+    setBusy(true); setMsg(null);
+    try { await api.setWinbackConfig({ enabled, inactiveDays: Number(days) }); setMsg("Recompra salva."); }
+    catch (e) { setMsg(String(e)); } finally { setBusy(false); }
+  }
+  async function runNow() {
+    setBusy(true); setMsg(null);
+    try { const r = await api.sendWinback(Number(days)); setMsg(`Reativados ${r.contacts} cliente(s) · WhatsApp ${r.sentWhatsapp} · e-mail ${r.sentEmail} · SMS ${r.sentSms}.`); }
+    catch (e) { setMsg(String(e)); } finally { setBusy(false); }
+  }
+
+  const fld = "w-24 rounded-md border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary";
+  return (
+    <div className="mt-6 rounded-lg border border-border bg-background p-6">
+      <div className="flex items-center gap-2">
+        <Tag size={18} className="text-primary" />
+        <h2 className="font-serif text-lg font-bold">Recompra automática</h2>
+        <label className="ml-auto flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} /> Ativo
+        </label>
+      </div>
+      <p className="mt-1 text-sm text-muted-foreground">
+        1x por semana, envia uma mensagem de volta para quem comprou mas está inativo (com gancho de cashback,
+        se houver). Respeita opt-out de “marketing” e “recompra”; cada cliente recebe no máximo a cada 30 dias.
+      </p>
+      <div className="mt-4 flex flex-wrap items-end gap-4">
+        <label className="text-xs font-medium text-muted-foreground">Inativo há (dias)<br /><input className={fld} value={days} onChange={(e) => setDays(e.target.value)} inputMode="numeric" /></label>
+        <button onClick={save} disabled={busy} className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">{busy ? "Salvando…" : "Salvar"}</button>
+        <button onClick={runNow} disabled={busy} className="rounded-md border border-border px-4 py-2 text-sm font-medium disabled:opacity-50">Enviar agora</button>
       </div>
       {msg && <p className="mt-3 text-sm text-muted-foreground">{msg}</p>}
     </div>

@@ -72,6 +72,10 @@ model Tenant {
   cashbackExpiryDays   Int     @default(60)   // validade do crédito (dias)
   cashbackMaxRedeemPct Float   @default(50)   // teto: % do pedido pagável com crédito
 
+  // Recompra automática (ADR-031): mensagem de volta p/ quem não compra há N dias.
+  winbackEnabled      Boolean @default(false)
+  winbackInactiveDays Int     @default(60)
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -307,6 +311,10 @@ model Contact {
   // Privacidade
   consentLGPD  Boolean @default(false)
   optOuts      String[] // [marketing, nps, recompra]
+
+  // Recompra automática (ADR-031): última vez que recebeu a mensagem de volta
+  // (throttle anti-spam).
+  lastWinbackAt DateTime?
 
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt

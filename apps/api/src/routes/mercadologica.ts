@@ -9,7 +9,7 @@ import {
   submitPublicQuote, getPublicInvite, extractQuoteFromText, extractQuoteFromAttachments, processResends,
 } from "../services/mercadologica-service.js";
 import { readAttachment } from "../services/attachment-storage.js";
-import { runCashbackNudgesAllTenants } from "../services/broadcast-service.js";
+import { runCashbackNudgesAllTenants, runWinbackAllTenants } from "../services/broadcast-service.js";
 
 async function tid(slug: string) {
   const t = await getPrisma().tenant.findUnique({ where: { slug } });
@@ -198,6 +198,15 @@ export const cronRoutes: FastifyPluginAsync = async (app) => {
     }
     const within = Number((req.body as any)?.withinDays) || 5;
     return runCashbackNudgesAllTenants(within);
+  });
+
+  // Recompra automática (ADR-031) — varre todas as lojas com winback ativo.
+  app.post("/winback", async (req, reply) => {
+    const secret = process.env.CRON_SECRET;
+    if (secret && (req.headers["x-cron-key"] ?? "") !== secret) {
+      return reply.code(403).send({ error: "forbidden" });
+    }
+    return runWinbackAllTenants();
   });
 };
 

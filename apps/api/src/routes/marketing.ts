@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import {
-  listCampaigns, createCampaign, sendCampaign, previewSegment, sanitizeChannels, sendCashbackNudges,
+  listCampaigns, createCampaign, sendCampaign, previewSegment, sanitizeChannels, sendCashbackNudges, sendWinbackAuto,
 } from "../services/broadcast-service.js";
 import { expiringSoon } from "../services/cashback-service.js";
 import { marketingReport } from "../services/marketing-report-service.js";
@@ -66,5 +66,11 @@ export const marketingRoutes: FastifyPluginAsync = async (app) => {
   app.post("/cashback-nudge", async (req) => {
     const within = Number((req.body as any)?.withinDays) || 5;
     return sendCashbackNudges(req.auth!.tenantId, within);
+  });
+
+  // Recompra automática — disparo manual (usa config da loja; throttle de 30d/cliente).
+  app.post("/winback", async (req) => {
+    const days = Number((req.body as any)?.inactiveDays) || undefined;
+    return sendWinbackAuto(req.auth!.tenantId, days);
   });
 };

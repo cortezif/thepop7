@@ -6,7 +6,7 @@ import { getPrisma, withTenant, decryptPII, resolveTenantCredentials } from "@hu
 import { getMessagingConnector, getSmsConnector, sendEmail } from "@hubadvisor/connectors";
 import { enterCredentials } from "@hubadvisor/shared";
 import { getSmsCreds } from "./integration-service.js";
-import { expiringSoon, markNudged } from "./cashback-service.js";
+import { expiringSoon, markNudged, cashbackHintFor } from "./cashback-service.js";
 
 export type Channel = "whatsapp" | "email" | "sms";
 export type Audience = "todos" | "compradores" | "inativos";
@@ -237,4 +237,97 @@ export async function sendCashbackNudges(tenantId: string, withinDays = 5) {
     else skipped++;
   }
   return { contacts: reached, sentWhatsapp, sentEmail, sentSms, skipped };
+}
+
+// ── Recompra automática (winback) — ADR-031 ──────────────────────────────────
+const WINBACK_THROTTLE_DAYS = 30;
+
+function winbackText(name: string | null, store: string, cashbackBRL: number): string {
+  const hi = name ? `Oi, ${name.split(" ")[0]}! ` : "Oi! ";
+  const credito = cashbackBRL > 0
+    ? ` E você ainda tem ${brl(cashbackBRL)} de cashback esperando pra usar.`
+    : "";
+  return `${hi}Faz um tempinho que a gente não se vê na ${store} — sentimos sua falta 💛${credito} Bora dar uma olhada nas novidades?`;
+}
+
+/**
+ * Reativação automática: para quem comprou mas está inativo há
+ * `inactiveDays` (config da loja), envia uma mensagem de volta personalizada
+ * (com gancho de cashback se houver), por WhatsApp/SMS/e-mail. Respeita opt-out
+ * "marketing" e "recompra"; throttle de 30 dias por cliente (lastWinbackAt).
+ */
+export async function sendWinbackAuto(tenantId: string, inactiveDaysOverride?: number) {
+  const prisma = getPrisma();
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, winbackInactiveDays: true } });
+  if (!tenant) return { contacts: 0, sentWhatsapp: 0, sentEmail: 0, sentSms: 0, skipped: 0 };
+  const inactiveDays = inactiveDaysOverride ?? tenant.winbackInactiveDays;
+  const now = Date.now();
+  const cutoff = new Date(now - inactiveDays * 86_400_000);
+  const throttle = new Date(now - WINBACK_THROTTLE_DAYS * 86_400_000);
+
+  // Compradores ainda não contatados recentemente.
+  const rows = await prisma.contact.findMany({
+    where: {
+      tenantId,
+      orders: { some: {} },
+      OR: [{ lastWinbackAt: null }, { lastWinbackAt: { lt: throttle } }],
+    },
+    select: { id: true, name: true, phone: true, email: true, optOuts: true },
+  });
+  const eligible = rows.filter((c) => !c.optOuts.includes("marketing") && !c.optOuts.includes("recompra"));
+  if (eligible.length === 0) return { contacts: 0, sentWhatsapp: 0, sentEmail: 0, sentSms: 0, skipped: 0 };
+
+  // Último pedido por contato → mantém só os inativos há ≥ inactiveDays.
+  const last = await prisma.order.groupBy({
+    by: ["contactId"], where: { tenantId, contactId: { in: eligible.map((c) => c.id) } }, _max: { createdAt: true },
+  });
+  const lastBy = new Map(last.map((o) => [o.contactId, o._max.createdAt]));
+  const targets = eligible.filter((c) => { const d = lastBy.get(c.id); return d != null && d <= cutoff; });
+  if (targets.length === 0) return { contacts: 0, sentWhatsapp: 0, sentEmail: 0, sentSms: 0, skipped: 0 };
+
+  enterCredentials(await resolveTenantCredentials(tenantId));
+  const smsCreds = (await getSmsCreds(tenantId)) ?? undefined;
+
+  let sentWhatsapp = 0, sentEmail = 0, sentSms = 0, skipped = 0, reached = 0;
+  for (const c of targets) {
+    const hint = await cashbackHintFor(tenantId, c.id);
+    const text = winbackText(c.name, tenant.name, hint?.saldoBRL ?? 0);
+    const phone = decryptPII(c.phone);
+    const email = decryptPII(c.email);
+    let anySent = false;
+
+    if (phone) {
+      try {
+        await getMessagingConnector("whatsapp").send({ tenantId, conversationId: `winback-${c.id}`, type: "text", text, to: phone, channel: "whatsapp" });
+        sentWhatsapp++; anySent = true;
+      } catch { /* não-fatal */ }
+      try {
+        const r = await getSmsConnector(smsCreds).send({ to: phone, text });
+        if (r.ok) { sentSms++; anySent = true; }
+      } catch { /* não-fatal */ }
+    }
+    if (email) {
+      try {
+        const r = await sendEmail({ to: email, subject: `Sentimos sua falta na ${tenant.name} 💛`, text });
+        if (r.ok) { sentEmail++; anySent = true; }
+      } catch { /* não-fatal */ }
+    }
+
+    if (anySent) {
+      reached++;
+      await withTenant(tenantId, (tx) => tx.contact.update({ where: { id: c.id }, data: { lastWinbackAt: new Date() } }));
+    } else skipped++;
+  }
+  return { contacts: reached, sentWhatsapp, sentEmail, sentSms, skipped };
+}
+
+/** Winback automático p/ todas as lojas com a recompra ativa (cron). */
+export async function runWinbackAllTenants() {
+  const tenants = await getPrisma().tenant.findMany({ where: { winbackEnabled: true }, select: { id: true } });
+  let contacts = 0, sentWhatsapp = 0, sentEmail = 0, sentSms = 0;
+  for (const t of tenants) {
+    const r = await sendWinbackAuto(t.id);
+    contacts += r.contacts; sentWhatsapp += r.sentWhatsapp; sentEmail += r.sentEmail; sentSms += r.sentSms;
+  }
+  return { tenants: tenants.length, contacts, sentWhatsapp, sentEmail, sentSms };
 }
