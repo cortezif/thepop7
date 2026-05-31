@@ -457,6 +457,12 @@ export const api = {
   mergeContacts: (idA: string, idB: string) =>
     post<{ merged: boolean; primaryId: string; mergedId?: string }>(`/admin/identity/merge`, { idA, idB }),
   dailyMetrics: () => get<DailyMetrics>(`/metrics/daily`),
+  // Wallboard de TV (ADR-040)
+  liveDashboard: () => get<TvDashboard>(`/dashboard/live`),
+  tvLink: () => get<{ token: string | null }>(`/dashboard/tv-link`),
+  createTvLink: () => post<{ token: string }>(`/dashboard/tv-link`, {}),
+  resetTvLink: () => post<{ token: string }>(`/dashboard/tv-link/reset`, {}),
+  disableTvLink: () => del<{ ok: boolean }>(`/dashboard/tv-link`),
   npsComments: () => get<NpsComment[]>(`/metrics/nps-comments`),
   // Financeiro / fluxo de caixa (ADR-032)
   cashflow: (month: string) => get<Cashflow>(`/finance/cashflow?month=${month}`),
@@ -722,6 +728,13 @@ export async function openMercAttachment(id: string) {
 }
 
 // ── App do entregador (sem auth) — tela /entregador/:token (ADR-033) ──
+/** Wallboard de TV por token — público, sem auth (ADR-040). */
+export async function fetchTvDashboard(token: string) {
+  const res = await fetch(`/api/tv/${token}`, { cache: "no-store" });
+  if (!res.ok) throw new Error("link inválido ou desativado");
+  return res.json() as Promise<TvDashboard>;
+}
+
 export async function fetchCourierApp(token: string) {
   const res = await fetch(`/api/entregador/${token}`);
   if (!res.ok) throw new Error("acesso inválido");
@@ -908,6 +921,19 @@ export type DailyMetrics = {
   funnel: Funnel;
   budget: Budget;
   nps: { geral: NpsStat; produto: NpsStat; atendimento: NpsStat };
+};
+
+// Wallboard de TV ao vivo (ADR-040).
+export type TvDashboard = {
+  store: string;
+  today: { salesBRL: number; ordersPaid: number; ticketBRL: number; newOrders: number };
+  payments: { pendingApproval: number; awaitingPayment: number };
+  attendance: { active: number; waitingHuman: number };
+  fulfillment: { toShip: number; inTransit: number; deliveredToday: number };
+  recentOrders: { id: string; customer: string; totalBRL: number; status: string; pendingApproval: boolean; createdAt: string }[];
+  recentDeliveries: { customer: string; totalBRL: number; deliveredAt: string }[];
+  attendingNow: { customer: string; channel: string; waitingHuman: boolean; reason: string | null; lastMessageAt: string }[];
+  updatedAt: string;
 };
 
 export type NpsStat = { score: number; responses: number; promotores: number; neutros: number; detratores: number };

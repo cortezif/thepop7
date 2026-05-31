@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Power, Users, GitMerge, Store, CreditCard, Truck, MessageCircle, Instagram, FileText, Bot, Tag, Barcode } from "lucide-react";
+import { Power, Users, GitMerge, Store, CreditCard, Truck, MessageCircle, Instagram, FileText, Bot, Tag, Barcode, Monitor } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { api, type DuplicateGroup, type TrayStatus, type IntegrationStatus, type SegmentPreset, type IntegrationConfig, type CodePattern, type CodeSegment } from "../lib/api";
 import { DEFAULT_CLOTHING_PATTERN, buildCode, decodeCode, validatePattern, sampleValues } from "@hubadvisor/shared/code-pattern";
@@ -11,6 +11,7 @@ export function Settings() {
     <div className="mx-auto max-w-6xl p-10">
       <PageHeader eyebrow="CONFIGURAÇÕES" title="Automação & Integrações" />
       <KillSwitch />
+      <TvPanelConfig />
       <SegmentConfig />
       <CashbackConfig />
       <WinbackConfig />
@@ -31,6 +32,59 @@ export function Settings() {
       <OpenDeliveryStatus />
       <ZenviaStatus />
       <AnthropicStatus />
+    </div>
+  );
+}
+
+// ── Painel de TV (wallboard ao vivo, ADR-040) ────────────────────────────────
+
+function TvPanelConfig() {
+  const [token, setToken] = useState<string | null | undefined>(undefined); // undefined = carregando
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => { api.tvLink().then((r) => setToken(r.token)).catch(() => setToken(null)); }, []);
+
+  const link = token ? `${location.origin}/tv/${token}` : "";
+
+  async function activate() { setBusy(true); try { setToken((await api.createTvLink()).token); } finally { setBusy(false); } }
+  async function reset() { setBusy(true); try { setToken((await api.resetTvLink()).token); } finally { setBusy(false); } }
+  async function disable() { setBusy(true); try { await api.disableTvLink(); setToken(null); } finally { setBusy(false); } }
+  async function copy() { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1500); }
+
+  return (
+    <div className="mt-6 rounded-lg border border-border bg-background p-6">
+      <div className="flex items-center gap-2">
+        <Monitor size={18} className="text-primary" />
+        <h2 className="font-serif text-lg font-bold">Painel de TV (ao vivo)</h2>
+      </div>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Um painel de tela cheia com as vendas, pagamentos, gente em atendimento e entregas do dia — feito pra deixar
+        rodando numa TV. Atualiza sozinho a cada 12s. Abra o link na Smart TV/navegador, sem precisar de login.
+      </p>
+
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <button onClick={() => window.open("/tv", "_blank")} className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">
+          Abrir painel agora
+        </button>
+
+        {token === undefined ? (
+          <span className="text-sm text-muted-foreground">carregando…</span>
+        ) : token ? (
+          <>
+            <input readOnly value={link} onFocus={(e) => e.target.select()}
+              className="min-w-[280px] flex-1 rounded-md border border-border bg-muted/40 px-3 py-2 font-mono text-xs" />
+            <button onClick={copy} className="rounded-md border border-border px-3 py-2 text-sm font-medium">{copied ? "Copiado!" : "Copiar link"}</button>
+            <button onClick={reset} disabled={busy} className="rounded-md border border-border px-3 py-2 text-sm font-medium disabled:opacity-50">Gerar novo</button>
+            <button onClick={disable} disabled={busy} className="rounded-md border border-border px-3 py-2 text-sm font-medium text-rose-600 disabled:opacity-50">Desativar</button>
+          </>
+        ) : (
+          <button onClick={activate} disabled={busy} className="rounded-md border border-border px-4 py-2 text-sm font-medium disabled:opacity-50">
+            {busy ? "Ativando…" : "Ativar link público da TV"}
+          </button>
+        )}
+      </div>
+      {token && <p className="mt-3 text-xs text-muted-foreground">Qualquer pessoa com este link vê o painel (sem dados de login). “Gerar novo” invalida o link anterior.</p>}
     </div>
   );
 }

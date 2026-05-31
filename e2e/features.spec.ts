@@ -121,6 +121,16 @@ test("Mercadológica: cadastrar um fornecedor", async ({ page, request }) => {
   expect(errors, errors.join(" | ")).toEqual([]);
 });
 
+test("Painel de TV: o wallboard ao vivo carrega", async ({ page, request }) => {
+  const errors = collectErrors(page);
+  await loginFresh(page, request);
+  await page.goto("/tv");
+  await expect(page.getByText(/ao vivo/i)).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText("Vendas de hoje")).toBeVisible();
+  await expect(page.getByText("Entregues hoje")).toBeVisible();
+  expect(errors, errors.join(" | ")).toEqual([]);
+});
+
 test("Clientes: marcar perfil (tag) de um cliente", async ({ page, request }) => {
   const errors = collectErrors(page);
   await loginFresh(page, request);

@@ -70,6 +70,7 @@
 | 11 | **Fiscal & ERP** — Tray, CPlug/NFe | Nota fiscal e integração com gestão |
 | 12 | **Fabricação** *(opcional)* — insumos, fichas técnicas, produção | Para quem produz o que vende |
 | 13 | **Equipe & governança** — papéis, LGPD, identidades cross-canal | Controle de acesso e conformidade |
+| 14 | **Painel de TV** — wallboard ao vivo | Monitorar a operação do dia numa TV |
 
 ---
 
@@ -401,6 +402,28 @@
 **Destrava:** cliente que fala por vários canais vira **uma pessoa só** no CRM (histórico, cashback e perfil consolidados).
 
 ✅ **Ao fim:** operação segura, papéis claros e cada cliente como identidade única.
+
+---
+
+## Parte 14 — Painel de TV (ao vivo) — 🟢 nativo
+
+> Um **wallboard** de tela cheia pra deixar rodando numa TV (32"+) e acompanhar a
+> operação do dia de relance. Atualiza sozinho a cada 12 segundos.
+
+![Painel de TV — wallboard ao vivo](./img/11-painel-tv.png)
+
+### 14.1 Abrir o painel
+- [ ] **Configurações → Painel de TV (ao vivo) → "Abrir painel agora"** (abre `/tv` logado).
+
+**Mostra, em tempo real:** vendas e pedidos pagos do dia (com ticket médio) • **gente em atendimento** (e quantos aguardam um humano, em destaque) • **aguardando aprovação** e aguardando pagamento • fila de entrega (**a separar/postar**, **em trânsito**, **entregues hoje**) • e as listas de **últimos pedidos**, **em atendimento agora** e **entregas concluídas**.
+
+### 14.2 Link público para a TV (sem login)
+- [ ] **Configurações → Painel de TV → "Ativar link público da TV"** → copiar o link.
+- [ ] Abrir esse link no navegador da Smart TV — fica atualizando sozinho, **sem precisar logar**.
+
+**Destrava:** a TV roda o painel de forma autônoma. "Gerar novo" revoga o link anterior; "Desativar" remove o acesso público. *(Gestão do link: só dono/admin.)*
+
+✅ **Ao fim:** a loja inteira enxerga o pulso do dia numa tela — vendas, atendimento e entregas — sem ninguém precisar abrir relatório.
 
 ---
 

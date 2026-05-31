@@ -26,6 +26,8 @@ import { marketingRoutes } from "./routes/marketing.js";
 import { contactRoutes } from "./routes/contacts.js";
 import { financeRoutes } from "./routes/finance.js";
 import { courierRoutes, entregadorPublicRoutes } from "./routes/couriers.js";
+import { dashboardRoutes } from "./routes/dashboard.js";
+import { tvPublicRoutes } from "./routes/tv-public.js";
 import { userRoutes } from "./routes/users.js";
 import { requireAuth } from "./auth.js";
 
@@ -84,6 +86,7 @@ export function buildApp() {
   app.register(platformRoutes,     { prefix: "/platform" });       // painel da plataforma (chave própria, ADR-024)
   app.register(cotacaoPublicaRoutes, { prefix: "/cotacao-publica" }); // resposta de cotação por token (ADR-029)
   app.register(entregadorPublicRoutes, { prefix: "/entregador" });    // app do entregador por token (ADR-033)
+  app.register(tvPublicRoutes,       { prefix: "/tv" });               // wallboard de TV por token (ADR-040)
   app.register(cronRoutes,           { prefix: "/cron" });             // reenvio de cotações (worker, segredo)
 
   // Rotas PROTEGIDAS (painel do operador): exigem JWT válido (F2).
@@ -108,6 +111,7 @@ export function buildApp() {
     secure.register(contactRoutes,            { prefix: "/contacts" });
     secure.register(financeRoutes,            { prefix: "/finance" });
     secure.register(courierRoutes,            { prefix: "/couriers" });
+    secure.register(dashboardRoutes,          { prefix: "/dashboard" }); // wallboard ao vivo (ADR-040)
   });
 
   // Painel estático (produção/serviço único): serve o build do web + fallback SPA.

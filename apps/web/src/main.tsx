@@ -27,6 +27,7 @@ import { Financeiro } from "./pages/Financeiro";
 import { Entregadores } from "./pages/Entregadores";
 import { EntregadorApp } from "./pages/EntregadorApp";
 import { CotacaoPublica } from "./pages/CotacaoPublica";
+import { PainelTV } from "./pages/PainelTV";
 import "./styles/globals.css";
 
 createRoot(document.getElementById("root")!).render(
@@ -60,6 +61,8 @@ createRoot(document.getElementById("root")!).render(
         <Route path="/plataforma" element={<Plataforma />} />
         <Route path="/cotacao/:token" element={<CotacaoPublica />} />
         <Route path="/entregador/:token" element={<EntregadorApp />} />
+        <Route path="/tv" element={<PainelTV />} />
+        <Route path="/tv/:token" element={<PainelTV />} />
       </Routes>
     </BrowserRouter>
   </StrictMode>
