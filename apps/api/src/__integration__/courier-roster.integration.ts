@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+process.env.USE_MOCK_CONNECTORS = "true"; // notificação WhatsApp via mock
 import { getPrisma } from "@hubadvisor/db";
 import { withTestTenant } from "./helpers.js";
 import {
@@ -44,6 +45,15 @@ test("entregadores: cadastra, atribui pedido e entrega pelo app do entregador", 
     assert.ok(ord.deliveredAt);
 
     assert.equal((await courierJobs(courier.id)).length, 0, "entregue some da lista do entregador");
+
+    // Fase 2: o pagamento do entregador virou despesa no Financeiro.
+    const desp = await prisma.financialEntry.findFirst({ where: { tenantId, category: "entregador" } });
+    assert.ok(desp, "lançou despesa do entregador");
+    assert.equal(Number(desp!.amountBRL), 8);
+    assert.equal(desp!.type, "despesa");
+    assert.equal(desp!.description, "João Moto");
+
+    await prisma.financialEntry.deleteMany({ where: { tenantId } });
   });
 });
 

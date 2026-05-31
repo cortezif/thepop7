@@ -1,5 +1,8 @@
 import crypto from "node:crypto";
-import { getPrisma, withTenant } from "@hubadvisor/db";
+import { getPrisma, withTenant, resolveTenantCredentials } from "@hubadvisor/db";
+import { getMessagingConnector } from "@hubadvisor/connectors";
+import { enterCredentials } from "@hubadvisor/shared";
+import { createEntry } from "./finance-service.js";
 
 // Entregadores próprios + corridas (ADR-033). Cadastro da loja, atribuição de
 // pedidos e ciclo de status. O entregador acessa as próprias corridas por token.
@@ -32,6 +35,37 @@ export function courierMayTransition(to: string): boolean {
 const TIMESTAMP_FIELD: Partial<Record<JobStatus, string>> = {
   atribuido: "assignedAt", aceito: "acceptedAt", coletado: "pickedUpAt", entregue: "deliveredAt",
 };
+
+function courierAppLink(token: string): string {
+  const base = (process.env.APP_PUBLIC_URL ?? "").replace(/\/$/, "");
+  return `${base}/entregador/${token}`;
+}
+
+/** Avisa o entregador (WhatsApp) sobre uma nova corrida atribuída. Não-fatal. */
+async function notifyCourierAssigned(tenantId: string, courier: { id: string; name: string; phone: string | null; accessToken: string }, job: { address: string | null; feeBRL: { toString(): string } | number | null }) {
+  if (!courier.phone) return;
+  try {
+    enterCredentials(await resolveTenantCredentials(tenantId));
+    const fee = job.feeBRL != null ? ` Você recebe R$ ${Number(job.feeBRL).toFixed(2)}.` : "";
+    const text = `🛵 Nova entrega pra você, ${courier.name.split(" ")[0]}!\n📍 ${job.address ?? "endereço com a loja"}.${fee}\nAcompanhe e confirme aqui: ${courierAppLink(courier.accessToken)}`;
+    await getMessagingConnector("whatsapp").send({ tenantId, conversationId: `courier-${courier.id}`, type: "text", text, to: courier.phone, channel: "whatsapp" });
+  } catch { /* não-fatal */ }
+}
+
+/** Lança o pagamento do entregador como despesa (conta paga) no Financeiro. Não-fatal. */
+async function recordCourierFee(tenantId: string, job: { id: string; feeBRL: { toString(): string } | number | null; courierId: string | null }) {
+  if (job.feeBRL == null) return;
+  const fee = Number(job.feeBRL);
+  if (!(fee > 0)) return;
+  try {
+    let courierName = "";
+    if (job.courierId) {
+      const c = await getPrisma().courier.findUnique({ where: { id: job.courierId }, select: { name: true } });
+      courierName = c?.name ?? "";
+    }
+    await createEntry(tenantId, { type: "despesa", category: "entregador", amountBRL: fee, description: courierName || undefined });
+  } catch { /* não-fatal */ }
+}
 
 // ── Entregadores (roster) ────────────────────────────────────────────────────
 export async function listCouriers(tenantId: string) {
@@ -72,7 +106,7 @@ function addressOf(order: { shippingAddress: unknown; shippingZip: string | null
 }
 
 export async function createJobForOrder(tenantId: string, orderId: string, input: { feeBRL?: number; courierId?: string; notes?: string } = {}) {
-  return withTenant(tenantId, async (tx) => {
+  const job = await withTenant(tenantId, async (tx) => {
     const order = await tx.order.findFirst({ where: { id: orderId, tenantId }, select: { id: true, shippingAddress: true, shippingZip: true } });
     if (!order) throw new Error("pedido não encontrado");
     const existing = await tx.deliveryJob.findFirst({ where: { tenantId, orderId, status: { not: "cancelado" } } });
@@ -95,34 +129,43 @@ export async function createJobForOrder(tenantId: string, orderId: string, input
       },
     });
   });
+  if (job.courierId) {
+    const c = await getPrisma().courier.findUnique({ where: { id: job.courierId }, select: { id: true, name: true, phone: true, accessToken: true } });
+    if (c) await notifyCourierAssigned(tenantId, c, job);
+  }
+  return job;
 }
 
 export async function assignJob(tenantId: string, jobId: string, courierId: string) {
-  return withTenant(tenantId, async (tx) => {
-    const job = await tx.deliveryJob.findFirst({ where: { id: jobId, tenantId } });
-    if (!job) throw new Error("corrida não encontrada");
-    if (!canTransition(job.status, "atribuido") && job.status !== "pendente") throw new Error(`não dá para atribuir uma corrida ${job.status}`);
+  const job = await withTenant(tenantId, async (tx) => {
+    const j = await tx.deliveryJob.findFirst({ where: { id: jobId, tenantId } });
+    if (!j) throw new Error("corrida não encontrada");
+    if (!canTransition(j.status, "atribuido") && j.status !== "pendente") throw new Error(`não dá para atribuir uma corrida ${j.status}`);
     const c = await tx.courier.findFirst({ where: { id: courierId, tenantId, active: true }, select: { id: true } });
     if (!c) throw new Error("entregador inválido");
     return tx.deliveryJob.update({ where: { id: jobId }, data: { courierId, status: "atribuido", assignedAt: new Date() } });
   });
+  const c = await getPrisma().courier.findUnique({ where: { id: courierId }, select: { id: true, name: true, phone: true, accessToken: true } });
+  if (c) await notifyCourierAssigned(tenantId, c, job);
+  return job;
 }
 
 export async function transitionJob(tenantId: string, jobId: string, to: JobStatus) {
-  return withTenant(tenantId, async (tx) => {
-    const job = await tx.deliveryJob.findFirst({ where: { id: jobId, tenantId } });
-    if (!job) throw new Error("corrida não encontrada");
-    if (!canTransition(job.status, to)) throw new Error(`transição inválida: ${job.status} → ${to}`);
+  const job = await withTenant(tenantId, async (tx) => {
+    const j = await tx.deliveryJob.findFirst({ where: { id: jobId, tenantId } });
+    if (!j) throw new Error("corrida não encontrada");
+    if (!canTransition(j.status, to)) throw new Error(`transição inválida: ${j.status} → ${to}`);
     const data: Record<string, unknown> = { status: to };
     const ts = TIMESTAMP_FIELD[to];
     if (ts) data[ts] = new Date();
     const updated = await tx.deliveryJob.update({ where: { id: jobId }, data });
-    // Entregue → marca o pedido como entregue (fecha o ciclo).
     if (to === "entregue") {
-      await tx.order.updateMany({ where: { id: job.orderId, tenantId }, data: { status: "delivered", deliveredAt: new Date() } });
+      await tx.order.updateMany({ where: { id: j.orderId, tenantId }, data: { status: "delivered", deliveredAt: new Date() } });
     }
     return updated;
   });
+  if (to === "entregue") await recordCourierFee(tenantId, job);
+  return job;
 }
 
 export async function listJobs(tenantId: string, status?: string) {
@@ -154,17 +197,19 @@ export async function courierTransition(token: string, jobId: string, to: JobSta
   const courier = await courierByToken(token);
   if (!courier || !courier.active) throw new Error("acesso inválido");
   if (!courierMayTransition(to)) throw new Error("ação não permitida ao entregador");
-  return withTenant(courier.tenantId, async (tx) => {
-    const job = await tx.deliveryJob.findFirst({ where: { id: jobId, tenantId: courier.tenantId, courierId: courier.id } });
-    if (!job) throw new Error("corrida não encontrada");
-    if (!canTransition(job.status, to)) throw new Error(`transição inválida: ${job.status} → ${to}`);
+  const job = await withTenant(courier.tenantId, async (tx) => {
+    const j = await tx.deliveryJob.findFirst({ where: { id: jobId, tenantId: courier.tenantId, courierId: courier.id } });
+    if (!j) throw new Error("corrida não encontrada");
+    if (!canTransition(j.status, to)) throw new Error(`transição inválida: ${j.status} → ${to}`);
     const data: Record<string, unknown> = { status: to };
     const ts = TIMESTAMP_FIELD[to];
     if (ts) data[ts] = new Date();
     const updated = await tx.deliveryJob.update({ where: { id: jobId }, data });
     if (to === "entregue") {
-      await tx.order.updateMany({ where: { id: job.orderId, tenantId: courier.tenantId }, data: { status: "delivered", deliveredAt: new Date() } });
+      await tx.order.updateMany({ where: { id: j.orderId, tenantId: courier.tenantId }, data: { status: "delivered", deliveredAt: new Date() } });
     }
     return updated;
   });
+  if (to === "entregue") await recordCourierFee(courier.tenantId, job);
+  return job;
 }

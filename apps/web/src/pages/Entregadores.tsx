@@ -24,7 +24,7 @@ export function Entregadores() {
       <PageHeader
         eyebrow="ENTREGAS · EQUIPE PRÓPRIA"
         title="Entregadores"
-        subtitle="Cadastre entregadores da sua cidade e despache pedidos para eles. Cada entregador acompanha as próprias corridas por um link, sem instalar nada."
+        subtitle="Cadastre entregadores da sua cidade e despache pedidos para eles. Ao atribuir, o entregador recebe o link por WhatsApp; ao concluir, o pagamento vira despesa no Financeiro."
       />
       <div className="mb-6">
         <Tabs active={tab} onChange={setTab} tabs={[
