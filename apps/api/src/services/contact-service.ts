@@ -1,4 +1,5 @@
 import { getPrisma, withTenant, encryptPII, decryptPII, hashPII } from "@hubadvisor/db";
+import { isCustomerTag } from "@hubadvisor/shared";
 
 // Cadastro de clientes / CRM (ADR-031). Lista contatos com agregados (saldo de
 // cashback, nº de pedidos, total gasto, último pedido) e gere consentimento/opt-out
@@ -31,6 +32,7 @@ export type ContactView = {
   hasEmail: boolean;
   consentLGPD: boolean;
   optOuts: string[];
+  tags: string[];
   cashbackBRL: number;
   ordersCount: number;
   totalSpentBRL: number;
@@ -47,7 +49,7 @@ export async function listContacts(
     where: { tenantId },
     select: {
       id: true, name: true, phone: true, email: true, igHandle: true,
-      preferredChannel: true, consentLGPD: true, optOuts: true, createdAt: true,
+      preferredChannel: true, consentLGPD: true, optOuts: true, tags: true, createdAt: true,
     },
     orderBy: { createdAt: "desc" },
     take: 1000,
@@ -85,6 +87,7 @@ export async function listContacts(
       hasEmail: !!c.email,
       consentLGPD: c.consentLGPD,
       optOuts: c.optOuts,
+      tags: c.tags ?? [],
       cashbackBRL: r2(num(cbBy.get(c.id)?._sum.remainingBRL)),
       ordersCount: o?._count._all ?? 0,
       totalSpentBRL: r2(num(o?._sum.totalBRL)),
@@ -159,5 +162,16 @@ export async function updateContactConsent(
     if (!exists) throw new Error("contato não encontrado");
     await tx.contact.update({ where: { id }, data });
     return { ok: true };
+  });
+}
+
+/** Define a classificação (perfil) do cliente — só tags do vocabulário (ADR-036). */
+export async function updateContactTags(tenantId: string, id: string, tags: string[]) {
+  const clean = [...new Set((tags ?? []).filter((t) => typeof t === "string" && isCustomerTag(t)))];
+  return withTenant(tenantId, async (tx) => {
+    const exists = await tx.contact.findFirst({ where: { id, tenantId }, select: { id: true } });
+    if (!exists) throw new Error("contato não encontrado");
+    await tx.contact.update({ where: { id }, data: { tags: clean } });
+    return { ok: true, tags: clean };
   });
 }

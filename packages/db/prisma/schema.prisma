@@ -312,6 +312,10 @@ model Contact {
   preferredChannel String? // whatsapp | instagram
   preferredShipping String? // fast | cheap
 
+  // Perfil/classificação (ADR-036): frequente, novo, pechincheiro, problematico,
+  // atencao_humana, banido — orienta a IA (tom) e o fluxo (escalar/bloquear).
+  tags         String[]
+
   // Privacidade
   consentLGPD  Boolean @default(false)
   optOuts      String[] // [marketing, nps, recompra]

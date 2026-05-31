@@ -293,7 +293,7 @@ export type Message = {
 export type ContactRow = {
   id: string; name: string | null; phoneMasked: string | null; emailMasked: string | null;
   igHandle: string | null; channel: string | null; hasPhone: boolean; hasEmail: boolean;
-  consentLGPD: boolean; optOuts: string[];
+  consentLGPD: boolean; optOuts: string[]; tags: string[];
   cashbackBRL: number; ordersCount: number; totalSpentBRL: number;
   lastOrderAt: string | null; createdAt: string;
 };
@@ -408,6 +408,8 @@ export const api = {
     post<{ id: string; created: boolean }>(`/contacts`, input),
   setContactConsent: (id: string, input: { consentLGPD?: boolean; optOuts?: string[] }) =>
     patch<{ ok: boolean }>(`/contacts/${id}/consent`, input),
+  setContactTags: (id: string, tags: string[]) =>
+    patch<{ ok: boolean; tags: string[] }>(`/contacts/${id}/tags`, { tags }),
   // Promoções / broadcast (ADR-031)
   marketingReport: () => get<MarketingReport>(`/marketing/report`),
   campaigns: () => get<Campaign[]>(`/marketing/campaigns`),

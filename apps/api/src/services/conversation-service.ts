@@ -10,6 +10,7 @@ import { searchProducts, type CustomerProfile, type ProductFilter } from "./prod
 import { createOrder, cancelOrder, startReturn, getOrderStatus } from "./order-service.js";
 import { resolveContact } from "./identity-service.js";
 import { enrichPoliciesWithMaps } from "../lib/store-pickup.js";
+import { operationalTag } from "@hubadvisor/shared/customer-tags";
 import { parseNpsScore, recordNps, npsReply, npsBand, pendingDetractorComment, attachNpsComment } from "./nps.js";
 
 type IncomingDTO = {
@@ -96,6 +97,27 @@ export async function handleIncomingMessage(dto: IncomingDTO, log: FastifyBaseLo
   });
 
   const { contact, conversation, recent, priorSummaries, monthSpendBRL } = setup;
+
+  // Perfil/classificação (ADR-036): gates operacionais ANTES de qualquer IA.
+  const gate = operationalTag(contact.tags);
+  if (gate === "block") {
+    // Cliente banido → não atende; parqueia pra humano, sem resposta automática.
+    await withTenant(tenant.id, (tx) => tx.conversation.update({
+      where: { id: conversation.id }, data: { status: "handed_off", handoffReason: "Cliente banido (perfil)" },
+    }));
+    log.warn({ conversationId: conversation.id, contactId: contact.id }, "perfil: cliente banido — sem atendimento");
+    return { conversationId: conversation.id, reply: null, toolCalls: [], cost: null, blocked: true };
+  }
+  if (gate === "human") {
+    // Cliente que exige atendimento humano → encaminha já, com aviso gentil.
+    const reply = "Oi! Vou te encaminhar para uma pessoa do nosso time, tá? Já já alguém te responde por aqui 💛";
+    await withTenant(tenant.id, async (tx) => {
+      await tx.message.create({ data: { conversationId: conversation.id, direction: "out", type: "text", content: reply } });
+      await tx.conversation.update({ where: { id: conversation.id }, data: { status: "handed_off", handoffReason: "Atendimento humano (perfil do cliente)", lastMessageAt: new Date() } });
+    });
+    log.info({ conversationId: conversation.id, contactId: contact.id }, "perfil: requer atendimento humano — encaminhado");
+    return { conversationId: conversation.id, reply, toolCalls: [], cost: null, handoff: true };
+  }
 
   // Captura de NPS (ADR-017): nota 0-10 após marco D+14/D+30 recente (≤7d) → registra
   // e agradece, sem acionar o agente (não gasta IA).
@@ -189,6 +211,7 @@ export async function handleIncomingMessage(dto: IncomingDTO, log: FastifyBaseLo
     })),
     priorSummaries,
     cashback: tenant.cashbackEnabled ? (await cashbackHintFor(tenant.id, contact.id)) ?? undefined : undefined,
+    contactTags: contact.tags ?? [],
   };
 
   const cfg: AgentConfig = {
@@ -360,6 +383,7 @@ export async function suggestReply(tenantSlug: string, conversationId: string, l
     },
     recentMessages: history,
     cashback: contact && tenant.cashbackEnabled ? (await cashbackHintFor(tenant.id, contact.id)) ?? undefined : undefined,
+    contactTags: contact?.tags ?? [],
   };
 
   const cfg: AgentConfig = {

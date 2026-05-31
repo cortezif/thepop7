@@ -1,8 +1,9 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import {
-  listContacts, contactStats, createContactManual, updateContactConsent,
+  listContacts, contactStats, createContactManual, updateContactConsent, updateContactTags,
 } from "../services/contact-service.js";
+import { CUSTOMER_TAG_KEYS } from "@hubadvisor/shared";
 
 // Cadastro de clientes / CRM (ADR-031). Protegido por JWP (bloco `secure`).
 
@@ -45,6 +46,20 @@ export const contactRoutes: FastifyPluginAsync = async (app) => {
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
     try {
       return await updateContactConsent(req.auth!.tenantId, (req.params as any).id, body.data);
+    } catch (e: any) {
+      return reply.code(404).send({ error: e?.message ?? "contato não encontrado" });
+    }
+  });
+
+  // PATCH /:id/tags — perfil/classificação do cliente (ADR-036).
+  app.patch("/:id/tags", async (req, reply) => {
+    const body = z.object({
+      tenantSlug: z.string(),
+      tags: z.array(z.enum(CUSTOMER_TAG_KEYS as [string, ...string[]])),
+    }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+    try {
+      return await updateContactTags(req.auth!.tenantId, (req.params as any).id, body.data.tags);
     } catch (e: any) {
       return reply.code(404).send({ error: e?.message ?? "contato não encontrado" });
     }

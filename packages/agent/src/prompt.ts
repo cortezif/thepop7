@@ -1,4 +1,5 @@
 import type { AgentConfig, ConversationContext } from "./types.js";
+import { guidanceForTags } from "@hubadvisor/shared/customer-tags";
 
 /**
  * Monta o system prompt do agente.
@@ -60,6 +61,11 @@ FLUXO DE FECHAMENTO DE VENDA (importante):
     ? `\n\nMEMÓRIA DE CONVERSAS ANTERIORES (use pra dar continuidade, sem repetir perguntas já respondidas; não cite que "tenho registros"):\n${memory.map((s) => `  - ${s}`).join("\n")}`
     : "";
 
+  const tagGuide = guidanceForTags(ctx.contactTags);
+  const tagsBlock = tagGuide.length
+    ? `\n\nPERFIL DESTA CLIENTE (ajuste seu tom e estratégia; nunca cite essa classificação pra ela):\n${tagGuide.join("\n")}`
+    : "";
+
   const cb = ctx.cashback;
   const cashbackBlock = cb && cb.saldoBRL > 0
     ? `\n\nCASHBACK DA CLIENTE: ela tem R$ ${cb.saldoBRL.toFixed(2)} de crédito${
@@ -70,7 +76,7 @@ FLUXO DE FECHAMENTO DE VENDA (importante):
     : "";
 
   const contextBlock = `CLIENTE ATUAL (canal: ${ctx.channel}):
-${profileSummary || "  (perfil ainda vazio — colete naturalmente durante a conversa)"}${memoryBlock}${cashbackBlock}
+${profileSummary || "  (perfil ainda vazio — colete naturalmente durante a conversa)"}${memoryBlock}${cashbackBlock}${tagsBlock}
 
 Se descobrir medidas, estilo, ocasião ou preferências durante a conversa, chame atualizar_perfil.
 CADASTRO: se ainda não souber o NOME da cliente, pergunte com naturalidade logo no começo ("como posso te chamar?") e salve com atualizar_perfil(name) — assim ela já fica cadastrada na loja. Faça isso uma vez só, sem insistir.

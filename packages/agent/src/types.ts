@@ -48,6 +48,8 @@ export type ConversationContext = {
   // Cashback da cliente (ADR-031) — para a IA citar PROATIVAMENTE crédito a vencer
   // (ex.: no fechamento). Só presente quando há saldo > 0.
   cashback?: { saldoBRL: number; expiringBRL: number; daysLeft: number | null };
+  // Perfil/classificação da cliente (ADR-036) — orienta o TOM da IA.
+  contactTags?: string[];
 };
 
 // Implementação concreta das tools — injetada pelo app (separação domínio × LLM)

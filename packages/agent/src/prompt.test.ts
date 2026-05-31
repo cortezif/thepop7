@@ -10,6 +10,18 @@ const baseCtx: ConversationContext = {
   conversationId: "c1", channel: "whatsapp", contactProfile: {}, recentMessages: [],
 };
 
+test("prompt: perfil do cliente injeta orientação de tom (ADR-036)", () => {
+  const { contextBlock } = buildSystemPrompt(cfg, { ...baseCtx, contactTags: ["pechincheiro"] });
+  assert.match(contextBlock, /PERFIL DESTA CLIENTE/);
+  assert.match(contextBlock, /mantenha o preço/i);
+});
+
+test("prompt: sem tags comportamentais → sem bloco de perfil", () => {
+  assert.doesNotMatch(buildSystemPrompt(cfg, baseCtx).contextBlock, /PERFIL DESTA CLIENTE/);
+  // 'banido' é operacional (sem guidance) → não gera bloco de tom
+  assert.doesNotMatch(buildSystemPrompt(cfg, { ...baseCtx, contactTags: ["banido"] }).contextBlock, /PERFIL DESTA CLIENTE/);
+});
+
 test("prompt: cita cashback a vencer quando há saldo", () => {
   const { contextBlock } = buildSystemPrompt(cfg, { ...baseCtx, cashback: { saldoBRL: 25, expiringBRL: 25, daysLeft: 3 } });
   assert.match(contextBlock, /CASHBACK DA CLIENTE/);

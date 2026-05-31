@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Users, UserPlus, Search, Gift, ShoppingBag, MessageCircle, Mail, ShieldCheck, BellOff, Instagram } from "lucide-react";
+import { Users, UserPlus, Search, Gift, ShoppingBag, MessageCircle, Mail, ShieldCheck, BellOff, Instagram, UserCog } from "lucide-react";
+import { CUSTOMER_TAGS } from "@hubadvisor/shared/customer-tags";
 import { PageHeader } from "../components/PageHeader";
 import { StatCard } from "../components/StatCard";
 import { Page, Card, CardHeader, Button, Badge, EmptyState, Skeleton, inputClass } from "../components/ui";
@@ -88,9 +89,24 @@ function Lista({ rows, onChange }: { rows: ContactRow[]; onChange: () => void })
   );
 }
 
+const TAG_TONE: Record<string, string> = {
+  good: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  warn: "bg-amber-50 text-amber-700 border-amber-200",
+  danger: "bg-rose-50 text-rose-700 border-rose-200",
+  neutral: "bg-muted text-muted-foreground border-border",
+};
+
 function Row({ c, onChange }: { c: ContactRow; onChange: () => void }) {
   const [optedOut, setOptedOut] = useState(c.optOuts.includes("marketing"));
+  const [tags, setTags] = useState<string[]>(c.tags ?? []);
+  const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  async function toggleTag(key: string) {
+    const next = tags.includes(key) ? tags.filter((t) => t !== key) : [...tags, key];
+    setTags(next); c.tags = next;
+    try { await api.setContactTags(c.id, next); } catch { /* noop */ }
+  }
 
   async function toggleMarketing() {
     setBusy(true);
@@ -102,16 +118,23 @@ function Row({ c, onChange }: { c: ContactRow; onChange: () => void }) {
     finally { setBusy(false); }
   }
 
+  const activeTags = CUSTOMER_TAGS.filter((t) => tags.includes(t.key));
+
   return (
+    <>
     <tr className="border-b border-border/60 last:border-0 hover:bg-muted/30">
       <td className="px-4 py-3">
         <div className="flex items-center gap-1.5 font-medium text-foreground">
           {c.name ?? "—"}
           {c.channel === "whatsapp" && <Badge tone="success"><MessageCircle className="h-3 w-3" /> WhatsApp</Badge>}
           {c.channel === "instagram" && <Badge tone="accent"><Instagram className="h-3 w-3" /> Instagram</Badge>}
+          <button onClick={() => setEditing((v) => !v)} title="Perfil do cliente" className="ml-1 text-muted-foreground hover:text-primary"><UserCog className="h-3.5 w-3.5" /></button>
         </div>
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <div className="mt-0.5 flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
           {c.consentLGPD ? <Badge tone="success"><ShieldCheck className="h-3 w-3" /> consentido</Badge> : <span>sem consentimento</span>}
+          {activeTags.map((t) => (
+            <span key={t.key} className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${TAG_TONE[t.tone]}`}>{t.label}</span>
+          ))}
         </div>
       </td>
       <td className="px-4 py-3 text-muted-foreground">
@@ -134,6 +157,26 @@ function Row({ c, onChange }: { c: ContactRow; onChange: () => void }) {
         </button>
       </td>
     </tr>
+    {editing && (
+      <tr className="border-b border-border/60 bg-muted/20">
+        <td colSpan={6} className="px-4 py-3">
+          <p className="mb-2 text-xs font-medium text-muted-foreground">Perfil do cliente — orienta como a IA atende (clique para marcar):</p>
+          <div className="flex flex-wrap gap-1.5">
+            {CUSTOMER_TAGS.map((t) => {
+              const on = tags.includes(t.key);
+              return (
+                <button key={t.key} onClick={() => toggleTag(t.key)} title={t.desc}
+                  className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${on ? TAG_TONE[t.tone] : "border-border text-muted-foreground hover:bg-muted/60"}`}>
+                  {on ? "✓ " : ""}{t.label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-2 text-[11px] text-muted-foreground">“Banido” = a IA não atende. “Requer atendimento humano” = encaminha direto para uma pessoa. As demais ajustam o tom.</p>
+        </td>
+      </tr>
+    )}
+    </>
   );
 }
 
