@@ -160,7 +160,8 @@ export function computeDueDate(orderCreatedAt: string | Date, leadTimeDays: numb
 
 export type AgendaItem = {
   orderId: string; contactName: string; productName: string; variantSku: string;
-  quantity: number; orderDate: string; leadTimeDays: number | null; dueDate: string; status: string;
+  quantity: number; orderDate: string; leadTimeDays: number | null; dueDate: string;
+  dateSource: "desejada" | "estimada"; status: string;
 };
 
 const OPEN_STATUSES = ["created", "paid", "picking", "shipped", "in_transit", "out_for_delivery"];
@@ -176,6 +177,9 @@ export async function productionAgenda(tenantId: string): Promise<AgendaItem[]> 
   });
   const rows: AgendaItem[] = [];
   for (const o of orders) {
+    // Data que a cliente pediu (metadata.desiredDate) tem prioridade sobre a estimada.
+    const desired = (o.metadata as Record<string, unknown> | null)?.desiredDate;
+    const hasDesired = typeof desired === "string" && /^\d{4}-\d{2}-\d{2}/.test(desired);
     for (const it of o.items) {
       if (!it.product?.madeToOrder) continue;
       rows.push({
@@ -186,7 +190,8 @@ export async function productionAgenda(tenantId: string): Promise<AgendaItem[]> 
         quantity: it.quantity,
         orderDate: o.createdAt.toISOString(),
         leadTimeDays: it.product.leadTimeDays ?? null,
-        dueDate: computeDueDate(o.createdAt, it.product.leadTimeDays),
+        dueDate: hasDesired ? (desired as string).slice(0, 10) : computeDueDate(o.createdAt, it.product.leadTimeDays),
+        dateSource: hasDesired ? "desejada" : "estimada",
         status: o.status,
       });
     }

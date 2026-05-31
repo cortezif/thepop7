@@ -84,6 +84,8 @@ export interface AgentToolImpl {
     distanciaKm?: number;
     // Entrega por entregador sob demanda (Lalamove/Open Delivery): geocoda + cota.
     entregadorOnDemand?: boolean;
+    // Data que a cliente precisa da encomenda (YYYY-MM-DD) — agenda de produção.
+    dataDesejada?: string;
   }): Promise<{ pedidoId: string; totalBRL: number; pixCopiaCola?: string; expiraEm?: string }>;
 
   statusPedido(pedidoId: string): Promise<unknown>;

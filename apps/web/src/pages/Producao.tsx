@@ -68,6 +68,9 @@ function AgendaEncomendas({ agenda }: { agenda: AgendaItem[] | null }) {
                     <Badge tone={overdue ? "danger" : isToday ? "warning" : "neutral"}>
                       {fmtDate(a.dueDate)}{overdue ? " · atrasado" : isToday ? " · hoje" : ""}
                     </Badge>
+                    <span className="ml-1.5 text-[10px] uppercase tracking-wide text-muted-foreground/70" title={a.dateSource === "desejada" ? "data informada pela cliente" : "estimada por prazo de encomenda"}>
+                      {a.dateSource === "desejada" ? "pedida" : "est."}
+                    </span>
                   </td>
                   <td className="py-2.5 pr-3 font-medium text-foreground">{a.productName}</td>
                   <td className="py-2.5 pr-3 text-center">{a.quantity}</td>

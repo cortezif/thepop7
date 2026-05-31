@@ -604,6 +604,7 @@ function buildAgentTools(tenantId: string, contactId: string, conversationId: st
           shippingBRL: shipBRL,
           carrier: shipCarrier,
           pendingApproval: true,
+          desiredDate: input.dataDesejada,
         });
         await prisma.conversation.update({
           where: { id: conversationId },
@@ -623,6 +624,7 @@ function buildAgentTools(tenantId: string, contactId: string, conversationId: st
         shippingZip: input.cep,
         shippingBRL: shipBRL,
         carrier: shipCarrier,
+        desiredDate: input.dataDesejada,
       });
       log.info({ orderId: result.orderId, total: result.totalBRL }, "tool:criar_pedido");
       return {

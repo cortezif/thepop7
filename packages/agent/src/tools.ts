@@ -136,6 +136,7 @@ export const TOOL_DEFS: Anthropic.Messages.Tool[] = [
         entregaPropria: { type: "boolean", description: "true se a entrega for própria (motoboy/carro da loja, tabela de faixas) em vez de transportadora. Use o que a cliente escolheu." },
         distanciaKm:    { type: "number", description: "Distância até a cliente em km. Obrigatório quando entregaPropria=true (calcula moto/carro e o valor)." },
         entregadorOnDemand: { type: "boolean", description: "true se a entrega for por entregador SOB DEMANDA (app de motoboy, ex.: Lalamove/Pedidos10). O sistema geocodifica o CEP e cota automaticamente (moto/carro pelo volume). Use o CEP da cliente." },
+        dataDesejada: { type: "string", description: "Data em que a cliente PRECISA da encomenda, no formato YYYY-MM-DD (ex.: bolo para 12/06 → '2026-06-12'). Para produtos sob encomenda — alimenta a agenda de produção. Pergunte a data quando for encomenda." },
       },
     },
   },

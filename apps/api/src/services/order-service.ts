@@ -28,6 +28,9 @@ export async function createOrder(input: {
   // Auto-aprovação (ADR-025): quando true, cria o pedido SEM gerar PIX e o marca
   // como pendente de aprovação humana. O PIX sai depois via approveOrder().
   pendingApproval?: boolean;
+  // Data que a cliente precisa da encomenda (ADR-030, "YYYY-MM-DD"). Vai pra
+  // metadata.desiredDate e alimenta a agenda de produção.
+  desiredDate?: string;
 }): Promise<CreateOrderResult> {
   return withTenant(input.tenantId, async (tx) => {
     const subtotal = input.items.reduce((s, i) => s + i.unitPriceBRL * i.quantity, 0);
@@ -43,7 +46,12 @@ export async function createOrder(input: {
         shippingBRL: input.shippingBRL,
         totalBRL: total,
         carrier: input.carrier,
-        metadata: input.pendingApproval ? { pendingApproval: true } : undefined,
+        metadata: ((): Record<string, unknown> | undefined => {
+          const m: Record<string, unknown> = {};
+          if (input.pendingApproval) m.pendingApproval = true;
+          if (input.desiredDate) m.desiredDate = input.desiredDate;
+          return Object.keys(m).length ? m : undefined;
+        })() as any,
         items: {
           create: input.items.map((i) => ({
             productId: i.productId,

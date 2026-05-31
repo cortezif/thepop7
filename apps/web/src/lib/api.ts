@@ -393,7 +393,8 @@ export type ProductionBatch = {
 };
 export type AgendaItem = {
   orderId: string; contactName: string; productName: string; variantSku: string;
-  quantity: number; orderDate: string; leadTimeDays: number | null; dueDate: string; status: string;
+  quantity: number; orderDate: string; leadTimeDays: number | null; dueDate: string;
+  dateSource: "desejada" | "estimada"; status: string;
 };
 
 export type RawMaterial = {
