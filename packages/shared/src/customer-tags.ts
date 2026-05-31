@@ -62,6 +62,22 @@ export function operationalTag(tags: string[] | null | undefined): "block" | "hu
   return null;
 }
 
+// ── Classificação automática (ADR-036) — derivada do comportamento ──────────
+export type CustomerSignals = { ordersCount: number };
+
+/** Tags derivadas automaticamente: novo (0 pedidos) ou frequente (≥ frequentMin). Pura. */
+export function autoTags(s: CustomerSignals, opts?: { frequentMin?: number }): string[] {
+  const min = opts?.frequentMin ?? 3;
+  if (s.ordersCount <= 0) return ["novo"];
+  if (s.ordersCount >= min) return ["frequente"];
+  return [];
+}
+
+/** Tags efetivas = manuais ∪ automáticas (sem duplicar). Pura. */
+export function effectiveTags(manual: string[] | null | undefined, signals: CustomerSignals, opts?: { frequentMin?: number }): string[] {
+  return [...new Set([...(manual ?? []), ...autoTags(signals, opts)])];
+}
+
 /** Orientações de TOM (comportamentais) das tags ativas, p/ o system prompt. */
 export function guidanceForTags(tags: string[] | null | undefined): string[] {
   const set = new Set(tags ?? []);

@@ -10,7 +10,7 @@ import { searchProducts, type CustomerProfile, type ProductFilter } from "./prod
 import { createOrder, cancelOrder, startReturn, getOrderStatus } from "./order-service.js";
 import { resolveContact } from "./identity-service.js";
 import { enrichPoliciesWithMaps } from "../lib/store-pickup.js";
-import { operationalTag } from "@hubadvisor/shared/customer-tags";
+import { operationalTag, effectiveTags } from "@hubadvisor/shared/customer-tags";
 import { parseNpsScore, recordNps, npsReply, npsBand, pendingDetractorComment, attachNpsComment } from "./nps.js";
 
 type IncomingDTO = {
@@ -211,7 +211,7 @@ export async function handleIncomingMessage(dto: IncomingDTO, log: FastifyBaseLo
     })),
     priorSummaries,
     cashback: tenant.cashbackEnabled ? (await cashbackHintFor(tenant.id, contact.id)) ?? undefined : undefined,
-    contactTags: contact.tags ?? [],
+    contactTags: effectiveTags(contact.tags, { ordersCount: await prisma.order.count({ where: { tenantId: tenant.id, contactId: contact.id } }) }),
   };
 
   const cfg: AgentConfig = {
@@ -383,7 +383,7 @@ export async function suggestReply(tenantSlug: string, conversationId: string, l
     },
     recentMessages: history,
     cashback: contact && tenant.cashbackEnabled ? (await cashbackHintFor(tenant.id, contact.id)) ?? undefined : undefined,
-    contactTags: contact?.tags ?? [],
+    contactTags: contact ? effectiveTags(contact.tags, { ordersCount: await prisma.order.count({ where: { tenantId: tenant.id, contactId: contact.id } }) }) : [],
   };
 
   const cfg: AgentConfig = {

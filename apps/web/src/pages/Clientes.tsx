@@ -119,6 +119,8 @@ function Row({ c, onChange }: { c: ContactRow; onChange: () => void }) {
   }
 
   const activeTags = CUSTOMER_TAGS.filter((t) => tags.includes(t.key));
+  // Automáticas (novo/frequente) — só as que NÃO foram marcadas manualmente.
+  const autoActive = CUSTOMER_TAGS.filter((t) => (c.autoTags ?? []).includes(t.key) && !tags.includes(t.key));
 
   return (
     <>
@@ -134,6 +136,9 @@ function Row({ c, onChange }: { c: ContactRow; onChange: () => void }) {
           {c.consentLGPD ? <Badge tone="success"><ShieldCheck className="h-3 w-3" /> consentido</Badge> : <span>sem consentimento</span>}
           {activeTags.map((t) => (
             <span key={t.key} className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${TAG_TONE[t.tone]}`}>{t.label}</span>
+          ))}
+          {autoActive.map((t) => (
+            <span key={t.key} title="Automático (pelos pedidos)" className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${TAG_TONE[t.tone]} opacity-80`}>{t.label} · auto</span>
           ))}
         </div>
       </td>
@@ -172,7 +177,7 @@ function Row({ c, onChange }: { c: ContactRow; onChange: () => void }) {
               );
             })}
           </div>
-          <p className="mt-2 text-[11px] text-muted-foreground">“Banido” = a IA não atende. “Requer atendimento humano” = encaminha direto para uma pessoa. As demais ajustam o tom.</p>
+          <p className="mt-2 text-[11px] text-muted-foreground">“Banido” = a IA não atende. “Requer atendimento humano” = encaminha direto para uma pessoa. As demais ajustam o tom. <b>Novo/Frequente são automáticos pelos pedidos</b> (mostrados com “· auto”) — marque manualmente só se quiser forçar.</p>
         </td>
       </tr>
     )}

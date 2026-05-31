@@ -293,7 +293,7 @@ export type Message = {
 export type ContactRow = {
   id: string; name: string | null; phoneMasked: string | null; emailMasked: string | null;
   igHandle: string | null; channel: string | null; hasPhone: boolean; hasEmail: boolean;
-  consentLGPD: boolean; optOuts: string[]; tags: string[];
+  consentLGPD: boolean; optOuts: string[]; tags: string[]; autoTags: string[];
   cashbackBRL: number; ordersCount: number; totalSpentBRL: number;
   lastOrderAt: string | null; createdAt: string;
 };

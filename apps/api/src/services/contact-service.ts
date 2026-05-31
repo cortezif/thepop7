@@ -1,5 +1,5 @@
 import { getPrisma, withTenant, encryptPII, decryptPII, hashPII } from "@hubadvisor/db";
-import { isCustomerTag } from "@hubadvisor/shared";
+import { isCustomerTag, autoTags } from "@hubadvisor/shared";
 
 // Cadastro de clientes / CRM (ADR-031). Lista contatos com agregados (saldo de
 // cashback, nº de pedidos, total gasto, último pedido) e gere consentimento/opt-out
@@ -32,7 +32,8 @@ export type ContactView = {
   hasEmail: boolean;
   consentLGPD: boolean;
   optOuts: string[];
-  tags: string[];
+  tags: string[];      // manuais (operador)
+  autoTags: string[];  // automáticas (novo/frequente — derivadas dos pedidos)
   cashbackBRL: number;
   ordersCount: number;
   totalSpentBRL: number;
@@ -88,6 +89,7 @@ export async function listContacts(
       consentLGPD: c.consentLGPD,
       optOuts: c.optOuts,
       tags: c.tags ?? [],
+      autoTags: autoTags({ ordersCount: o?._count._all ?? 0 }),
       cashbackBRL: r2(num(cbBy.get(c.id)?._sum.remainingBRL)),
       ordersCount: o?._count._all ?? 0,
       totalSpentBRL: r2(num(o?._sum.totalBRL)),

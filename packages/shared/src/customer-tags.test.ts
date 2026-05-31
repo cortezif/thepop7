@@ -1,6 +1,19 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { operationalTag, guidanceForTags, isCustomerTag, CUSTOMER_TAG_KEYS } from "./customer-tags.js";
+import { operationalTag, guidanceForTags, isCustomerTag, CUSTOMER_TAG_KEYS, autoTags, effectiveTags } from "./customer-tags.js";
+
+test("autoTags: novo com 0 pedidos; frequente a partir do limite", () => {
+  assert.deepEqual(autoTags({ ordersCount: 0 }), ["novo"]);
+  assert.deepEqual(autoTags({ ordersCount: 1 }), [], "1-2 pedidos: nenhum");
+  assert.deepEqual(autoTags({ ordersCount: 3 }), ["frequente"]);
+  assert.deepEqual(autoTags({ ordersCount: 10 }, { frequentMin: 5 }), ["frequente"]);
+});
+
+test("effectiveTags: une manuais + automáticas sem duplicar", () => {
+  assert.deepEqual(effectiveTags(["pechincheiro"], { ordersCount: 5 }).sort(), ["frequente", "pechincheiro"]);
+  assert.deepEqual(effectiveTags(["frequente"], { ordersCount: 5 }), ["frequente"], "sem duplicar");
+  assert.deepEqual(effectiveTags(["banido"], { ordersCount: 0 }).sort(), ["banido", "novo"]);
+});
 
 test("operationalTag: banido bloqueia; atencao_humana escala; senão null", () => {
   assert.equal(operationalTag(["banido"]), "block");
