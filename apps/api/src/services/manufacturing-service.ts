@@ -97,6 +97,40 @@ export async function updateRawMaterial(tenantId: string, id: string, input: Par
   });
 }
 
+/**
+ * Reposição de insumos: lista os que estão no/abaixo do mínimo, com a quantidade
+ * sugerida de compra (alvo: 2× o mínimo) — na unidade-base e, se a compra for em
+ * embalagem (purchaseQtyInBase), o nº de unidades de compra. Alimenta a tela de
+ * reposição e a criação de pesquisa de preço (Mercadológica).
+ */
+export type ReorderSuggestion = {
+  id: string; name: string; category: string; baseUnit: string;
+  stockQty: number; minStockQty: number; suggestedQty: number;
+  purchaseUnit: string | null; purchaseUnits: number | null; supplierId: string | null;
+};
+
+export async function insumosReorder(tenantId: string): Promise<ReorderSuggestion[]> {
+  const rows = await getPrisma().rawMaterial.findMany({
+    where: { tenantId, active: true, minStockQty: { not: null } },
+    orderBy: { name: "asc" },
+  });
+  const out: ReorderSuggestion[] = [];
+  for (const r of rows) {
+    const min = num(r.minStockQty);
+    const stock = num(r.stockQty);
+    if (stock > min) continue; // só os no/abaixo do mínimo
+    const suggestedQty = Math.max(0, Math.round((2 * min - stock) * 1000) / 1000); // sobe até 2× o mínimo
+    const pqb = r.purchaseQtyInBase == null ? null : num(r.purchaseQtyInBase);
+    out.push({
+      id: r.id, name: r.name, category: r.category, baseUnit: r.baseUnit,
+      stockQty: stock, minStockQty: min, suggestedQty,
+      purchaseUnit: r.purchaseUnit, purchaseUnits: pqb && pqb > 0 ? Math.ceil(suggestedQty / pqb) : null,
+      supplierId: r.supplierId,
+    });
+  }
+  return out;
+}
+
 /** Desativa (soft delete — preserva fichas que referenciam o insumo). */
 export async function deactivateRawMaterial(tenantId: string, id: string) {
   return withTenant(tenantId, async (tx) => {

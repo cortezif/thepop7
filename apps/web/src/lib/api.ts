@@ -340,6 +340,7 @@ export const api = {
   // ── Fabricação / ficha técnica (ADR-030) ──
   listMaterials: (category?: string) =>
     get<RawMaterial[]>(`/manufacturing/materials${category ? `?category=${category}` : ""}`),
+  materialsReorder: () => get<InsumoReorder[]>(`/manufacturing/materials/reorder`),
   createMaterial: (payload: RawMaterialInput) => post<RawMaterial>(`/manufacturing/materials`, payload as any),
   updateMaterial: (id: string, payload: Partial<RawMaterialInput>) => put<RawMaterial>(`/manufacturing/materials/${id}`, payload as any),
   deleteMaterial: (id: string) => del<{ ok: boolean }>(`/manufacturing/materials/${id}`),
@@ -408,6 +409,11 @@ export type RawMaterialInput = {
   name: string; category?: string; baseUnit?: string; sku?: string | null;
   costPerBaseUnit?: number; purchaseUnit?: string | null; purchaseQtyInBase?: number | null;
   stockQty?: number; minStockQty?: number | null; supplierId?: string | null;
+};
+export type InsumoReorder = {
+  id: string; name: string; category: string; baseUnit: string;
+  stockQty: number; minStockQty: number; suggestedQty: number;
+  purchaseUnit: string | null; purchaseUnits: number | null; supplierId: string | null;
 };
 export type BomLine = {
   materialId: string; materialName: string; baseUnit: string; category: string;

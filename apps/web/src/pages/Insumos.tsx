@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { Boxes, Plus, Trash2, AlertTriangle, PackageOpen, Wheat } from "lucide-react";
+import { Boxes, Plus, Trash2, AlertTriangle, PackageOpen, Wheat, ShoppingCart } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { Page, Card, CardHeader, Button, Badge, EmptyState, Skeleton, Tabs, inputClass } from "../components/ui";
-import { api, type RawMaterial, type RawMaterialInput } from "../lib/api";
+import { api, type RawMaterial, type RawMaterialInput, type InsumoReorder } from "../lib/api";
 
 type Cat = "ingrediente" | "embalagem";
 const UNITS = ["g", "kg", "ml", "L", "un"];
@@ -31,6 +31,8 @@ export function Insumos() {
         title="Insumos & embalagens"
         subtitle="O estoque que entra na fabricação: ingredientes (consumidos ao produzir) e materiais de embalagem (consumidos ao vender). O custo por unidade-base alimenta a ficha técnica."
       />
+
+      <Reposicao />
 
       <div className="mb-6 flex items-center justify-between gap-4">
         <Tabs
@@ -76,6 +78,50 @@ export function Insumos() {
         </Card>
       )}
     </Page>
+  );
+}
+
+// ── Reposição (insumos no/abaixo do mínimo → pesquisa de preço) ───────────────
+function Reposicao() {
+  const [items, setItems] = useState<InsumoReorder[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  useEffect(() => { api.materialsReorder().then(setItems).catch(() => setItems([])); }, []);
+  if (!items || items.length === 0) return null;
+
+  async function criarPesquisa() {
+    setBusy(true); setMsg(null);
+    try {
+      await api.mercCreateResearch({
+        title: "Reposição de insumos",
+        items: items!.map((i) => ({ description: i.name, quantity: Math.ceil(i.suggestedQty) })),
+      });
+      setMsg("Pesquisa de preço criada na Mercadológica ✓ — vá em Mercadológica para enviar aos fornecedores.");
+    } catch { setMsg("Não foi possível criar a pesquisa de preço."); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <Card className="mb-6 border-amber-200 bg-amber-50/40">
+      <CardHeader
+        icon={AlertTriangle}
+        title={`Reposição sugerida (${items.length})`}
+        subtitle="Insumos no/abaixo do estoque mínimo. Sugestão de compra para repor até 2× o mínimo."
+        action={<Button size="sm" Icon={ShoppingCart} onClick={criarPesquisa} disabled={busy}>{busy ? "Criando…" : "Criar pesquisa de preço"}</Button>}
+      />
+      <div className="mt-4 space-y-1.5">
+        {items.map((i) => (
+          <div key={i.id} className="flex flex-wrap items-center justify-between gap-x-3 text-sm">
+            <span className="font-medium text-foreground">{i.name}</span>
+            <span className="text-muted-foreground">
+              tem {i.stockQty} {i.baseUnit} / mín {i.minStockQty} {i.baseUnit} · comprar ~<b className="text-foreground">{i.suggestedQty} {i.baseUnit}</b>
+              {i.purchaseUnits ? ` (≈ ${i.purchaseUnits}× ${i.purchaseUnit})` : ""}
+            </span>
+          </div>
+        ))}
+      </div>
+      {msg && <p className="mt-3 text-sm text-emerald-700">{msg}</p>}
+    </Card>
   );
 }
 

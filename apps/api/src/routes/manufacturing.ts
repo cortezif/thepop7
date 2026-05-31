@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import {
   listRawMaterials, createRawMaterial, updateRawMaterial, deactivateRawMaterial,
+  insumosReorder,
   listBoms, createBom, updateBom, deleteBom,
 } from "../services/manufacturing-service.js";
 import { previewProduction, createBatch, listBatches, productionAgenda, produceForOrderItem } from "../services/production-service.js";
@@ -50,6 +51,9 @@ export const manufacturingRoutes: FastifyPluginAsync = async (app) => {
       includeInactive: q.includeInactive === "true",
     });
   });
+
+  // GET /manufacturing/materials/reorder — insumos abaixo do mínimo + sugestão
+  app.get("/materials/reorder", async (req) => insumosReorder(req.auth!.tenantId));
 
   app.post("/materials", async (req, reply) => {
     const body = materialBody.safeParse(req.body);
