@@ -36,9 +36,9 @@ jobs:
       NODE_OPTIONS: "--max-old-space-size=4096"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           # Node 22: o runner de testes (`node --test`) precisa de 21+ para
           # expandir glob (src/**/*.test.ts). Node 20 não expande.
