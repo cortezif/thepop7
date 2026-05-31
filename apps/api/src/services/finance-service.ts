@@ -99,6 +99,50 @@ export async function cashflow(tenantId: string, month: string) {
   };
 }
 
+/** Evolução mensal do caixa realizado nos últimos `months` meses (antigo → recente). */
+export async function financeTrend(tenantId: string, months = 6) {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1);
+  const prisma = getPrisma();
+
+  const [orders, entries] = await Promise.all([
+    prisma.order.findMany({
+      where: {
+        tenantId, status: { in: ["paid", "delivered", "shipped"] },
+        OR: [{ paidAt: { gte: start } }, { paidAt: null, createdAt: { gte: start } }],
+      },
+      select: { totalBRL: true, paidAt: true, createdAt: true },
+    }),
+    prisma.financialEntry.findMany({
+      where: { tenantId, status: "pago", date: { gte: start } },
+      select: { type: true, amountBRL: true, date: true },
+    }),
+  ]);
+
+  const buckets: { month: string; receitasBRL: number; despesasBRL: number }[] = [];
+  for (let i = 0; i < months; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - (months - 1) + i, 1);
+    buckets.push({ month: monthKey(d), receitasBRL: 0, despesasBRL: 0 });
+  }
+  const idx = new Map(buckets.map((b, i) => [b.month, i]));
+  for (const o of orders) {
+    const i = idx.get(monthKey(o.paidAt ?? o.createdAt));
+    if (i != null) buckets[i]!.receitasBRL += num(o.totalBRL);
+  }
+  for (const e of entries) {
+    const i = idx.get(monthKey(e.date));
+    if (i == null) continue;
+    if (e.type === "despesa") buckets[i]!.despesasBRL += num(e.amountBRL);
+    else buckets[i]!.receitasBRL += num(e.amountBRL);
+  }
+  return buckets.map((b) => ({
+    month: b.month,
+    receitasBRL: r2(b.receitasBRL),
+    despesasBRL: r2(b.despesasBRL),
+    saldoBRL: r2(b.receitasBRL - b.despesasBRL),
+  }));
+}
+
 export async function listEntries(tenantId: string, month: string) {
   const range = monthRange(month) ?? monthRange(monthKey(new Date()))!;
   const rows = await getPrisma().financialEntry.findMany({

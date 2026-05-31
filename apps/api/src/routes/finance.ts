@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { cashflow, listEntries, createEntry, deleteEntry, payEntry, openAccounts, cashflowCsv, monthKey } from "../services/finance-service.js";
+import { cashflow, listEntries, createEntry, deleteEntry, payEntry, openAccounts, cashflowCsv, financeTrend, monthKey } from "../services/finance-service.js";
 
 // Financeiro / fluxo de caixa (ADR-032). Protegido por JWP (bloco `secure`).
 
@@ -16,6 +16,8 @@ export const financeRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.get("/open-accounts", async (req) => openAccounts(req.auth!.tenantId));
+
+  app.get("/trend", async (req) => financeTrend(req.auth!.tenantId));
 
   app.get("/export.csv", async (req, reply) => {
     const month = (req.query as any)?.month || monthKey(new Date());

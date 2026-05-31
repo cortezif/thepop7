@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { getPrisma } from "@hubadvisor/db";
 import { withTestTenant } from "./helpers.js";
-import { cashflow, createEntry, listEntries, deleteEntry, monthKey, openAccounts, payEntry, cashflowCsv } from "../services/finance-service.js";
+import { cashflow, createEntry, listEntries, deleteEntry, monthKey, openAccounts, payEntry, cashflowCsv, financeTrend } from "../services/finance-service.js";
 
 // Fluxo de caixa (ADR-032): vendas (pedidos pagos) + lançamentos manuais. test:integration.
 
@@ -43,6 +43,26 @@ test("cashflow: soma vendas pagas do mês + receitas/despesas manuais", async ()
     const cf2 = await cashflow(tenantId, month);
     assert.equal(cf2.receitasManuaisBRL, 0);
     assert.equal(cf2.saldoBRL, 70, "200 − 130");
+
+    await prisma.financialEntry.deleteMany({ where: { tenantId } });
+  });
+});
+
+test("financeTrend: 6 meses, mês corrente reflete vendas − despesas pagas", async () => {
+  await withTestTenant(async (tenantId) => {
+    const contact = await prisma.contact.create({ data: { tenantId, name: "Ana" } });
+    const now = new Date();
+    await prisma.order.create({ data: { tenantId, contactId: contact.id, status: "paid", subtotalBRL: 300, totalBRL: 300, paidAt: now } });
+    await createEntry(tenantId, { type: "despesa", category: "aluguel", amountBRL: 100 });
+    await createEntry(tenantId, { type: "despesa", category: "futuro", amountBRL: 999, status: "pendente" }); // não conta
+
+    const trend = await financeTrend(tenantId, 6);
+    assert.equal(trend.length, 6);
+    const cur = trend[5]!;
+    assert.equal(cur.month, monthKey(now));
+    assert.equal(cur.receitasBRL, 300, "vendas do mês");
+    assert.equal(cur.despesasBRL, 100, "só a despesa paga");
+    assert.equal(cur.saldoBRL, 200);
 
     await prisma.financialEntry.deleteMany({ where: { tenantId } });
   });

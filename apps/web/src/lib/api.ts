@@ -289,6 +289,7 @@ export type MarketingReport = {
 
 export type FinanceEntry = { id: string; type: "receita" | "despesa"; category: string; description: string | null; amountBRL: number; date: string; status: "pago" | "pendente"; dueDate: string | null; createdAt: string };
 export type OpenAccount = FinanceEntry & { overdue: boolean };
+export type FinanceTrendPoint = { month: string; receitasBRL: number; despesasBRL: number; saldoBRL: number };
 export type Cashflow = {
   month: string; vendasBRL: number; ordersCount: number;
   receitasManuaisBRL: number; receitasBRL: number; despesasBRL: number; saldoBRL: number;
@@ -400,6 +401,7 @@ export const api = {
   deleteFinanceEntry: (id: string) => del<{ ok: boolean }>(`/finance/entries/${id}`),
   openAccounts: () => get<OpenAccount[]>(`/finance/open-accounts`),
   payFinanceEntry: (id: string) => patch<{ ok: boolean }>(`/finance/entries/${id}/pay`, {}),
+  financeTrend: () => get<FinanceTrendPoint[]>(`/finance/trend`),
   npsBoard: (band?: "promotor" | "neutro" | "detrator") =>
     get<NpsBoard>(`/metrics/nps${band ? `?band=${band}` : ""}`),
   reorder: () => get<ReorderSuggestion[]>(`/purchasing/reorder`),

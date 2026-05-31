@@ -3,7 +3,7 @@ import { Wallet, TrendingUp, TrendingDown, Plus, Trash2, ChevronLeft, ChevronRig
 import { PageHeader } from "../components/PageHeader";
 import { StatCard } from "../components/StatCard";
 import { Page, Card, CardHeader, Button, Badge, EmptyState, Skeleton, inputClass } from "../components/ui";
-import { api, downloadCashflowCsv, type Cashflow, type FinanceEntry, type OpenAccount } from "../lib/api";
+import { api, downloadCashflowCsv, type Cashflow, type FinanceEntry, type OpenAccount, type FinanceTrendPoint } from "../lib/api";
 import { formatBRL } from "../lib/utils";
 
 const DESPESA_CATS = ["fornecedor", "salario", "aluguel", "marketing", "imposto", "frete", "outro"];
@@ -96,20 +96,9 @@ export function Financeiro() {
         </Card>
       )}
 
-      {cf && cf.byCategory.length > 0 && (
-        <Card className="mb-6">
-          <CardHeader title="Por categoria" subtitle="Lançamentos manuais agrupados (vendas não entram aqui)." />
-          <div className="space-y-2 px-5 pb-5">
-            {cf.byCategory.map((c) => (
-              <div key={`${c.type}:${c.category}`} className="flex items-center gap-3 text-sm">
-                <Badge tone={c.type === "despesa" ? "danger" : "success"}>{c.type}</Badge>
-                <span className="capitalize text-foreground">{c.category}</span>
-                <span className={`ml-auto font-medium ${c.type === "despesa" ? "text-primary" : "text-emerald-600"}`}>{formatBRL(c.totalBRL)}</span>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
+      <FinanceTrend />
+
+      {cf && <Dre cf={cf} />}
 
       {!entries ? <Skeleton className="h-40" />
         : entries.length === 0 ? <EmptyState icon={Wallet} title="Sem lançamentos" description="Registre despesas e receitas do mês no botão “Lançamento”." />
@@ -133,6 +122,65 @@ export function Financeiro() {
           </Card>
         )}
     </Page>
+  );
+}
+
+function shortMonth(m: string): string {
+  const [y, mo] = m.split("-").map(Number);
+  return new Date(y!, mo! - 1, 1).toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
+}
+
+function FinanceTrend() {
+  const [t, setT] = useState<FinanceTrendPoint[] | null>(null);
+  useEffect(() => { api.financeTrend().then(setT).catch(() => setT(null)); }, []);
+  if (!t) return null;
+  const max = Math.max(1, ...t.map((p) => Math.max(p.receitasBRL, p.despesasBRL)));
+  return (
+    <Card className="mb-6">
+      <CardHeader title="Evolução do caixa (6 meses)" subtitle="Receitas (verde) vs despesas (vermelho) realizadas por mês; saldo abaixo." />
+      <div className="mt-6 flex items-end justify-between gap-3 px-5" style={{ height: 160 }}>
+        {t.map((p) => (
+          <div key={p.month} className="flex flex-1 flex-col items-center gap-1">
+            <div className="flex h-[110px] w-full items-end justify-center gap-1">
+              <div className="w-1/3 rounded-t bg-emerald-500/80" style={{ height: `${Math.round((p.receitasBRL / max) * 100)}%` }} title={`Receitas ${formatBRL(p.receitasBRL)}`} />
+              <div className="w-1/3 rounded-t bg-primary/70" style={{ height: `${Math.round((p.despesasBRL / max) * 100)}%` }} title={`Despesas ${formatBRL(p.despesasBRL)}`} />
+            </div>
+            <span className={`text-[11px] font-medium ${p.saldoBRL < 0 ? "text-primary" : "text-emerald-700"}`}>{p.saldoBRL ? formatBRL(p.saldoBRL) : "—"}</span>
+            <span className="text-[10px] uppercase text-muted-foreground">{shortMonth(p.month)}</span>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function Dre({ cf }: { cf: Cashflow }) {
+  const receitasCats = cf.byCategory.filter((c) => c.type === "receita");
+  const despesasCats = cf.byCategory.filter((c) => c.type === "despesa");
+  return (
+    <Card className="mb-6">
+      <CardHeader title="Demonstrativo do mês (DRE simplificado)" subtitle="Resultado por categoria, das receitas às despesas." />
+      <div className="space-y-1.5 px-5 pb-5 text-sm">
+        <Linha label="Vendas (pedidos pagos)" value={cf.vendasBRL} />
+        {receitasCats.map((c) => <Linha key={c.category} label={`Receita · ${c.category}`} value={c.totalBRL} indent />)}
+        <Linha label="= Total de receitas" value={cf.receitasBRL} bold />
+        <div className="h-2" />
+        {despesasCats.length === 0 && <p className="text-muted-foreground">Sem despesas lançadas.</p>}
+        {despesasCats.map((c) => <Linha key={c.category} label={`Despesa · ${c.category}`} value={-c.totalBRL} indent />)}
+        <Linha label="= Total de despesas" value={-cf.despesasBRL} bold />
+        <div className="my-2 border-t border-border" />
+        <Linha label="= Resultado do mês" value={cf.saldoBRL} bold big />
+      </div>
+    </Card>
+  );
+}
+
+function Linha({ label, value, bold, indent, big }: { label: string; value: number; bold?: boolean; indent?: boolean; big?: boolean }) {
+  return (
+    <div className={`flex justify-between ${bold ? "font-semibold text-foreground" : "text-muted-foreground"} ${indent ? "pl-4" : ""} ${big ? "text-base" : ""}`}>
+      <span className="capitalize">{label}</span>
+      <span className={value < 0 ? "text-primary" : value > 0 ? "text-emerald-600" : ""}>{formatBRL(value)}</span>
+    </div>
   );
 }
 
