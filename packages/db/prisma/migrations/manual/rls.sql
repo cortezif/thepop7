@@ -66,4 +66,28 @@ CREATE POLICY tenant_isolation_bom_items ON bom_items
   USING ("bomId" IN (SELECT id FROM bills_of_materials))
   WITH CHECK ("bomId" IN (SELECT id FROM bills_of_materials));
 
+-- ============================================================
+-- Papel de aplicação (hardening RLS — ADR-002).
+-- `postgres` (superuser) BYPASSA o RLS, então enquanto a app roda como ele a
+-- proteção em profundidade não morde. Criamos um papel SEM superuser e SEM
+-- BYPASSRLS; o `withTenant()` faz `SET LOCAL ROLE` pra ele em CADA transação
+-- tenant-scoped (gated por env APP_DB_ROLE). Boot/migrations/seed e operações
+-- cross-tenant intencionais (plataforma/B2B via getPrisma direto) seguem como
+-- postgres. NOLOGIN: não é credencial de conexão — só alvo de SET ROLE.
+-- Idempotente.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'hubadvisor_app') THEN
+    CREATE ROLE hubadvisor_app NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+  END IF;
+END $$;
+
+GRANT USAGE ON SCHEMA public TO hubadvisor_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO hubadvisor_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO hubadvisor_app;
+-- Tabelas/sequências futuras criadas por postgres (ex.: após um db push novo).
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO hubadvisor_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+  GRANT USAGE, SELECT ON SEQUENCES TO hubadvisor_app;
+
 COMMIT;

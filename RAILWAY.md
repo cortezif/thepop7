@@ -30,6 +30,7 @@ DATABASE_URL = ${{Postgres.DATABASE_URL}}
 PII_KEY = <64 hex>
 JWT_SECRET = <segredo forte>
 PLATFORM_ADMIN_KEY = <segredo forte>
+APP_DB_ROLE = hubadvisor_app
 ANTHROPIC_API_KEY = sk-ant-...
 NODE_ENV = production
 USE_MOCK_CONNECTORS = true
@@ -42,6 +43,10 @@ ADMIN_PASSWORD = <senha do admin>
 > `PLATFORM_ADMIN_KEY` libera o painel da plataforma (`/plataforma`: gestão de
 > lojas + comissões B2B). Sem ele, esse painel responde 503 — o resto da
 > aplicação funciona normal. Use um segredo só seu (`openssl rand -hex 32`).
+> `APP_DB_ROLE = hubadvisor_app` liga o **hardening do RLS** (ADR-002): as
+> transações por loja rodam num papel sem BYPASSRLS, então o isolamento por
+> tenant é garantido pelo banco. O papel é criado automaticamente pelo
+> `rls.sql` no start. Deixe vazio só se precisar diagnosticar algo.
 
 ## 5. Publicar
 - O Railway faz o build (Dockerfile), e no start o `railway-start.sh` **prepara o banco** (cria tabelas, dados-exemplo e o usuário admin) e sobe o app.
