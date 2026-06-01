@@ -149,5 +149,5 @@ export function Tabs<T extends string>({
 
 // ── Page wrapper (largura/respiro consistentes) ───────────────────────────────
 export function Page({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("mx-auto max-w-6xl px-8 py-10 lg:px-10", className)}>{children}</div>;
+  return <div className={cn("mx-auto max-w-6xl px-4 py-6 sm:px-8 sm:py-10 lg:px-10", className)}>{children}</div>;
 }

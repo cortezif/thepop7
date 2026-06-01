@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Outlet, NavLink } from "react-router-dom";
-import { LayoutDashboard, MessageSquare, Package, ShoppingCart, ClipboardList, Settings as SettingsIcon, LogOut, Barcode, Sparkles, Scale, Megaphone, Boxes, ScrollText, Factory, Truck, Users2, UserCircle, BarChart3, Gift, Contact, Smile, Wallet, Bike } from "lucide-react";
+import { Outlet, NavLink, useLocation } from "react-router-dom";
+import { LayoutDashboard, MessageSquare, Package, ShoppingCart, ClipboardList, Settings as SettingsIcon, LogOut, Barcode, Sparkles, Scale, Megaphone, Boxes, ScrollText, Factory, Truck, Users2, UserCircle, BarChart3, Gift, Contact, Smile, Wallet, Bike, Menu, X } from "lucide-react";
 import { cn } from "./lib/utils";
 import { auth, brandName, tenantSlug, fetchMe, api, storedSegment, setStoredSegment, canManage } from "./lib/api";
 import { applyBrandTheme } from "./lib/theme";
@@ -44,6 +44,22 @@ export function App() {
   const [loggedIn, setLoggedIn] = useState(auth.isLoggedIn());
   const [brand, setBrand] = useState(brandName());
   const [production, setProduction] = useState(false);
+  // Drawer da navegação no mobile (no desktop a sidebar é fixa).
+  const [navOpen, setNavOpen] = useState(false);
+  const location = useLocation();
+
+  // Fecha o drawer ao trocar de rota (navegação no mobile).
+  useEffect(() => { setNavOpen(false); }, [location.pathname]);
+
+  // Trava o scroll do body enquanto o drawer está aberto.
+  useEffect(() => {
+    if (!navOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setNavOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => { document.body.style.overflow = prev; window.removeEventListener("keydown", onKey); };
+  }, [navOpen]);
 
   useEffect(() => {
     const onUnauth = () => setLoggedIn(false);
@@ -89,21 +105,63 @@ export function App() {
 
   const displayName = brand || "Sua Loja";
 
+  const brandMark = (size: "sm" | "md") => (
+    <div
+      className={cn(
+        "flex shrink-0 items-center justify-center rounded-full font-semibold tracking-wide text-primary-foreground shadow-soft",
+        size === "md" ? "h-11 w-11 text-sm" : "h-9 w-9 text-xs"
+      )}
+      style={{ backgroundColor: "hsl(var(--primary))" }}
+    >
+      {monogram(displayName)}
+    </div>
+  );
+
   return (
-    <div className="grid min-h-screen grid-cols-[256px_1fr] bg-background">
-      <aside className="flex flex-col border-r border-border bg-card/60 px-5 py-7">
-        {/* Marca da loja */}
+    <div className="min-h-screen bg-background lg:grid lg:grid-cols-[256px_1fr]">
+      {/* Top bar — só no mobile/tablet. */}
+      <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-border bg-card/80 px-4 py-3 backdrop-blur lg:hidden">
+        <button
+          onClick={() => setNavOpen(true)}
+          aria-label="Abrir menu"
+          className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+        >
+          <Menu size={20} />
+        </button>
+        {brandMark("sm")}
+        <h1 className="min-w-0 truncate font-serif text-base font-semibold leading-tight text-foreground">{displayName}</h1>
+      </header>
+
+      {/* Backdrop do drawer (mobile). */}
+      {navOpen && (
+        <div
+          onClick={() => setNavOpen(false)}
+          aria-hidden="true"
+          className="fixed inset-0 z-40 bg-foreground/40 backdrop-blur-sm lg:hidden"
+        />
+      )}
+
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-50 flex w-64 transform flex-col overflow-y-auto border-r border-border bg-card px-5 py-7 transition-transform duration-200",
+          "lg:static lg:z-auto lg:w-auto lg:translate-x-0 lg:bg-card/60 lg:transition-none",
+          navOpen ? "translate-x-0" : "-translate-x-full"
+        )}
+      >
+        {/* Marca da loja + fechar (mobile) */}
         <div className="mb-9 flex items-center gap-3 px-1">
-          <div
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-semibold tracking-wide text-primary-foreground shadow-soft"
-            style={{ backgroundColor: "hsl(var(--primary))" }}
-          >
-            {monogram(displayName)}
-          </div>
-          <div className="min-w-0">
+          {brandMark("md")}
+          <div className="min-w-0 flex-1">
             <h1 className="truncate font-serif text-lg font-semibold leading-tight text-foreground">{displayName}</h1>
             <p className="text-[10px] font-medium uppercase tracking-luxe text-muted-foreground">Painel de gestão</p>
           </div>
+          <button
+            onClick={() => setNavOpen(false)}
+            aria-label="Fechar menu"
+            className="-mr-1 flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground lg:hidden"
+          >
+            <X size={18} />
+          </button>
         </div>
 
         <nav className="flex flex-col gap-0.5">
@@ -144,7 +202,8 @@ export function App() {
           <LogOut size={17} /> Sair
         </button>
       </aside>
-      <main className="overflow-auto">
+
+      <main className="overflow-auto lg:h-screen">
         <Outlet />
       </main>
     </div>
