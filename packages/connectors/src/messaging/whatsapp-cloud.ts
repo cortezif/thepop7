@@ -31,7 +31,7 @@ export class WhatsappCloud implements MessagingConnector {
       body.type = "template";
       body.template = {
         name: msg.templateName,
-        language: { code: "pt_BR" },
+        language: { code: msg.templateLanguage ?? "pt_BR" },
         components: msg.templateParams
           ? [{ type: "body", parameters: Object.values(msg.templateParams).map((v) => ({ type: "text", text: v })) }]
           : [],

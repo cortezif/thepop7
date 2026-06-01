@@ -1,7 +1,7 @@
-import { getPrisma, withTenant, resolveTenantCredentials } from "@hubadvisor/db";
+import { getPrisma, withTenant, resolveTenantCredentials, decryptPII } from "@hubadvisor/db";
 import { getMessagingConnector } from "@hubadvisor/connectors";
 import { generatePostSaleMessage, type PostSaleStage } from "@hubadvisor/agent";
-import { returnDeadline, EVENTS, enterCredentials } from "@hubadvisor/shared";
+import { returnDeadline, EVENTS, enterCredentials, classifyOutbound, waCostBRL, type WaCategory } from "@hubadvisor/shared";
 
 // Categoria de opt-out por estágio (LGPD — ADR-013).
 // D+1/D+7 são transacionais (entrega/prazo legal) — sempre enviados.
@@ -10,6 +10,21 @@ const STAGE_OPTOUT: Partial<Record<PostSaleStage, string>> = {
   d14: "nps",
   d30: "recompra",
 };
+
+// Intenção de cobrança do template por estágio quando a janela de 24h está
+// FECHADA: transacionais (D+1/D+7) são "utility" (mais barato); D+14/D+30 são
+// marketing/recompra. Dentro da janela tudo vira "service" (grátis).
+const STAGE_WA_INTENT: Record<PostSaleStage, WaCategory> = {
+  d1: "utility",
+  d7: "utility",
+  d14: "marketing",
+  d30: "marketing",
+};
+
+/** Nome do template aprovado na Meta p/ este estágio, se configurado por env. */
+function postSaleTemplate(stage: PostSaleStage): string | undefined {
+  return process.env[`WA_TEMPLATE_POSTSALE_${stage.toUpperCase()}`]?.trim() || undefined;
+}
 
 /**
  * Sufixo determinístico com a NF-e, anexado no D+1 (documento fiscal não pode
@@ -65,7 +80,7 @@ export async function runPostSaleStage(tenantId: string, orderId: string, stage:
   const messageText = generated.text + nfeSuffix(stage, order.nfeNumber, order.nfePdfUrl);
 
   // 4) Persiste (tx curta de escrita): conversa + mensagem + evento.
-  const conversationId = await withTenant(tenantId, async (tx) => {
+  const persisted = await withTenant(tenantId, async (tx) => {
     let conversation = await tx.conversation.findFirst({
       where: { contactId: order.contactId, status: { in: ["active", "handed_off"] } },
       orderBy: { lastMessageAt: "desc" },
@@ -75,11 +90,18 @@ export async function runPostSaleStage(tenantId: string, orderId: string, stage:
         data: { tenantId, contactId: order.contactId, channel: order.contact.preferredChannel === "instagram" ? "instagram" : "whatsapp" },
       });
     }
+    // Mensagem proativa: se a janela de 24h estiver aberta (cliente escreveu há
+    // pouco), vai como sessão grátis; senão é template pago (utility/marketing).
+    const windowOpen = conversation.waWindowExpiresAt != null && conversation.waWindowExpiresAt > new Date();
+    const isWhatsapp = conversation.channel === "whatsapp";
+    const waCategory = isWhatsapp ? classifyOutbound({ windowOpen, intent: STAGE_WA_INTENT[stage] }) : null;
     await tx.message.create({
       data: {
         conversationId: conversation.id, direction: "out", type: "text", content: messageText,
         llmModel: process.env.CLAUDE_MODEL_FAST ?? "claude-haiku-4-5-20251001",
         llmInputTokens: generated.usage.inputTokens, llmOutputTokens: generated.usage.outputTokens,
+        waCategory: waCategory ?? undefined,
+        waCostBRL: waCategory ? waCostBRL(waCategory) : undefined,
       },
     });
     await tx.conversation.update({ where: { id: conversation.id }, data: { lastMessageAt: new Date() } });
@@ -90,11 +112,22 @@ export async function runPostSaleStage(tenantId: string, orderId: string, stage:
         aggregateType: "order", aggregateId: orderId, payload: { stage } as any, actor: "agent",
       },
     });
-    return conversation.id;
+    return { conversationId: conversation.id, channel: conversation.channel as "whatsapp" | "instagram", windowOpen };
   });
 
   // 5) Envia no canal FORA da transação (efeito externo).
-  await getMessagingConnector().send({ tenantId, conversationId, type: "text", text: messageText });
+  // Destinatário: telefone (WhatsApp) ou IGSID (Instagram) — sem isto o
+  // connector real recusa o envio.
+  const to = (persisted.channel === "instagram" ? order.contact.igHandle : decryptPII(order.contact.phone)) ?? undefined;
+  // Fora da janela de 24h, o WhatsApp só aceita TEMPLATE aprovado. Usa o template
+  // do estágio se configurado (env); caso contrário cai em texto (comportamento
+  // atual — entregue apenas se a janela estiver aberta).
+  const template = persisted.channel === "whatsapp" && !persisted.windowOpen ? postSaleTemplate(stage) : undefined;
+  await getMessagingConnector(persisted.channel).send(
+    template
+      ? { tenantId, conversationId: persisted.conversationId, channel: persisted.channel, to, type: "template", templateName: template, templateParams: { body: messageText } }
+      : { tenantId, conversationId: persisted.conversationId, channel: persisted.channel, to, type: "text", text: messageText },
+  );
 
-  return { stage, message: messageText, conversationId };
+  return { stage, message: messageText, conversationId: persisted.conversationId };
 }
