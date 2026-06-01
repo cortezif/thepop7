@@ -40,8 +40,9 @@ cp .env.production.example .env.production
 # Gere as chaves de segurança e cole no arquivo:
 openssl rand -hex 32   # use no PII_KEY
 openssl rand -hex 32   # use no JWT_SECRET
+openssl rand -hex 32   # use no PLATFORM_ADMIN_KEY (libera o painel /plataforma)
 
-nano .env.production    # preencha DOMAIN, senhas, DATABASE_URL, ANTHROPIC_API_KEY, ADMIN_*
+nano .env.production    # preencha DOMAIN, senhas, DATABASE_URL, ANTHROPIC_API_KEY, ADMIN_*, PLATFORM_ADMIN_KEY
 ```
 > Importante: a senha em `POSTGRES_PASSWORD` precisa ser a **mesma** dentro da `DATABASE_URL`.
 > Comece com `USE_MOCK_CONNECTORS=true` (sobe funcionando sem as contas externas).
@@ -90,5 +91,5 @@ docker compose -f docker-compose.prod.yml --env-file .env.production up -d --bui
 - **Backups do banco:** agende `pg_dump` do volume `pgdata` (ex.: cron diário).
 - **Segredos:** nunca comite `.env.production`. Guarde as chaves em local seguro — trocar `PII_KEY` exige re-migrar os dados de contato (`apps/api/src/seed-admin.ts` não, mas `packages/db/src/migrate-pii.ts` sim).
 - **Logs:** `docker compose -f docker-compose.prod.yml logs -f api`.
-- **RLS:** as políticas existem; em produção, idealmente rodar a app com um usuário Postgres não-superusuário pra ativá-las (o isolamento por aplicação + auth já protege; o role é um reforço — passo opcional de hardening).
+- **RLS (hardening, ADR-002):** defina `APP_DB_ROLE=hubadvisor_app` no `.env.production`. O `rls.sql` (passo 5) cria esse papel sem BYPASSRLS e o `withTenant()` baixa pra ele em cada transação por loja — então o isolamento por tenant passa a ser garantido pelo banco, não só pelo código. Vazio = desligado (roda como o usuário da conexão, que bypassa o RLS). *Obs.: protege contra filtro de tenant esquecido no ORM; não substitui cuidado com SQL cru arbitrário.*
 - **Redis/agendamentos:** já sobe no compose; os jobs proativos (Lia D+1/D+7…) podem ser ligados depois.

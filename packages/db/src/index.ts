@@ -19,9 +19,62 @@ export function getPrisma(): PrismaClient {
 }
 
 /**
+ * Papel de banco SEM superuser/BYPASSRLS pro qual cada transação tenant-scoped
+ * "desce" (hardening do RLS — ADR-002). Definido pela env `APP_DB_ROLE` (em prod:
+ * `hubadvisor_app`, criado pelo rls.sql). Vazio = comportamento legado (roda como
+ * o usuário da conexão, ex. postgres, que bypassa o RLS — só a checagem no código
+ * isola). Validar a env uma vez (identificador SQL simples) pra poder interpolar.
+ */
+let _appDbRole: string | null = (() => {
+  const r = process.env.APP_DB_ROLE?.trim();
+  if (!r) return null;
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(r)) throw new Error(`APP_DB_ROLE inválido: ${r}`);
+  return r;
+})();
+
+/** Papel restrito atualmente em uso (null = desligado). */
+export function appDbRole(): string | null {
+  return _appDbRole;
+}
+
+/**
+ * Valida, no boot, que dá pra baixar pro papel restrito (`APP_DB_ROLE`). Se o
+ * papel não existir/for inutilizável (ex.: rls.sql não rodou), DESLIGA o recurso
+ * com um aviso — melhor seguir sem o reforço do que quebrar toda transação
+ * tenant-scoped. Retorna true se o hardening ficou ativo.
+ */
+export async function verifyAppDbRole(logger?: {
+  info?: (o: unknown, m?: string) => void;
+  warn?: (o: unknown, m?: string) => void;
+}): Promise<boolean> {
+  if (!_appDbRole) return false;
+  try {
+    await getPrisma().$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(`SET LOCAL ROLE "${_appDbRole}"`);
+      await tx.$executeRawUnsafe("SELECT 1");
+    });
+    logger?.info?.({ role: _appDbRole }, "RLS hardening ativo (SET LOCAL ROLE por transação)");
+    return true;
+  } catch (e) {
+    logger?.warn?.(
+      { role: _appDbRole, err: (e as Error)?.message },
+      "APP_DB_ROLE definido mas inutilizável (rode rls.sql) — seguindo SEM o papel restrito",
+    );
+    _appDbRole = null; // desliga p/ não derrubar toda request tenant-scoped
+    return false;
+  }
+}
+
+/**
  * Executes `fn` inside a transaction where Postgres `app.current_tenant_id`
  * is set to `tenantId`. RLS policies in rls.sql use this setting to filter
  * every row read or written.
+ *
+ * Quando `APP_DB_ROLE` está definido, a transação ainda baixa para esse papel
+ * (NOBYPASSRLS) via `SET LOCAL ROLE` — então o RLS isola de fato, mesmo que um
+ * `where tenantId` seja esquecido no código. O `SET LOCAL` é revertido no fim da
+ * transação (a conexão volta ao pool como o usuário original). A ordem importa:
+ * setamos o GUC ANTES de baixar o papel (e o GUC é local à transação).
  *
  * Use this wrapper for EVERY request scoped to a tenant.
  */
@@ -32,6 +85,7 @@ export async function withTenant<T>(
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
     await tx.$executeRawUnsafe(`SET LOCAL app.current_tenant_id = '${tenantId.replace(/'/g, "''")}'`);
+    if (_appDbRole) await tx.$executeRawUnsafe(`SET LOCAL ROLE "${_appDbRole}"`);
     return fn(tx);
   });
 }

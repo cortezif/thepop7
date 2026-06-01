@@ -29,6 +29,8 @@ Cole estas (gere os segredos com `openssl rand -hex 32`):
 DATABASE_URL = ${{Postgres.DATABASE_URL}}
 PII_KEY = <64 hex>
 JWT_SECRET = <segredo forte>
+PLATFORM_ADMIN_KEY = <segredo forte>
+APP_DB_ROLE = hubadvisor_app
 ANTHROPIC_API_KEY = sk-ant-...
 NODE_ENV = production
 USE_MOCK_CONNECTORS = true
@@ -37,6 +39,14 @@ ADMIN_PASSWORD = <senha do admin>
 ```
 > Não defina `PORT` — o Railway injeta sozinho.
 > `${{Postgres.DATABASE_URL}}` é uma referência: clique em "Add Reference" → Postgres → DATABASE_URL.
+> `JWT_SECRET` é **obrigatório** em produção (a API recusa subir sem ele).
+> `PLATFORM_ADMIN_KEY` libera o painel da plataforma (`/plataforma`: gestão de
+> lojas + comissões B2B). Sem ele, esse painel responde 503 — o resto da
+> aplicação funciona normal. Use um segredo só seu (`openssl rand -hex 32`).
+> `APP_DB_ROLE = hubadvisor_app` liga o **hardening do RLS** (ADR-002): as
+> transações por loja rodam num papel sem BYPASSRLS, então o isolamento por
+> tenant é garantido pelo banco. O papel é criado automaticamente pelo
+> `rls.sql` no start. Deixe vazio só se precisar diagnosticar algo.
 
 ## 5. Publicar
 - O Railway faz o build (Dockerfile), e no start o `railway-start.sh` **prepara o banco** (cria tabelas, dados-exemplo e o usuário admin) e sobe o app.
@@ -47,8 +57,18 @@ ADMIN_PASSWORD = <senha do admin>
 - (Opcional) **Custom Domain**: aponte `painel.sualoja.com.br` e o Railway emite o certificado.
 
 ## 7. Entrar
-- Abra a URL → **login** com `ADMIN_EMAIL` / `ADMIN_PASSWORD`.
+- Abra a URL → **login** com `ADMIN_EMAIL` / `ADMIN_PASSWORD` (esse usuário é o **dono/owner** da loja).
 - Tudo funcionando em modo "laboratório" (conectores simulados).
+
+### Contas e acessos
+- **Equipe da loja:** o dono vai em **Configurações → Equipe** (`/equipe`) para
+  criar operadores/administradores, definir papéis, redefinir senhas e remover
+  acessos. Cada um troca a própria senha em **Minha conta** (`/conta`).
+  Papéis: `owner` (tudo) · `admin` (config + equipe) · `operator` (dia a dia).
+- **Painel da plataforma** (você, dono da operação): acesse `/plataforma` e
+  informe a `PLATFORM_ADMIN_KEY`. Ali você **cria novas lojas** (tenant + dono),
+  **suspende/reativa** lojas e vê a receita de comissões B2B. Loja suspensa não
+  autentica (o dono dela não consegue logar até reativar).
 
 ## 8. Atualizações
 - `git push` → o Railway **rebuilda e publica sozinho**. (O start roda o `db push` de novo, idempotente.)
@@ -57,6 +77,20 @@ ADMIN_PASSWORD = <senha do admin>
 - Em **Variables**, preencha os tokens (WhatsApp/Bling/Mercado Pago/PlugNotas) e mude `USE_MOCK_CONNECTORS=false`. Salvar → redeploy automático.
 
 ---
+
+### Checklist pré-deploy (1 min)
+- [ ] **Postgres** adicionado e `DATABASE_URL` referenciada (`${{Postgres.DATABASE_URL}}`).
+- [ ] Segredos gerados: `PII_KEY`, `JWT_SECRET`, `PLATFORM_ADMIN_KEY` (`openssl rand -hex 32` cada).
+- [ ] `ADMIN_EMAIL` / `ADMIN_PASSWORD` definidos (vira o **owner** da loja no 1º start).
+- [ ] `APP_DB_ROLE=hubadvisor_app` (hardening do RLS).
+- [ ] `USE_MOCK_CONNECTORS=true` (laboratório) — vira `false` quando as contas reais existirem.
+- [ ] `NODE_ENV=production`. **Não** definir `PORT` (Railway injeta).
+- [ ] Domínio gerado (Settings → Networking).
+
+Depois do 1º deploy, confira nos **Logs**: `subindo API + painel` e
+`RLS hardening ativo`. Se aparecer `APP_DB_ROLE definido mas inutilizável`,
+o `rls.sql` não conseguiu criar o papel (veja privilégios do usuário do banco) —
+a app sobe mesmo assim, só sem o reforço de RLS.
 
 ### Notas
 - **Custo:** Railway cobra por uso (CPU/RAM/banco). Começo barato; acompanhe no painel deles.
