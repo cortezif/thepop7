@@ -33,7 +33,8 @@ export function RelatoriosFab() {
         {rep.margins.length === 0 ? (
           <p className="mt-4 text-sm text-muted-foreground">Nenhum produto com ficha técnica vinculada ainda.</p>
         ) : (
-          <table className="mt-4 w-full text-sm">
+          <div className="overflow-x-auto">
+            <table className="mt-4 w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs uppercase tracking-wider text-muted-foreground">
                 <th className="py-2 pr-3 font-medium">Produto</th>
@@ -54,7 +55,8 @@ export function RelatoriosFab() {
                 </tr>
               ))}
             </tbody>
-          </table>
+            </table>
+          </div>
         )}
       </Card>
 

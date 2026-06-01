@@ -59,7 +59,8 @@ export function Insumos() {
         />
       ) : (
         <Card padded={false}>
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs uppercase tracking-wider text-muted-foreground">
                 <th className="px-5 py-3 font-medium">Nome</th>
@@ -74,7 +75,8 @@ export function Insumos() {
                 <MaterialRow key={m.id} m={m} onChanged={load} />
               ))}
             </tbody>
-          </table>
+            </table>
+          </div>
         </Card>
       )}
     </Page>

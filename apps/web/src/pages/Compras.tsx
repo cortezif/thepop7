@@ -75,7 +75,7 @@ export function Compras() {
               />
             </div>
           ) : (
-            <div className="overflow-hidden border-t border-border">
+            <div className="overflow-x-auto border-t border-border">
               <table className="w-full text-sm">
                 <thead className="bg-muted/60 text-[11px] uppercase tracking-luxe text-muted-foreground">
                   <tr>

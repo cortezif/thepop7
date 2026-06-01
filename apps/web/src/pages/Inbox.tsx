@@ -147,7 +147,7 @@ export function Inbox() {
   const visible = profileFilter ? byStatus.filter((c) => (c.profileTags ?? []).includes(profileFilter)) : byStatus;
 
   return (
-    <div className="flex h-screen flex-col bg-background px-8 pb-6 pt-10 lg:px-10">
+    <div className="flex min-h-screen flex-col bg-background px-4 pb-6 pt-6 sm:px-8 sm:pt-10 lg:h-screen lg:px-10">
       <PageHeader eyebrow="ATENDIMENTO" title="Inbox unificado" subtitle="Conversas de WhatsApp e Instagram em um só lugar — a Maya atende, você assume quando quiser." />
 
       {error && (
@@ -156,9 +156,9 @@ export function Inbox() {
         </div>
       )}
 
-      <div className="grid min-h-0 flex-1 grid-cols-[340px_1fr] gap-5 overflow-hidden xl:grid-cols-[340px_1fr_300px]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 lg:grid-cols-[340px_1fr] lg:overflow-hidden xl:grid-cols-[340px_1fr_300px]">
         {/* ── Lista de conversas ──────────────────────────────────────────── */}
-        <aside className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-soft">
+        <aside className="flex h-[60vh] min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-soft lg:h-auto">
           <div className="border-b border-border px-4 pb-3 pt-4">
             <div className="mb-3 flex items-center justify-between">
               <h3 className="font-serif text-base font-semibold text-foreground">Conversas</h3>
@@ -234,7 +234,7 @@ export function Inbox() {
         </aside>
 
         {/* ── Thread ──────────────────────────────────────────────────────── */}
-        <section className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-soft">
+        <section className="flex h-[80vh] min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-soft lg:h-auto">
           {current ? (
             <>
               <header className="border-b border-border px-5 py-4">
@@ -574,8 +574,8 @@ function Simulator({ onSent }: { onSent: () => void }) {
       <p className="mb-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
         <FlaskConical size={13} /> Simulador de cliente (até WhatsApp/IG reais)
       </p>
-      <div className="flex gap-2">
-        <input value={name} onChange={(e) => setName(e.target.value)} className={cn(inputClass, "w-32 py-2")} placeholder="Nome" />
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <input value={name} onChange={(e) => setName(e.target.value)} className={cn(inputClass, "py-2 sm:w-32")} placeholder="Nome" />
         <input value={text} onChange={(e) => setText(e.target.value)} className={cn(inputClass, "flex-1 py-2")} placeholder="Mensagem do cliente" />
         <Button variant="primary" Icon={Send} onClick={send} disabled={busy} className="shrink-0">
           {busy ? "Maya pensando…" : "Enviar como cliente"}

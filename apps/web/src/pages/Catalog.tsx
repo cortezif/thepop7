@@ -183,7 +183,8 @@ export function Catalog() {
                       <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                         Medidas por tamanho (cm)
                       </p>
-                      <table className="mt-2 w-full text-[11px]">
+                      <div className="overflow-x-auto">
+                        <table className="mt-2 w-full text-[11px]">
                         <thead className="text-muted-foreground">
                           <tr>
                             <th className="pb-1 text-left font-normal">Tam</th>
@@ -202,7 +203,8 @@ export function Catalog() {
                             </tr>
                           ))}
                         </tbody>
-                      </table>
+                        </table>
+                      </div>
                     </div>
                   )}
 
