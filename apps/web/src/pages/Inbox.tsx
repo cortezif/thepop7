@@ -574,8 +574,8 @@ function Simulator({ onSent }: { onSent: () => void }) {
       <p className="mb-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
         <FlaskConical size={13} /> Simulador de cliente (até WhatsApp/IG reais)
       </p>
-      <div className="flex gap-2">
-        <input value={name} onChange={(e) => setName(e.target.value)} className={cn(inputClass, "w-32 py-2")} placeholder="Nome" />
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <input value={name} onChange={(e) => setName(e.target.value)} className={cn(inputClass, "py-2 sm:w-32")} placeholder="Nome" />
         <input value={text} onChange={(e) => setText(e.target.value)} className={cn(inputClass, "flex-1 py-2")} placeholder="Mensagem do cliente" />
         <Button variant="primary" Icon={Send} onClick={send} disabled={busy} className="shrink-0">
           {busy ? "Maya pensando…" : "Enviar como cliente"}

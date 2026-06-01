@@ -125,13 +125,13 @@ export function Tabs<T extends string>({
   tabs, active, onChange,
 }: { tabs: { key: T; label: string; count?: number }[]; active: T; onChange: (k: T) => void }) {
   return (
-    <div className="flex gap-1 rounded-lg border border-border bg-muted/40 p-1">
+    <div className="flex gap-1 overflow-x-auto rounded-lg border border-border bg-muted/40 p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {tabs.map((t) => (
         <button
           key={t.key}
           onClick={() => onChange(t.key)}
           className={cn(
-            "flex items-center gap-1.5 rounded-md px-3.5 py-1.5 text-sm font-medium transition-all",
+            "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-3.5 py-1.5 text-sm font-medium transition-all",
             active === t.key ? "bg-card text-foreground shadow-soft" : "text-muted-foreground hover:text-foreground",
           )}
         >
