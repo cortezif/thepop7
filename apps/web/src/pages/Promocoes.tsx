@@ -101,18 +101,20 @@ function CashbackNudge() {
   if (!pv) return null;
   return (
     <Card className="mb-6 border-amber-200 bg-amber-50/50">
-      <div className="flex flex-wrap items-center gap-4 p-5">
-        <Gift className="h-6 w-6 text-amber-600" />
-        <div className="min-w-0 flex-1">
-          <p className="font-medium text-foreground">Cashback a vencer (próximos 5 dias)</p>
-          <p className="text-sm text-muted-foreground">
-            {pv.contacts > 0
-              ? <><b className="text-foreground">{pv.contacts}</b> cliente(s) com <b className="text-foreground">{pv.totalBRL.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</b> prestes a expirar. O lembrete também roda sozinho 1x/dia.</>
-              : "Nenhum crédito vencendo nos próximos 5 dias."}
-          </p>
-          {msg && <p className="mt-1 text-sm text-emerald-700">{msg}</p>}
+      <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
+        <div className="flex min-w-0 flex-1 items-start gap-4">
+          <Gift className="h-6 w-6 shrink-0 text-amber-600" />
+          <div className="min-w-0 flex-1">
+            <p className="font-medium text-foreground">Cashback a vencer (próximos 5 dias)</p>
+            <p className="text-sm text-muted-foreground">
+              {pv.contacts > 0
+                ? <><b className="text-foreground">{pv.contacts}</b> cliente(s) com <b className="text-foreground">{pv.totalBRL.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</b> prestes a expirar. O lembrete também roda sozinho 1x/dia.</>
+                : "Nenhum crédito vencendo nos próximos 5 dias."}
+            </p>
+            {msg && <p className="mt-1 text-sm text-emerald-700">{msg}</p>}
+          </div>
         </div>
-        <Button onClick={run} disabled={busy || pv.contacts === 0}>
+        <Button onClick={run} disabled={busy || pv.contacts === 0} className="w-full shrink-0 sm:w-auto">
           <Send className="h-4 w-4" /> {busy ? "Enviando…" : "Enviar lembretes agora"}
         </Button>
       </div>
