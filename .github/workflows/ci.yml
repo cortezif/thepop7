@@ -59,6 +59,14 @@ jobs:
       - name: Aplicar schema no Postgres
         run: npx -w @hubadvisor/db prisma db push --skip-generate
 
+      # RLS (ADR-002): cria o papel `hubadvisor_app` + policies. Sem isto, os
+      # testes de isolamento (rls-role/isolation-audit) falham por falta do papel.
+      # Espelha o bootstrap de dev e o deploy (DEPLOY.md). Idempotente.
+      - name: Aplicar RLS (papel restrito + policies)
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d thepop -v ON_ERROR_STOP=1 -f packages/db/prisma/migrations/manual/rls.sql
+
       - name: Testes unitários
         run: npx turbo run test --concurrency=2
 
