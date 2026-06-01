@@ -70,6 +70,17 @@ export function Dashboard() {
         </div>
       </section>
 
+      {/* Mensageria WhatsApp (Meta) — janela de 24h grátis vs. template pago */}
+      <section className="mt-8 space-y-3">
+        <p className="text-[11px] font-semibold uppercase tracking-luxe text-muted-foreground">Mensageria (WhatsApp)</p>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard label="Custo WhatsApp hoje"   value={m ? formatBRL(m.waCost.costTodayBRL) : "…"} Icon={Coins} />
+          <StatCard label="Custo WhatsApp no mês"  value={m ? formatBRL(m.waCost.costMonthBRL) : "…"} Icon={Wallet} />
+          <StatCard label="Msgs pagas no mês"      value={m ? String(m.waCost.paidMsgsMonth) : "…"} Icon={MessageCircle} />
+          <StatCard label="Msgs grátis no mês"     value={m ? String(m.waCost.freeMsgsMonth) : "…"} Icon={MessageCircle} />
+        </div>
+      </section>
+
       {/* Margem real (ADR-017) — receita − COGS − frete − gateway */}
       {m && (
         <Card className="mt-8">

@@ -89,6 +89,31 @@ export const metricsRoutes: FastifyPluginAsync = async (app) => {
       });
       const aiCostTotalBRL = allAiMessages.reduce((s, m) => s + Number(m.llmCostBRL ?? 0), 0);
 
+      // Custo de mensageria WhatsApp (Meta) no mês — espelha o custo de IA.
+      // "service" (dentro da janela de 24h) é grátis; o resto é template pago.
+      const waMsgsMonth = await tx.message.findMany({
+        where: { direction: "out", waCategory: { not: null }, createdAt: { gte: startOfMonth } },
+        select: { waCostBRL: true, waCategory: true, createdAt: true },
+      });
+      const waCostMonthBRL = waMsgsMonth.reduce((s, m) => s + Number(m.waCostBRL ?? 0), 0);
+      const waCostTodayBRL = waMsgsMonth
+        .filter((m) => m.createdAt >= startOfDay)
+        .reduce((s, m) => s + Number(m.waCostBRL ?? 0), 0);
+      const waByCategory: Record<string, number> = {};
+      let waPaidMsgsMonth = 0, waFreeMsgsMonth = 0;
+      for (const m of waMsgsMonth) {
+        const cat = m.waCategory ?? "?";
+        waByCategory[cat] = (waByCategory[cat] ?? 0) + 1;
+        if (cat === "service") waFreeMsgsMonth++; else waPaidMsgsMonth++;
+      }
+      const waCost = {
+        costTodayBRL: Number(waCostTodayBRL.toFixed(4)),
+        costMonthBRL: Number(waCostMonthBRL.toFixed(4)),
+        paidMsgsMonth: waPaidMsgsMonth,
+        freeMsgsMonth: waFreeMsgsMonth,
+        byCategory: waByCategory,
+      };
+
       // Distribuição de modelos (mostra o smart routing em ação)
       const modelDist: Record<string, number> = {};
       for (const m of aiMessagesToday) {
@@ -138,6 +163,7 @@ export const metricsRoutes: FastifyPluginAsync = async (app) => {
         financials,
         funnel,
         budget: monthBudget,
+        waCost,
         nps,
       };
     });
