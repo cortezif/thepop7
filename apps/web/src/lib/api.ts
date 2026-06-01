@@ -920,7 +920,18 @@ export type DailyMetrics = {
   financials: Financials;
   funnel: Funnel;
   budget: Budget;
+  waCost: WaCost;
   nps: { geral: NpsStat; produto: NpsStat; atendimento: NpsStat };
+};
+
+// Custo de mensageria WhatsApp (Meta). "service" (dentro da janela de 24h) é
+// grátis; categorias pagas (utility/marketing/authentication) são templates.
+export type WaCost = {
+  costTodayBRL: number;
+  costMonthBRL: number;
+  paidMsgsMonth: number;
+  freeMsgsMonth: number;
+  byCategory: Record<string, number>;
 };
 
 // Wallboard de TV ao vivo (ADR-040).

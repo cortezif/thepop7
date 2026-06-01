@@ -4,30 +4,44 @@
 // Distinto de mídia paga (AdCampaign / Meta Ads).
 import { getPrisma, withTenant, decryptPII, resolveTenantCredentials } from "@hubadvisor/db";
 import { getMessagingConnector, getSmsConnector, sendEmail } from "@hubadvisor/connectors";
-import { enterCredentials, waCostBRL, type WaCategory } from "@hubadvisor/shared";
+import { enterCredentials, classifyOutbound, waCostBRL, type WaCategory } from "@hubadvisor/shared";
 import { getSmsCreds } from "./integration-service.js";
 import { expiringSoon, markNudged, cashbackHintFor } from "./cashback-service.js";
 
 export type Channel = "whatsapp" | "email" | "sms";
 
 /**
- * Envia uma mensagem proativa por WhatsApp. Disparos proativos quase sempre
- * caem FORA da janela de 24h — e aí a Meta só aceita TEMPLATE aprovado. Se o
- * template do fluxo estiver configurado (env), envia como template (pago);
- * senão cai em texto (entregue apenas se a janela do cliente estiver aberta).
+ * Quais contatos têm a janela de atendimento de 24h ABERTA agora (uma query só,
+ * sem N+1). Usado p/ decidir entre mensagem de sessão grátis e template pago.
+ */
+async function openWindowContacts(tenantId: string, contactIds: string[]): Promise<Set<string>> {
+  if (contactIds.length === 0) return new Set();
+  const convs = await getPrisma().conversation.findMany({
+    where: { tenantId, contactId: { in: contactIds }, waWindowExpiresAt: { gt: new Date() } },
+    select: { contactId: true },
+  });
+  return new Set(convs.map((c) => c.contactId).filter((id): id is string => !!id));
+}
+
+/**
+ * Envia uma mensagem proativa por WhatsApp respeitando a janela de 24h:
+ *  • janela ABERTA → mensagem de sessão (texto livre), grátis (categoria "service");
+ *  • janela FECHADA → TEMPLATE aprovado (pago) se configurado por env; senão cai
+ *    em texto (entregue apenas se a janela estiver aberta — fallback do atual).
  * Devolve o custo estimado (BRL) da mensagem para agregação/visibilidade.
  */
 async function sendWhatsappProactive(opts: {
   tenantId: string; conversationId: string; to: string; text: string;
-  templateEnv: string; intent: WaCategory;
+  templateEnv: string; intent: WaCategory; windowOpen: boolean;
 }): Promise<number> {
-  const template = process.env[opts.templateEnv]?.trim() || undefined;
+  const category = classifyOutbound({ windowOpen: opts.windowOpen, intent: opts.intent });
+  const template = !opts.windowOpen ? (process.env[opts.templateEnv]?.trim() || undefined) : undefined;
   await getMessagingConnector("whatsapp").send(
     template
       ? { tenantId: opts.tenantId, conversationId: opts.conversationId, channel: "whatsapp", to: opts.to, type: "template", templateName: template, templateParams: { body: opts.text } }
       : { tenantId: opts.tenantId, conversationId: opts.conversationId, channel: "whatsapp", to: opts.to, type: "text", text: opts.text },
   );
-  return waCostBRL(opts.intent);
+  return waCostBRL(category);
 }
 export type Audience = "todos" | "compradores" | "inativos";
 export type SegmentFilter = { onlyBuyers?: boolean; inactiveDays?: number; excludeOptOuts?: string[] };
@@ -138,6 +152,7 @@ export async function sendCampaign(tenantId: string, campaignId: string) {
   const smsCreds = (await getSmsCreds(tenantId)) ?? undefined;
 
   const contacts = await segmentContacts(tenantId, filterForAudience(camp.audience as Audience, camp.inactiveDays ?? undefined));
+  const openWins = channels.includes("whatsapp") ? await openWindowContacts(tenantId, contacts.map((c) => c.id)) : new Set<string>();
   let sentWhatsapp = 0, sentEmail = 0, sentSms = 0, skipped = 0, waCostBRLTotal = 0;
 
   for (const c of contacts) {
@@ -150,6 +165,7 @@ export async function sendCampaign(tenantId: string, campaignId: string) {
         waCostBRLTotal += await sendWhatsappProactive({
           tenantId, conversationId: `camp-${camp.id}`, to: phone,
           text: camp.message, templateEnv: "WA_TEMPLATE_CAMPAIGN", intent: "marketing",
+          windowOpen: openWins.has(c.id),
         });
         sentWhatsapp++; anySent = true;
       } catch { /* não-fatal */ }
@@ -218,6 +234,7 @@ export async function sendCashbackNudges(tenantId: string, withinDays = 5) {
   const smsCreds = (await getSmsCreds(tenantId)) ?? undefined;
   const prisma = getPrisma();
 
+  const openWins = await openWindowContacts(tenantId, groups.map((g) => g.contactId));
   let sentWhatsapp = 0, sentEmail = 0, sentSms = 0, skipped = 0, reached = 0, waCostBRLTotal = 0;
   const now = Date.now();
 
@@ -239,6 +256,7 @@ export async function sendCashbackNudges(tenantId: string, withinDays = 5) {
         waCostBRLTotal += await sendWhatsappProactive({
           tenantId, conversationId: `cashback-nudge-${g.contactId}`, to: phone,
           text, templateEnv: "WA_TEMPLATE_CASHBACK", intent: "marketing",
+          windowOpen: openWins.has(g.contactId),
         });
         sentWhatsapp++; anySent = true;
       } catch { /* não-fatal */ }
@@ -309,6 +327,7 @@ export async function sendWinbackAuto(tenantId: string, inactiveDaysOverride?: n
   enterCredentials(await resolveTenantCredentials(tenantId));
   const smsCreds = (await getSmsCreds(tenantId)) ?? undefined;
 
+  const openWins = await openWindowContacts(tenantId, targets.map((c) => c.id));
   let sentWhatsapp = 0, sentEmail = 0, sentSms = 0, skipped = 0, reached = 0, waCostBRLTotal = 0;
   for (const c of targets) {
     const hint = await cashbackHintFor(tenantId, c.id);
@@ -322,6 +341,7 @@ export async function sendWinbackAuto(tenantId: string, inactiveDaysOverride?: n
         waCostBRLTotal += await sendWhatsappProactive({
           tenantId, conversationId: `winback-${c.id}`, to: phone,
           text, templateEnv: "WA_TEMPLATE_WINBACK", intent: "marketing",
+          windowOpen: openWins.has(c.id),
         });
         sentWhatsapp++; anySent = true;
       } catch { /* não-fatal */ }
