@@ -8,6 +8,19 @@ import { consolidatePrices, type EstimationMethod } from "./price-consolidation.
 
 const onlyDigits = (s: string) => s.replace(/\D/g, "");
 
+/**
+ * Convite/lembrete de cotação são disparos PROATIVOS — fora da janela de 24h o
+ * WhatsApp exige TEMPLATE aprovado. Se WA_TEMPLATE_RFQ estiver configurado,
+ * envia como template (categoria utility); senão, texto livre (entregue só se a
+ * janela do fornecedor estiver aberta). Corpo vai como único parâmetro {{1}}.
+ */
+function rfqOutgoing(base: { tenantId: string; conversationId: string; to: string; body: string }) {
+  const template = process.env.WA_TEMPLATE_RFQ?.trim() || undefined;
+  return template
+    ? { tenantId: base.tenantId, conversationId: base.conversationId, channel: "whatsapp" as const, to: base.to, type: "template" as const, templateName: template, templateParams: { body: base.body } }
+    : { tenantId: base.tenantId, conversationId: base.conversationId, channel: "whatsapp" as const, to: base.to, type: "text" as const, text: base.body };
+}
+
 /** Casa as descrições da pesquisa com os preços extraídos pela IA. */
 function matchExtracted(
   researchItems: Array<{ description: string }>,
@@ -188,7 +201,7 @@ export async function sendInvites(tenantId: string, researchId: string) {
 
     if (inv.phone) {
       try {
-        await messaging.send({ tenantId, conversationId: `rfq-${inv.id}`, type: "text", text: body, to: inv.phone, channel: "whatsapp" });
+        await messaging.send(rfqOutgoing({ tenantId, conversationId: `rfq-${inv.id}`, to: inv.phone, body }));
         vias.push("whatsapp");
       } catch { /* segue — link continua disponível */ }
     }
@@ -445,7 +458,7 @@ export async function processResends() {
     if (inv.phone) {
       try {
         const creds = await credsFor(inv.tenantId);
-        await runWithCredentials(creds, () => getMessagingConnector("whatsapp").send({ tenantId: inv.tenantId, conversationId: `rfq-${inv.id}`, type: "text", text: body, to: inv.phone!, channel: "whatsapp" }));
+        await runWithCredentials(creds, () => getMessagingConnector("whatsapp").send(rfqOutgoing({ tenantId: inv.tenantId, conversationId: `rfq-${inv.id}`, to: inv.phone!, body })));
       } catch { /* segue */ }
     }
     if (inv.email && emailConfigured()) {

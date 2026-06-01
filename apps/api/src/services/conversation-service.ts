@@ -4,7 +4,7 @@ import { cashbackBalance, cashbackHintFor } from "./cashback-service.js";
 import { getPrisma, withTenant, decryptPII, resolveTenantCredentials } from "@hubadvisor/db";
 import { buildErpForTenant, getLogisticsConnector, getMessagingConnector } from "@hubadvisor/connectors";
 import { resolveErpCreds } from "../lib/erp.js";
-import { enterCredentials, type ContactProfileUpdate, type ProductSummary } from "@hubadvisor/shared";
+import { enterCredentials, waWindowOpen, waWindowExpiresAt, classifyOutbound, waCostBRL, type ContactProfileUpdate, type ProductSummary } from "@hubadvisor/shared";
 import type { FastifyBaseLogger } from "fastify";
 import { searchProducts, type CustomerProfile, type ProductFilter } from "./product-search.js";
 import { createOrder, cancelOrder, startReturn, getOrderStatus } from "./order-service.js";
@@ -53,6 +53,7 @@ export async function handleIncomingMessage(dto: IncomingDTO, log: FastifyBaseLo
     }
 
     const hasPhotos = (dto.photoUrls?.length ?? 0) > 0;
+    const inboundAt = new Date();
     await tx.message.create({
       data: {
         conversationId: conversation.id,
@@ -63,9 +64,10 @@ export async function handleIncomingMessage(dto: IncomingDTO, log: FastifyBaseLo
           : (hasPhotos ? `[cliente enviou ${dto.photoUrls!.length} foto(s)]` : ""),
       },
     });
+    // Mensagem RECEBIDA → (re)abre a janela de atendimento de 24h (WhatsApp).
     await tx.conversation.update({
       where: { id: conversation.id },
-      data: { lastMessageAt: new Date() },
+      data: { lastMessageAt: inboundAt, lastInboundAt: inboundAt, waWindowExpiresAt: waWindowExpiresAt(inboundAt) },
     });
 
     const recent = await tx.message.findMany({
@@ -90,13 +92,13 @@ export async function handleIncomingMessage(dto: IncomingDTO, log: FastifyBaseLo
     });
 
     return {
-      contact, conversation, recent,
+      contact, conversation, recent, inboundAt,
       priorSummaries: priorConvs.map((c) => c.summary!).filter(Boolean),
       monthSpendBRL: Number(spend._sum.llmCostBRL ?? 0),
     };
   });
 
-  const { contact, conversation, recent, priorSummaries, monthSpendBRL } = setup;
+  const { contact, conversation, recent, inboundAt, priorSummaries, monthSpendBRL } = setup;
 
   // Perfil/classificação (ADR-036): gates operacionais ANTES de qualquer IA.
   const gate = operationalTag(contact.tags);
@@ -242,6 +244,11 @@ export async function handleIncomingMessage(dto: IncomingDTO, log: FastifyBaseLo
   const turn = await runAgentTurn(cfg, ctx, agentMessage, tools, cascadeOverride, tenant.productionEnabled ? PRODUCTION_TOOL_DEFS : []);
 
   // FASE 3 (transação curta): persiste a resposta.
+  // Resposta reativa = dentro da janela de 24h aberta pela cliente → mensagem de
+  // sessão "service" (grátis) no WhatsApp. Registra a categoria/custo p/ visibilidade.
+  const waCategory = dto.channel === "whatsapp"
+    ? classifyOutbound({ windowOpen: waWindowOpen(inboundAt) })
+    : null;
   if (turn.replyText) {
     await withTenant(tenant.id, async (tx) => {
       await tx.message.create({
@@ -258,6 +265,8 @@ export async function handleIncomingMessage(dto: IncomingDTO, log: FastifyBaseLo
           toolCalls:      turn.toolCalls as any,
           reviewFlagged:  turn.review?.flagged ?? false,
           reviewReasons:  turn.review?.reasons ?? [],
+          waCategory:     waCategory ?? undefined,
+          waCostBRL:      waCategory ? waCostBRL(waCategory) : undefined,
         },
       });
     });

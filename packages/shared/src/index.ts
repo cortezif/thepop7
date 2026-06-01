@@ -6,3 +6,4 @@ export * from "./barcode.js";
 export * from "./code-pattern.js";
 export * from "./customer-tags.js";
 export * from "./credentials.js";
+export * from "./whatsapp-pricing.js";

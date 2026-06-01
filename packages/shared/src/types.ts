@@ -27,6 +27,8 @@ export type OutgoingMessage = {
   mediaUrl?: string;
   templateName?: string;
   templateParams?: Record<string, string>;
+  /** Idioma do template aprovado na Meta (default "pt_BR"). */
+  templateLanguage?: string;
   /** Destinatário: telefone E.164 (WhatsApp) ou PSID (Instagram). */
   to?: string;
   /** Canal de entrega. */

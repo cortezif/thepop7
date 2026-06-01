@@ -4,11 +4,31 @@
 // Distinto de mídia paga (AdCampaign / Meta Ads).
 import { getPrisma, withTenant, decryptPII, resolveTenantCredentials } from "@hubadvisor/db";
 import { getMessagingConnector, getSmsConnector, sendEmail } from "@hubadvisor/connectors";
-import { enterCredentials } from "@hubadvisor/shared";
+import { enterCredentials, waCostBRL, type WaCategory } from "@hubadvisor/shared";
 import { getSmsCreds } from "./integration-service.js";
 import { expiringSoon, markNudged, cashbackHintFor } from "./cashback-service.js";
 
 export type Channel = "whatsapp" | "email" | "sms";
+
+/**
+ * Envia uma mensagem proativa por WhatsApp. Disparos proativos quase sempre
+ * caem FORA da janela de 24h — e aí a Meta só aceita TEMPLATE aprovado. Se o
+ * template do fluxo estiver configurado (env), envia como template (pago);
+ * senão cai em texto (entregue apenas se a janela do cliente estiver aberta).
+ * Devolve o custo estimado (BRL) da mensagem para agregação/visibilidade.
+ */
+async function sendWhatsappProactive(opts: {
+  tenantId: string; conversationId: string; to: string; text: string;
+  templateEnv: string; intent: WaCategory;
+}): Promise<number> {
+  const template = process.env[opts.templateEnv]?.trim() || undefined;
+  await getMessagingConnector("whatsapp").send(
+    template
+      ? { tenantId: opts.tenantId, conversationId: opts.conversationId, channel: "whatsapp", to: opts.to, type: "template", templateName: template, templateParams: { body: opts.text } }
+      : { tenantId: opts.tenantId, conversationId: opts.conversationId, channel: "whatsapp", to: opts.to, type: "text", text: opts.text },
+  );
+  return waCostBRL(opts.intent);
+}
 export type Audience = "todos" | "compradores" | "inativos";
 export type SegmentFilter = { onlyBuyers?: boolean; inactiveDays?: number; excludeOptOuts?: string[] };
 
@@ -118,7 +138,7 @@ export async function sendCampaign(tenantId: string, campaignId: string) {
   const smsCreds = (await getSmsCreds(tenantId)) ?? undefined;
 
   const contacts = await segmentContacts(tenantId, filterForAudience(camp.audience as Audience, camp.inactiveDays ?? undefined));
-  let sentWhatsapp = 0, sentEmail = 0, sentSms = 0, skipped = 0;
+  let sentWhatsapp = 0, sentEmail = 0, sentSms = 0, skipped = 0, waCostBRLTotal = 0;
 
   for (const c of contacts) {
     const phone = decryptPII(c.phone);
@@ -127,9 +147,9 @@ export async function sendCampaign(tenantId: string, campaignId: string) {
 
     if (channels.includes("whatsapp") && phone) {
       try {
-        await getMessagingConnector("whatsapp").send({
-          tenantId, conversationId: `camp-${camp.id}`, type: "text",
-          text: camp.message, to: phone, channel: "whatsapp",
+        waCostBRLTotal += await sendWhatsappProactive({
+          tenantId, conversationId: `camp-${camp.id}`, to: phone,
+          text: camp.message, templateEnv: "WA_TEMPLATE_CAMPAIGN", intent: "marketing",
         });
         sentWhatsapp++; anySent = true;
       } catch { /* não-fatal */ }
@@ -160,18 +180,18 @@ export async function sendCampaign(tenantId: string, campaignId: string) {
       },
     }),
   );
-  return updated;
+  return { ...updated, waCostBRL: Number(waCostBRLTotal.toFixed(4)) };
 }
 
 /** Roda o nudge de cashback para todas as lojas com cashback ativo (cron). */
 export async function runCashbackNudgesAllTenants(withinDays = 5) {
   const tenants = await getPrisma().tenant.findMany({ where: { cashbackEnabled: true }, select: { id: true } });
-  let contacts = 0, sentWhatsapp = 0, sentEmail = 0, sentSms = 0;
+  let contacts = 0, sentWhatsapp = 0, sentEmail = 0, sentSms = 0, waCostBRL = 0;
   for (const t of tenants) {
     const r = await sendCashbackNudges(t.id, withinDays);
-    contacts += r.contacts; sentWhatsapp += r.sentWhatsapp; sentEmail += r.sentEmail; sentSms += r.sentSms;
+    contacts += r.contacts; sentWhatsapp += r.sentWhatsapp; sentEmail += r.sentEmail; sentSms += r.sentSms; waCostBRL += r.waCostBRL;
   }
-  return { tenants: tenants.length, contacts, sentWhatsapp, sentEmail, sentSms };
+  return { tenants: tenants.length, contacts, sentWhatsapp, sentEmail, sentSms, waCostBRL: Number(waCostBRL.toFixed(4)) };
 }
 
 function brl(n: number): string {
@@ -192,13 +212,13 @@ function nudgeText(name: string | null, amountBRL: number, daysLeft: number): st
  */
 export async function sendCashbackNudges(tenantId: string, withinDays = 5) {
   const groups = await expiringSoon(tenantId, withinDays);
-  if (groups.length === 0) return { contacts: 0, sentWhatsapp: 0, sentEmail: 0, sentSms: 0, skipped: 0 };
+  if (groups.length === 0) return { contacts: 0, sentWhatsapp: 0, sentEmail: 0, sentSms: 0, skipped: 0, waCostBRL: 0 };
 
   enterCredentials(await resolveTenantCredentials(tenantId));
   const smsCreds = (await getSmsCreds(tenantId)) ?? undefined;
   const prisma = getPrisma();
 
-  let sentWhatsapp = 0, sentEmail = 0, sentSms = 0, skipped = 0, reached = 0;
+  let sentWhatsapp = 0, sentEmail = 0, sentSms = 0, skipped = 0, reached = 0, waCostBRLTotal = 0;
   const now = Date.now();
 
   for (const g of groups) {
@@ -216,8 +236,9 @@ export async function sendCashbackNudges(tenantId: string, withinDays = 5) {
 
     if (phone) {
       try {
-        await getMessagingConnector("whatsapp").send({
-          tenantId, conversationId: `cashback-nudge-${g.contactId}`, type: "text", text, to: phone, channel: "whatsapp",
+        waCostBRLTotal += await sendWhatsappProactive({
+          tenantId, conversationId: `cashback-nudge-${g.contactId}`, to: phone,
+          text, templateEnv: "WA_TEMPLATE_CASHBACK", intent: "marketing",
         });
         sentWhatsapp++; anySent = true;
       } catch { /* não-fatal */ }
@@ -236,7 +257,7 @@ export async function sendCashbackNudges(tenantId: string, withinDays = 5) {
     if (anySent) { reached++; await markNudged(tenantId, g.entryIds); }
     else skipped++;
   }
-  return { contacts: reached, sentWhatsapp, sentEmail, sentSms, skipped };
+  return { contacts: reached, sentWhatsapp, sentEmail, sentSms, skipped, waCostBRL: Number(waCostBRLTotal.toFixed(4)) };
 }
 
 // ── Recompra automática (winback) — ADR-031 ──────────────────────────────────
@@ -259,7 +280,7 @@ function winbackText(name: string | null, store: string, cashbackBRL: number): s
 export async function sendWinbackAuto(tenantId: string, inactiveDaysOverride?: number) {
   const prisma = getPrisma();
   const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, winbackInactiveDays: true } });
-  if (!tenant) return { contacts: 0, sentWhatsapp: 0, sentEmail: 0, sentSms: 0, skipped: 0 };
+  if (!tenant) return { contacts: 0, sentWhatsapp: 0, sentEmail: 0, sentSms: 0, skipped: 0, waCostBRL: 0 };
   const inactiveDays = inactiveDaysOverride ?? tenant.winbackInactiveDays;
   const now = Date.now();
   const cutoff = new Date(now - inactiveDays * 86_400_000);
@@ -275,7 +296,7 @@ export async function sendWinbackAuto(tenantId: string, inactiveDaysOverride?: n
     select: { id: true, name: true, phone: true, email: true, optOuts: true },
   });
   const eligible = rows.filter((c) => !c.optOuts.includes("marketing") && !c.optOuts.includes("recompra"));
-  if (eligible.length === 0) return { contacts: 0, sentWhatsapp: 0, sentEmail: 0, sentSms: 0, skipped: 0 };
+  if (eligible.length === 0) return { contacts: 0, sentWhatsapp: 0, sentEmail: 0, sentSms: 0, skipped: 0, waCostBRL: 0 };
 
   // Último pedido por contato → mantém só os inativos há ≥ inactiveDays.
   const last = await prisma.order.groupBy({
@@ -283,12 +304,12 @@ export async function sendWinbackAuto(tenantId: string, inactiveDaysOverride?: n
   });
   const lastBy = new Map(last.map((o) => [o.contactId, o._max.createdAt]));
   const targets = eligible.filter((c) => { const d = lastBy.get(c.id); return d != null && d <= cutoff; });
-  if (targets.length === 0) return { contacts: 0, sentWhatsapp: 0, sentEmail: 0, sentSms: 0, skipped: 0 };
+  if (targets.length === 0) return { contacts: 0, sentWhatsapp: 0, sentEmail: 0, sentSms: 0, skipped: 0, waCostBRL: 0 };
 
   enterCredentials(await resolveTenantCredentials(tenantId));
   const smsCreds = (await getSmsCreds(tenantId)) ?? undefined;
 
-  let sentWhatsapp = 0, sentEmail = 0, sentSms = 0, skipped = 0, reached = 0;
+  let sentWhatsapp = 0, sentEmail = 0, sentSms = 0, skipped = 0, reached = 0, waCostBRLTotal = 0;
   for (const c of targets) {
     const hint = await cashbackHintFor(tenantId, c.id);
     const text = winbackText(c.name, tenant.name, hint?.saldoBRL ?? 0);
@@ -298,7 +319,10 @@ export async function sendWinbackAuto(tenantId: string, inactiveDaysOverride?: n
 
     if (phone) {
       try {
-        await getMessagingConnector("whatsapp").send({ tenantId, conversationId: `winback-${c.id}`, type: "text", text, to: phone, channel: "whatsapp" });
+        waCostBRLTotal += await sendWhatsappProactive({
+          tenantId, conversationId: `winback-${c.id}`, to: phone,
+          text, templateEnv: "WA_TEMPLATE_WINBACK", intent: "marketing",
+        });
         sentWhatsapp++; anySent = true;
       } catch { /* não-fatal */ }
       try {
@@ -318,16 +342,16 @@ export async function sendWinbackAuto(tenantId: string, inactiveDaysOverride?: n
       await withTenant(tenantId, (tx) => tx.contact.update({ where: { id: c.id }, data: { lastWinbackAt: new Date() } }));
     } else skipped++;
   }
-  return { contacts: reached, sentWhatsapp, sentEmail, sentSms, skipped };
+  return { contacts: reached, sentWhatsapp, sentEmail, sentSms, skipped, waCostBRL: Number(waCostBRLTotal.toFixed(4)) };
 }
 
 /** Winback automático p/ todas as lojas com a recompra ativa (cron). */
 export async function runWinbackAllTenants() {
   const tenants = await getPrisma().tenant.findMany({ where: { winbackEnabled: true }, select: { id: true } });
-  let contacts = 0, sentWhatsapp = 0, sentEmail = 0, sentSms = 0;
+  let contacts = 0, sentWhatsapp = 0, sentEmail = 0, sentSms = 0, waCostBRL = 0;
   for (const t of tenants) {
     const r = await sendWinbackAuto(t.id);
-    contacts += r.contacts; sentWhatsapp += r.sentWhatsapp; sentEmail += r.sentEmail; sentSms += r.sentSms;
+    contacts += r.contacts; sentWhatsapp += r.sentWhatsapp; sentEmail += r.sentEmail; sentSms += r.sentSms; waCostBRL += r.waCostBRL;
   }
-  return { tenants: tenants.length, contacts, sentWhatsapp, sentEmail, sentSms };
+  return { tenants: tenants.length, contacts, sentWhatsapp, sentEmail, sentSms, waCostBRL: Number(waCostBRL.toFixed(4)) };
 }

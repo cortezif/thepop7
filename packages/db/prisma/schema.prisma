@@ -458,6 +458,11 @@ model Conversation {
   startedAt DateTime @default(now())
   lastMessageAt DateTime @default(now())
 
+  // Janela de atendimento do WhatsApp (24h desde a última msg RECEBIDA do
+  // cliente). Usada p/ decidir entre mensagem de sessão grátis e template pago.
+  lastInboundAt     DateTime?
+  waWindowExpiresAt DateTime?
+
   messages  Message[]
   notes     ConversationNote[]
 
@@ -511,6 +516,11 @@ model Message {
   llmCachedTokens Int?
   llmCostBRL     Decimal? @db.Decimal(10, 4)
   toolCalls      Json?
+
+  // Custo de mensageria do canal (Meta WhatsApp). waCategory ∈
+  // service|utility|marketing|authentication; "service" = janela 24h = grátis.
+  waCategory     String?
+  waCostBRL      Decimal? @db.Decimal(10, 4)
 
   // Detecção de alucinação (ADR-014): flagga revisão humana.
   reviewFlagged  Boolean  @default(false)
