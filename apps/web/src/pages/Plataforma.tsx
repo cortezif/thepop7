@@ -118,7 +118,8 @@ function LojasTab({ apiKey }: { apiKey: string }) {
           <div className="mt-5"><EmptyState icon={Store} title="Nenhuma loja" description="Crie a primeira loja acima." /></div>
         ) : (
           <Card padded={false} className="mt-5 overflow-hidden">
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
               <thead className="border-b border-border bg-muted/50 text-[11px] uppercase tracking-luxe text-muted-foreground">
                 <tr>
                   <th className="px-5 py-3 text-left font-semibold">Loja</th>
@@ -155,7 +156,8 @@ function LojasTab({ apiKey }: { apiKey: string }) {
                   </tr>
                 ))}
               </tbody>
-            </table>
+              </table>
+            </div>
           </Card>
         )}
       </section>
@@ -239,7 +241,8 @@ function ComissoesTab({ apiKey }: { apiKey: string }) {
           <div className="mt-5"><EmptyState title="Sem pedidos B2B ainda" description="As lojas vendedoras aparecerão aqui assim que houver transações na rede." /></div>
         ) : (
           <Card padded={false} className="mt-5 overflow-hidden">
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
               <thead className="border-b border-border bg-muted/50 text-[11px] uppercase tracking-luxe text-muted-foreground">
                 <tr>
                   <th className="px-5 py-3 text-left font-semibold">Loja vendedora</th>
@@ -258,7 +261,8 @@ function ComissoesTab({ apiKey }: { apiKey: string }) {
                   </tr>
                 ))}
               </tbody>
-            </table>
+              </table>
+            </div>
           </Card>
         )}
       </section>
